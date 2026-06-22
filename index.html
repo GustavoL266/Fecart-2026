@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Assistente de Precificação Geográfica</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar" aria-label="Configurações da simulação">
+        <div class="brand">
+          <span class="brand-mark">AP</span>
+          <div>
+            <p class="eyebrow">Plataforma inteligente</p>
+            <h1>Precificação Geográfica</h1>
+          </div>
+        </div>
+
+        <section class="control-block">
+          <label for="product">Produto</label>
+          <select id="product">
+            <option value="cafe">Café especial 500g</option>
+            <option value="remedio">Analgésico 20 comprimidos</option>
+            <option value="hamburguer">Combo artesanal</option>
+            <option value="gasolina">Gasolina comum 1L</option>
+          </select>
+        </section>
+
+        <section class="control-block">
+          <label for="region">Localidade</label>
+          <select id="region">
+            <option value="centro">Centro urbano</option>
+            <option value="bairro">Bairro residencial</option>
+            <option value="turistica">Área turística</option>
+            <option value="periferia">Região sensível a preço</option>
+          </select>
+        </section>
+
+        <section class="control-block">
+          <div class="label-row">
+            <label for="margin">Margem mínima</label>
+            <strong id="marginValue">28%</strong>
+          </div>
+          <input id="margin" type="range" min="10" max="55" value="28" />
+        </section>
+
+        <section class="control-block">
+          <div class="label-row">
+            <label for="competitors">Concorrentes próximos</label>
+            <strong id="competitorsValue">4</strong>
+          </div>
+          <input id="competitors" type="range" min="0" max="12" value="4" />
+        </section>
+
+        <section class="control-block">
+          <div class="label-row">
+            <label for="seasonality">Sazonalidade</label>
+            <strong id="seasonalityValue">+8%</strong>
+          </div>
+          <input id="seasonality" type="range" min="-25" max="35" value="8" />
+        </section>
+      </aside>
+
+      <section class="workspace" aria-label="Painel de decisão">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Simulador de decisão</p>
+            <h2>Preço recomendado por produto, região, mercado e tempo</h2>
+          </div>
+          <div class="strategy-switch" role="group" aria-label="Estratégia">
+            <button class="strategy active" data-strategy="balance">Equilíbrio</button>
+            <button class="strategy" data-strategy="profit">Lucro</button>
+            <button class="strategy" data-strategy="volume">Volume</button>
+          </div>
+        </header>
+
+        <section class="decision-grid">
+          <article class="recommendation-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Recomendação</p>
+                <h3 id="suggestedPrice">R$ 0,00</h3>
+              </div>
+              <span id="confidenceBadge" class="confidence">Alta confiança</span>
+            </div>
+            <p id="recommendationText" class="recommendation-text"></p>
+
+            <div class="metric-grid">
+              <div>
+                <span>Lucro previsto</span>
+                <strong id="profit">R$ 0,00</strong>
+              </div>
+              <div>
+                <span>Vendas estimadas</span>
+                <strong id="demand">0 un.</strong>
+              </div>
+              <div>
+                <span>Competitividade</span>
+                <strong id="competitiveness">0%</strong>
+              </div>
+              <div>
+                <span>Margem estimada</span>
+                <strong id="estimatedMargin">0%</strong>
+              </div>
+            </div>
+          </article>
+
+          <article class="map-panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">Contexto regional</p>
+                <h3 id="regionTitle">Centro urbano</h3>
+              </div>
+            </div>
+            <svg class="region-map" viewBox="0 0 620 360" role="img" aria-label="Mapa conceitual de regiões comerciais">
+              <path class="map-land" d="M68 226C44 154 91 81 169 73c41-4 67 13 103 9 49-5 72-45 122-34 54 12 56 65 102 82 37 13 75-5 99 24 26 31 5 84-29 114-47 41-112 23-155 43-60 29-73 47-138 35-53-10-63-39-102-44-50-6-84-19-103-76Z" />
+              <g class="map-node active" data-region="centro" tabindex="0" role="button" aria-label="Selecionar Centro urbano" style="--x: 50%; --y: 41%">
+                <circle r="22"></circle><text>Centro</text>
+              </g>
+              <g class="map-node" data-region="bairro" tabindex="0" role="button" aria-label="Selecionar Bairro residencial" style="--x: 35%; --y: 65%">
+                <circle r="22"></circle><text>Bairro</text>
+              </g>
+              <g class="map-node" data-region="turistica" tabindex="0" role="button" aria-label="Selecionar Área turística" style="--x: 69%; --y: 35%">
+                <circle r="22"></circle><text>Turismo</text>
+              </g>
+              <g class="map-node" data-region="periferia" tabindex="0" role="button" aria-label="Selecionar Região sensível a preço" style="--x: 69%; --y: 70%">
+                <circle r="22"></circle><text>Sensível</text>
+              </g>
+            </svg>
+            <div class="region-factors">
+              <span id="incomeFactor">Renda: alta</span>
+              <span id="densityFactor">Densidade: intensa</span>
+              <span id="logisticsFactor">Logística: média</span>
+            </div>
+          </article>
+        </section>
+
+        <section class="lower-grid">
+          <article class="insight-panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">Explicabilidade</p>
+                <h3>Por que esse preço?</h3>
+              </div>
+            </div>
+            <ul id="explanationList" class="explanation-list"></ul>
+          </article>
+
+          <article class="table-panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">Cenários rápidos</p>
+                <h3>Impacto de ajustes</h3>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Cenário</th>
+                  <th>Preço</th>
+                  <th>Vendas</th>
+                  <th>Lucro</th>
+                </tr>
+              </thead>
+              <tbody id="scenarioRows"></tbody>
+            </table>
+          </article>
+
+          <article class="alerts-panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">Monitoramento</p>
+                <h3>Alertas</h3>
+              </div>
+            </div>
+            <div id="alerts" class="alerts"></div>
+          </article>
+        </section>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
