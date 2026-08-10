@@ -3,6 +3,7 @@ const currency = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
 });
 
+const PRODUCTIVE_HOURS_PER_WORKER_MONTH = 176;
 const $ = (selector) => document.querySelector(selector);
 
 function clamp(value, min, max) {
@@ -10,7 +11,9 @@ function clamp(value, min, max) {
 }
 
 function numberValue(selector, fallback = 0) {
-  const value = Number($(selector).value);
+  const rawValue = String($(selector).value).trim();
+  const normalizedValue = rawValue.includes(",") ? rawValue.replace(/\./g, "").replace(",", ".") : rawValue;
+  const value = Number(normalizedValue);
   return Number.isFinite(value) ? value : fallback;
 }
 
@@ -20,30 +23,32 @@ function percent(value) {
 
 function getInputs() {
   return {
+    productType: $("#productType").selectedOptions[0].textContent,
     materialsCost: numberValue("#materialsCost"),
-    waste: numberValue("#waste") / 100,
+    waste: clamp(numberValue("#waste"), 0, 100) / 100,
     packagingCost: numberValue("#packagingCost"),
     deliveryCost: numberValue("#deliveryCost"),
-    laborMonthlyCost: numberValue("#laborMonthlyCost"),
-    productiveHours: Math.max(numberValue("#productiveHours", 1), 1),
-    laborHours: numberValue("#laborHours"),
+    totalPayroll: numberValue("#totalPayroll"),
+    workerCount: Math.max(numberValue("#workerCount", 1), 1),
+    outputPerWorkerHour: Math.max(numberValue("#outputPerWorkerHour", 0.01), 0.01),
     monthlyFixedCosts: numberValue("#monthlyFixedCosts"),
     monthlyVolume: Math.max(numberValue("#monthlyVolume", 1), 1),
-    taxRate: numberValue("#taxRate") / 100,
-    paymentFeeRate: numberValue("#paymentFeeRate") / 100,
-    commissionRate: numberValue("#commissionRate") / 100,
-    margin: clamp(numberValue("#margin") / 100, 0.01, 0.6),
-    competitorAverage: Math.max(numberValue("#competitorAverage", 0.01), 0.01),
+    taxRate: clamp(numberValue("#taxRate"), 0, 60) / 100,
+    paymentFeeRate: clamp(numberValue("#paymentFeeRate"), 0, 30) / 100,
+    commissionRate: clamp(numberValue("#commissionRate"), 0, 50) / 100,
+    margin: clamp(numberValue("#margin"), 0.1, 60) / 100,
+    competitorAverage: clamp(numberValue("#competitorAverage", 0.01), 0.01, 1000000),
     receiveDays: numberValue("#receiveDays"),
     payDays: numberValue("#payDays"),
-    capitalRate: numberValue("#capitalRate") / 100,
+    capitalRate: clamp(numberValue("#capitalRate"), 0, 8) / 100,
   };
 }
 
 function calculateCosts(inputs) {
   const materialsWithWaste = inputs.materialsCost * (1 + inputs.waste);
-  const laborHourlyCost = inputs.laborMonthlyCost / inputs.productiveHours;
-  const directLabor = laborHourlyCost * inputs.laborHours;
+  const laborHourlyCost = inputs.totalPayroll / (inputs.workerCount * PRODUCTIVE_HOURS_PER_WORKER_MONTH);
+  const monthlyProductionCapacity = inputs.workerCount * inputs.outputPerWorkerHour * PRODUCTIVE_HOURS_PER_WORKER_MONTH;
+  const directLabor = inputs.totalPayroll / monthlyProductionCapacity;
   const directCashCost = materialsWithWaste + inputs.packagingCost + inputs.deliveryCost + directLabor;
   const cashGapDays = Math.max(inputs.receiveDays - inputs.payDays, 0);
   const workingCapitalCost = directCashCost * inputs.capitalRate * (cashGapDays / 30);
@@ -55,6 +60,7 @@ function calculateCosts(inputs) {
     materialsWithWaste,
     laborHourlyCost,
     directLabor,
+    monthlyProductionCapacity,
     directCashCost,
     cashGapDays,
     workingCapitalCost,
@@ -95,13 +101,11 @@ function render() {
   const result = calculatePrice(inputs);
   const { costs } = result;
 
-  $("#wasteValue").textContent = percent(inputs.waste);
-  $("#marginValue").textContent = percent(inputs.margin);
-  $("#capitalRateValue").textContent = percent(inputs.capitalRate);
   $("#baseCost").textContent = currency.format(costs.baseCost);
   $("#salesRate").textContent = percent(costs.salesRate);
   $("#marketPrice").textContent = currency.format(inputs.competitorAverage);
   $("#marketCostLimit").textContent = currency.format(result.marketCostLimit);
+  $("#marketTitle").textContent = inputs.productType;
 
   if (result.isValid) {
     $("#suggestedPrice").textContent = currency.format(result.minimumPrice);
@@ -138,7 +142,8 @@ function renderExplanation(inputs, result) {
   const { costs } = result;
   const items = [
     `Insumos e matéria-prima, já com ${percent(inputs.waste)} de perda: ${currency.format(costs.materialsWithWaste)}.`,
-    `Mão de obra direta: ${currency.format(costs.directLabor)} (${currency.format(costs.laborHourlyCost)} por hora produtiva).`,
+    `Mão de obra direta: ${currency.format(costs.directLabor)} por unidade, usando ${inputs.workerCount} trabalhador(es), folha total de ${currency.format(inputs.totalPayroll)} e ${inputs.outputPerWorkerHour.toLocaleString("pt-BR")} unidade(s) por trabalhador/hora.`,
+    `Capacidade mensal de produção: ${costs.monthlyProductionCapacity.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} unidades, considerando ${PRODUCTIVE_HOURS_PER_WORKER_MONTH} horas produtivas por trabalhador no mês.`,
     `Rateio de custos fixos: ${currency.format(costs.fixedCostAllocation)} por venda, usando ${inputs.monthlyVolume.toLocaleString("pt-BR")} operações previstas no mês.`,
     `Impostos, taxa de pagamento e comissão somam ${percent(costs.salesRate)} e incidem sobre o preço final.`,
     `Fórmula aplicada: custo-base ÷ (1 − despesas sobre a venda − margem líquida).`,
@@ -200,25 +205,33 @@ function renderAlerts(inputs, result) {
 }
 
 [
+  "#productType",
   "#materialsCost",
   "#waste",
   "#packagingCost",
   "#deliveryCost",
-  "#laborMonthlyCost",
-  "#productiveHours",
-  "#laborHours",
+  "#totalPayroll",
+  "#workerCount",
+  "#outputPerWorkerHour",
   "#monthlyFixedCosts",
   "#monthlyVolume",
   "#taxRate",
   "#paymentFeeRate",
   "#commissionRate",
   "#margin",
-  "#competitorAverage",
   "#receiveDays",
   "#payDays",
   "#capitalRate",
 ].forEach((selector) => {
   $(selector).addEventListener("input", render);
+});
+
+$("#competitorAverage").addEventListener("input", () => {
+  const field = $("#competitorAverage");
+  if (numberValue("#competitorAverage") > 1000000) {
+    field.value = "1000000";
+  }
+  render();
 });
 
 render();

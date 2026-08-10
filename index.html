@@ -17,17 +17,26 @@
           </div>
         </div>
 
+        <section class="control-block">
+          <label for="productType">Tipo de produto</label>
+          <select id="productType">
+            <option value="comestiveis">Comestíveis</option>
+            <option value="domesticos">Domésticos</option>
+            <option value="eletrodomesticos">Eletrodomésticos</option>
+            <option value="vestuario">Vestuário</option>
+            <option value="cosmeticos">Cosméticos</option>
+            <option value="outros">Outros</option>
+          </select>
+        </section>
+
         <section class="control-section" aria-labelledby="direct-costs-title">
           <p id="direct-costs-title" class="section-title">Custos diretos</p>
           <div class="field-grid">
             <label for="materialsCost">Insumos e matéria-prima (R$)</label>
             <input id="materialsCost" type="number" min="0" step="0.01" value="50" />
 
-            <div class="label-row">
-              <label for="waste">Perda e desperdício</label>
-              <strong id="wasteValue">5%</strong>
-            </div>
-            <input id="waste" type="range" min="0" max="30" value="5" />
+            <label for="waste">Perda e desperdício (%)</label>
+            <input id="waste" type="text" inputmode="decimal" value="5" />
 
             <label for="packagingCost">Embalagem e rotulagem (R$)</label>
             <input id="packagingCost" type="number" min="0" step="0.01" value="4" />
@@ -35,17 +44,17 @@
             <label for="deliveryCost">Frete ou entrega por venda (R$)</label>
             <input id="deliveryCost" type="number" min="0" step="0.01" value="5" />
 
-            <label for="laborMonthlyCost">Salário + encargos mensais (R$)</label>
-            <input id="laborMonthlyCost" type="number" min="0" step="0.01" value="4300" />
+            <label for="totalPayroll">Folha salarial mensal total (R$)</label>
+            <input id="totalPayroll" type="number" min="0" step="0.01" value="8600" />
 
             <div class="two-columns">
               <div>
-                <label for="productiveHours">Horas produtivas/mês</label>
-                <input id="productiveHours" type="number" min="1" step="1" value="176" />
+                <label for="workerCount">Número de trabalhadores</label>
+                <input id="workerCount" type="number" min="1" step="1" value="2" />
               </div>
               <div>
-                <label for="laborHours">Horas diretas por venda</label>
-                <input id="laborHours" type="number" min="0" step="0.01" value="1" />
+                <label for="outputPerWorkerHour">Produção por trabalhador/hora</label>
+                <input id="outputPerWorkerHour" type="number" min="0.01" step="0.01" value="5" />
               </div>
             </div>
           </div>
@@ -67,15 +76,15 @@
           <div class="three-columns">
             <div>
               <label for="taxRate">Impostos (%)</label>
-              <input id="taxRate" type="number" min="0" max="60" step="0.1" value="6" />
+              <input id="taxRate" type="text" inputmode="decimal" value="6" />
             </div>
             <div>
               <label for="paymentFeeRate">Taxa de pagamento (%)</label>
-              <input id="paymentFeeRate" type="number" min="0" max="30" step="0.1" value="3.5" />
+              <input id="paymentFeeRate" type="text" inputmode="decimal" value="3,5" />
             </div>
             <div>
               <label for="commissionRate">Comissão (%)</label>
-              <input id="commissionRate" type="number" min="0" max="50" step="0.1" value="0" />
+              <input id="commissionRate" type="text" inputmode="decimal" value="0" />
             </div>
           </div>
         </section>
@@ -83,14 +92,11 @@
         <section class="control-section" aria-labelledby="financial-title">
           <p id="financial-title" class="section-title">Meta e caixa</p>
           <div class="field-grid">
-            <div class="label-row">
-              <label for="margin">Margem líquida desejada</label>
-              <strong id="marginValue">20%</strong>
-            </div>
-            <input id="margin" type="range" min="1" max="60" value="20" />
+            <label for="margin">Margem líquida desejada (%)</label>
+            <input id="margin" type="text" inputmode="decimal" value="20" />
 
             <label for="competitorAverage">Preço médio local dos concorrentes (R$)</label>
-            <input id="competitorAverage" type="number" min="0.01" step="0.01" value="170" />
+            <input id="competitorAverage" type="number" min="0.01" max="1000000" step="0.01" value="170" />
 
             <div class="two-columns">
               <div>
@@ -103,11 +109,8 @@
               </div>
             </div>
 
-            <div class="label-row">
-              <label for="capitalRate">Custo do capital/mês</label>
-              <strong id="capitalRateValue">2,5%</strong>
-            </div>
-            <input id="capitalRate" type="range" min="0" max="8" step="0.1" value="2.5" />
+            <label for="capitalRate">Custo do capital/mês (%)</label>
+            <input id="capitalRate" type="text" inputmode="decimal" value="2,5" />
           </div>
         </section>
       </aside>
@@ -155,7 +158,7 @@
             <div class="panel-heading compact">
               <div>
                 <p class="eyebrow">Validação de mercado</p>
-                <h3>Comparação local</h3>
+                <h3 id="marketTitle">Comestíveis</h3>
               </div>
             </div>
             <div class="market-price">
