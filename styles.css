@@ -35,7 +35,7 @@ input {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(280px, 340px) 1fr;
+  grid-template-columns: minmax(320px, 390px) 1fr;
   min-height: 100vh;
 }
 
@@ -46,6 +46,8 @@ input {
   display: flex;
   flex-direction: column;
   gap: 22px;
+  max-height: 100vh;
+  overflow-y: auto;
 }
 
 .brand {
@@ -100,6 +102,26 @@ h3 {
   gap: 9px;
 }
 
+.control-section {
+  display: grid;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.section-title {
+  margin: 0;
+  color: var(--teal);
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.field-grid {
+  display: grid;
+  gap: 10px;
+}
+
 .control-block label,
 .label-row {
   font-weight: 750;
@@ -121,6 +143,50 @@ select {
   background: white;
   color: var(--ink);
   padding: 0 12px;
+}
+
+input[type="number"],
+input[type="text"] {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  padding: 0 10px;
+}
+
+input[type="number"]:focus,
+input[type="text"]:focus,
+select:focus {
+  outline: 3px solid rgba(31, 122, 77, 0.18);
+  outline-offset: 1px;
+}
+
+.two-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.three-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.two-columns div {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.two-columns label,
+.three-columns label,
+.field-grid > label {
+  color: #31423b;
+  font-size: 0.85rem;
+  font-weight: 750;
 }
 
 input[type="range"] {
@@ -174,7 +240,7 @@ input[type="range"] {
 }
 
 .decision-grid {
-  grid-template-columns: minmax(320px, 0.9fr) minmax(360px, 1.1fr);
+  grid-template-columns: minmax(340px, 1.15fr) minmax(280px, 0.85fr);
 }
 
 .lower-grid {
@@ -182,7 +248,7 @@ input[type="range"] {
 }
 
 .recommendation-panel,
-.map-panel,
+.market-panel,
 .insight-panel,
 .table-panel,
 .alerts-panel {
@@ -220,10 +286,73 @@ input[type="range"] {
   white-space: nowrap;
 }
 
+.confidence.risk-badge {
+  color: var(--red);
+  background: #fae9e9;
+}
+
 .recommendation-text {
   color: var(--muted);
   line-height: 1.55;
   margin: 0 0 18px;
+}
+
+.market-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.market-price,
+.market-limit {
+  display: grid;
+  gap: 7px;
+}
+
+.market-price span,
+.market-limit span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.market-price strong {
+  font-size: 2rem;
+}
+
+.market-limit {
+  margin-top: auto;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.market-limit strong {
+  font-size: 1.2rem;
+}
+
+.market-meter {
+  height: 10px;
+  margin: 20px 0 12px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #e7eee9;
+}
+
+.market-meter span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+  transition: width 180ms ease;
+}
+
+.market-meter span.over {
+  background: var(--red);
+}
+
+.market-status {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .metric-grid {
@@ -372,6 +501,8 @@ tr:last-child td {
     border-bottom: 1px solid var(--line);
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: none;
+    overflow-y: visible;
   }
 
   .brand {
@@ -388,6 +519,10 @@ tr:last-child td {
   .workspace,
   .sidebar {
     padding: 18px;
+  }
+
+  .three-columns {
+    grid-template-columns: 1fr;
   }
 
   .sidebar {

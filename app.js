@@ -1,263 +1,224 @@
-const products = {
-  cafe: {
-    name: "Café especial 500g",
-    category: "supermercado",
-    cost: 18.4,
-    baseDemand: 120,
-    referencePrice: 31.9,
-    elasticity: 1.15,
-  },
-  remedio: {
-    name: "Analgésico 20 comprimidos",
-    category: "farmácia",
-    cost: 7.8,
-    baseDemand: 210,
-    referencePrice: 13.5,
-    elasticity: 0.75,
-  },
-  hamburguer: {
-    name: "Combo artesanal",
-    category: "restaurante",
-    cost: 21.2,
-    baseDemand: 88,
-    referencePrice: 38.9,
-    elasticity: 1.05,
-  },
-  gasolina: {
-    name: "Gasolina comum 1L",
-    category: "posto",
-    cost: 4.92,
-    baseDemand: 1600,
-    referencePrice: 5.89,
-    elasticity: 0.55,
-  },
-};
-
-const regions = {
-  centro: {
-    name: "Centro urbano",
-    income: 1.14,
-    density: 1.18,
-    logistics: 1.04,
-    competitorPressure: 1.08,
-    labels: ["Renda: alta", "Densidade: intensa", "Logística: média"],
-  },
-  bairro: {
-    name: "Bairro residencial",
-    income: 1.02,
-    density: 0.96,
-    logistics: 1,
-    competitorPressure: 0.92,
-    labels: ["Renda: estável", "Densidade: média", "Logística: boa"],
-  },
-  turistica: {
-    name: "Área turística",
-    income: 1.22,
-    density: 1.08,
-    logistics: 1.1,
-    competitorPressure: 0.98,
-    labels: ["Renda: variável", "Densidade: sazonal", "Logística: elevada"],
-  },
-  periferia: {
-    name: "Região sensível a preço",
-    income: 0.86,
-    density: 1.05,
-    logistics: 1.07,
-    competitorPressure: 1.18,
-    labels: ["Renda: sensível", "Densidade: alta", "Logística: elevada"],
-  },
-};
-
-const strategyWeight = {
-  balance: 1,
-  profit: 1.08,
-  volume: 0.94,
-};
-
 const currency = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL",
 });
 
-const state = {
-  strategy: "balance",
-};
-
 const $ = (selector) => document.querySelector(selector);
-const $$ = (selector) => [...document.querySelectorAll(selector)];
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function numberValue(selector, fallback = 0) {
+  const value = Number($(selector).value);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function percent(value) {
+  return `${(value * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+}
+
 function getInputs() {
   return {
-    product: products[$("#product").value],
-    region: regions[$("#region").value],
-    regionKey: $("#region").value,
-    margin: Number($("#margin").value) / 100,
-    competitors: Number($("#competitors").value),
-    seasonality: Number($("#seasonality").value) / 100,
-    strategy: state.strategy,
+    materialsCost: numberValue("#materialsCost"),
+    waste: numberValue("#waste") / 100,
+    packagingCost: numberValue("#packagingCost"),
+    deliveryCost: numberValue("#deliveryCost"),
+    laborMonthlyCost: numberValue("#laborMonthlyCost"),
+    productiveHours: Math.max(numberValue("#productiveHours", 1), 1),
+    laborHours: numberValue("#laborHours"),
+    monthlyFixedCosts: numberValue("#monthlyFixedCosts"),
+    monthlyVolume: Math.max(numberValue("#monthlyVolume", 1), 1),
+    taxRate: numberValue("#taxRate") / 100,
+    paymentFeeRate: numberValue("#paymentFeeRate") / 100,
+    commissionRate: numberValue("#commissionRate") / 100,
+    margin: clamp(numberValue("#margin") / 100, 0.01, 0.6),
+    competitorAverage: Math.max(numberValue("#competitorAverage", 0.01), 0.01),
+    receiveDays: numberValue("#receiveDays"),
+    payDays: numberValue("#payDays"),
+    capitalRate: numberValue("#capitalRate") / 100,
   };
 }
 
-function estimateScenario(price, inputs) {
-  const competitorIndex = clamp(inputs.competitors / 8, 0, 1.6);
-  const competitorPrice = inputs.product.referencePrice * (1 - competitorIndex * 0.035) * inputs.region.competitorPressure;
-  const relativePrice = price / competitorPrice;
-  const demandImpact = 1 - (relativePrice - 1) * inputs.product.elasticity;
-  const demand = Math.max(
-    1,
-    Math.round(inputs.product.baseDemand * inputs.region.density * (1 + inputs.seasonality) * demandImpact)
-  );
-  const unitCost = inputs.product.cost * inputs.region.logistics;
-  const profit = (price - unitCost) * demand;
-  const margin = (price - unitCost) / price;
-  const competitiveness = clamp(100 - Math.max(0, relativePrice - 0.96) * 180, 12, 100);
+function calculateCosts(inputs) {
+  const materialsWithWaste = inputs.materialsCost * (1 + inputs.waste);
+  const laborHourlyCost = inputs.laborMonthlyCost / inputs.productiveHours;
+  const directLabor = laborHourlyCost * inputs.laborHours;
+  const directCashCost = materialsWithWaste + inputs.packagingCost + inputs.deliveryCost + directLabor;
+  const cashGapDays = Math.max(inputs.receiveDays - inputs.payDays, 0);
+  const workingCapitalCost = directCashCost * inputs.capitalRate * (cashGapDays / 30);
+  const fixedCostAllocation = inputs.monthlyFixedCosts / inputs.monthlyVolume;
+  const baseCost = directCashCost + workingCapitalCost + fixedCostAllocation;
+  const salesRate = inputs.taxRate + inputs.paymentFeeRate + inputs.commissionRate;
 
-  return { competitorPrice, demand, profit, margin, competitiveness, unitCost };
+  return {
+    materialsWithWaste,
+    laborHourlyCost,
+    directLabor,
+    directCashCost,
+    cashGapDays,
+    workingCapitalCost,
+    fixedCostAllocation,
+    baseCost,
+    salesRate,
+  };
 }
 
-function calculateRecommendation(inputs) {
-  const minimumPrice = inputs.product.cost * inputs.region.logistics * (1 + inputs.margin);
-  const marketAnchor = inputs.product.referencePrice * inputs.region.income;
-  const competitionDiscount = 1 - clamp(inputs.competitors, 0, 12) * 0.012;
-  const seasonalLift = 1 + inputs.seasonality * 0.34;
-  const strategy = strategyWeight[inputs.strategy];
-  const rawPrice = marketAnchor * competitionDiscount * seasonalLift * strategy;
-  const suggestedPrice = Math.max(minimumPrice, rawPrice);
-  const scenario = estimateScenario(suggestedPrice, inputs);
-  const confidence = clamp(
-    92 - inputs.competitors * 2.3 - Math.abs(inputs.seasonality) * 42 + (inputs.region.density - 1) * 12,
-    52,
-    96
-  );
+function calculatePrice(inputs) {
+  const costs = calculateCosts(inputs);
+  const availableRate = 1 - costs.salesRate - inputs.margin;
+  const isValid = availableRate > 0;
+  const minimumPrice = isValid ? Math.ceil((costs.baseCost / availableRate) * 100) / 100 : null;
+  const salesExpenses = isValid ? minimumPrice * costs.salesRate : 0;
+  const profitPerSale = isValid ? minimumPrice - costs.baseCost - salesExpenses : 0;
+  const actualMargin = isValid ? profitPerSale / minimumPrice : 0;
+  const marketGap = isValid ? (inputs.competitorAverage - minimumPrice) / inputs.competitorAverage : 0;
+  const marketCostLimit = Math.max(0, inputs.competitorAverage * availableRate);
+  const requiredCostReduction = Math.max(0, costs.baseCost - marketCostLimit);
 
-  return { suggestedPrice, minimumPrice, scenario, confidence };
+  return {
+    costs,
+    availableRate,
+    isValid,
+    minimumPrice,
+    salesExpenses,
+    profitPerSale,
+    actualMargin,
+    marketGap,
+    marketCostLimit,
+    requiredCostReduction,
+  };
 }
 
 function render() {
   const inputs = getInputs();
-  const result = calculateRecommendation(inputs);
-  const { scenario } = result;
+  const result = calculatePrice(inputs);
+  const { costs } = result;
 
-  $("#marginValue").textContent = `${Math.round(inputs.margin * 100)}%`;
-  $("#competitorsValue").textContent = inputs.competitors;
-  $("#seasonalityValue").textContent = `${inputs.seasonality >= 0 ? "+" : ""}${Math.round(inputs.seasonality * 100)}%`;
+  $("#wasteValue").textContent = percent(inputs.waste);
+  $("#marginValue").textContent = percent(inputs.margin);
+  $("#capitalRateValue").textContent = percent(inputs.capitalRate);
+  $("#baseCost").textContent = currency.format(costs.baseCost);
+  $("#salesRate").textContent = percent(costs.salesRate);
+  $("#marketPrice").textContent = currency.format(inputs.competitorAverage);
+  $("#marketCostLimit").textContent = currency.format(result.marketCostLimit);
 
-  $("#suggestedPrice").textContent = currency.format(result.suggestedPrice);
-  $("#profit").textContent = currency.format(scenario.profit);
-  $("#demand").textContent = `${scenario.demand.toLocaleString("pt-BR")} un.`;
-  $("#competitiveness").textContent = `${Math.round(scenario.competitiveness)}%`;
-  $("#estimatedMargin").textContent = `${Math.round(scenario.margin * 100)}%`;
-  $("#regionTitle").textContent = inputs.region.name;
-  $("#incomeFactor").textContent = inputs.region.labels[0];
-  $("#densityFactor").textContent = inputs.region.labels[1];
-  $("#logisticsFactor").textContent = inputs.region.labels[2];
-
-  const confidenceLabel = result.confidence >= 80 ? "Alta confiança" : result.confidence >= 65 ? "Confiança média" : "Revisar dados";
-  $("#confidenceBadge").textContent = `${confidenceLabel} · ${Math.round(result.confidence)}%`;
-
-  $("#recommendationText").textContent =
-    `Para ${inputs.product.name.toLowerCase()} em ${inputs.region.name.toLowerCase()}, o sistema equilibra custo local, renda da região, concorrência e sazonalidade antes de sugerir o preço.`;
+  if (result.isValid) {
+    $("#suggestedPrice").textContent = currency.format(result.minimumPrice);
+    $("#profitPerSale").textContent = currency.format(result.profitPerSale);
+    $("#estimatedMargin").textContent = percent(result.actualMargin);
+    $("#priceStatus").textContent = result.marketGap >= 0 ? "Viável no mercado" : "Acima da média local";
+    $("#priceStatus").classList.toggle("risk-badge", result.marketGap < 0);
+    $("#recommendationText").textContent =
+      "Preço mínimo calculado para pagar todos os custos, despesas de venda e atingir a margem líquida definida.";
+    $("#marketStatus").textContent =
+      result.marketGap >= 0
+        ? `O preço calculado fica ${currency.format(result.marketGap * inputs.competitorAverage)} abaixo da média informada.`
+        : `O preço calculado fica ${currency.format(Math.abs(result.marketGap) * inputs.competitorAverage)} acima da média informada.`;
+    $("#marketMeter").style.width = `${clamp((result.minimumPrice / inputs.competitorAverage) * 100, 0, 100)}%`;
+    $("#marketMeter").classList.toggle("over", result.marketGap < 0);
+  } else {
+    $("#suggestedPrice").textContent = "Revise percentuais";
+    $("#profitPerSale").textContent = "-";
+    $("#estimatedMargin").textContent = "-";
+    $("#priceStatus").textContent = "Cálculo inviável";
+    $("#priceStatus").classList.add("risk-badge");
+    $("#recommendationText").textContent = "Impostos, taxas, comissão e margem somam 100% ou mais do preço. Reduza algum percentual para calcular.";
+    $("#marketStatus").textContent = "Não é possível validar o mercado enquanto os percentuais consumirem todo o preço.";
+    $("#marketMeter").style.width = "100%";
+    $("#marketMeter").classList.add("over");
+  }
 
   renderExplanation(inputs, result);
-  renderScenarios(inputs, result.suggestedPrice);
+  renderCostTable(result);
   renderAlerts(inputs, result);
-  updateActiveControls(inputs.regionKey);
 }
 
 function renderExplanation(inputs, result) {
+  const { costs } = result;
   const items = [
-    `O custo local estimado é ${currency.format(result.scenario.unitCost)}, já com impacto logístico da região.`,
-    `A margem mínima exige preço acima de ${currency.format(result.minimumPrice)}.`,
-    `A referência dos concorrentes ficou em ${currency.format(result.scenario.competitorPrice)} para esta localidade.`,
-    `A estratégia atual prioriza ${state.strategy === "profit" ? "lucro" : state.strategy === "volume" ? "volume de vendas" : "equilíbrio entre lucro e competitividade"}.`,
+    `Insumos e matéria-prima, já com ${percent(inputs.waste)} de perda: ${currency.format(costs.materialsWithWaste)}.`,
+    `Mão de obra direta: ${currency.format(costs.directLabor)} (${currency.format(costs.laborHourlyCost)} por hora produtiva).`,
+    `Rateio de custos fixos: ${currency.format(costs.fixedCostAllocation)} por venda, usando ${inputs.monthlyVolume.toLocaleString("pt-BR")} operações previstas no mês.`,
+    `Impostos, taxa de pagamento e comissão somam ${percent(costs.salesRate)} e incidem sobre o preço final.`,
+    `Fórmula aplicada: custo-base ÷ (1 − despesas sobre a venda − margem líquida).`,
   ];
 
   $("#explanationList").innerHTML = items.map((item) => `<li>${item}</li>`).join("");
 }
 
-function renderScenarios(inputs, basePrice) {
-  const scenarios = [
-    ["-10%", basePrice * 0.9],
-    ["Sugerido", basePrice],
-    ["+5%", basePrice * 1.05],
-    ["+10%", basePrice * 1.1],
+function renderCostTable(result) {
+  const { costs } = result;
+  const price = result.minimumPrice || 0;
+  const rows = [
+    ["Insumos com perda", costs.materialsWithWaste],
+    ["Embalagem e entrega", 0],
+    ["Mão de obra direta", costs.directLabor],
+    ["Capital de giro", costs.workingCapitalCost],
+    ["Rateio de custos fixos", costs.fixedCostAllocation],
+    ["Impostos, taxas e comissão", result.salesExpenses],
+    ["Lucro líquido", result.profitPerSale],
   ];
 
-  $("#scenarioRows").innerHTML = scenarios
-    .map(([label, price]) => {
-      const data = estimateScenario(price, inputs);
-      return `
-        <tr>
-          <td>${label}</td>
-          <td>${currency.format(price)}</td>
-          <td>${data.demand.toLocaleString("pt-BR")}</td>
-          <td>${currency.format(data.profit)}</td>
-        </tr>
-      `;
-    })
+  rows[1][1] = numberValue("#packagingCost") + numberValue("#deliveryCost");
+  $("#costRows").innerHTML = rows
+    .map(([label, value]) => `
+      <tr>
+        <td>${label}</td>
+        <td>${currency.format(value)}</td>
+        <td>${price > 0 ? percent(value / price) : "-"}</td>
+      </tr>
+    `)
     .join("");
 }
 
 function renderAlerts(inputs, result) {
   const alerts = [];
+  const { costs } = result;
 
-  if (inputs.competitors >= 8) {
-    alerts.push(["risk", "Concorrência alta: acompanhe alterações de preço com maior frequência."]);
+  if (!result.isValid) {
+    alerts.push(["risk", "A soma de impostos, taxas, comissão e margem não pode chegar a 100% do preço."]);
   }
 
-  if (inputs.seasonality >= 0.18) {
-    alerts.push(["warning", "Demanda sazonal em alta: há espaço para capturar valor sem perder muito volume."]);
+  if (result.isValid && result.marketGap < 0) {
+    alerts.push(["risk", `Para caber na média do mercado mantendo as taxas e a margem, o custo-base precisa cair ${currency.format(result.requiredCostReduction)} por venda.`]);
   }
 
-  if (result.scenario.margin < inputs.margin) {
-    alerts.push(["risk", "Margem abaixo do piso desejado: revise custo, logística ou estratégia de volume."]);
+  if (costs.cashGapDays > 0) {
+    alerts.push(["warning", `Você recebe ${costs.cashGapDays} dia(s) depois de pagar. O custo do capital acrescentou ${currency.format(costs.workingCapitalCost)} por venda.`]);
+  }
+
+  if (costs.salesRate > 0.2) {
+    alerts.push(["warning", `Impostos, taxas e comissão consomem ${percent(costs.salesRate)} do preço final.`]);
   }
 
   if (alerts.length === 0) {
-    alerts.push(["ok", "Cenário estável: preço sugerido mantém margem, demanda e competitividade em zona saudável."]);
+    alerts.push(["ok", "Preço sustentável: custos, despesas sobre a venda e margem foram cobertos sem ultrapassar a média informada."]);
   }
 
   $("#alerts").innerHTML = alerts.map(([type, text]) => `<div class="${type}">${text}</div>`).join("");
 }
 
-function updateActiveControls(regionKey) {
-  $$(".strategy").forEach((button) => {
-    button.classList.toggle("active", button.dataset.strategy === state.strategy);
-  });
-
-  $$(".map-node").forEach((node) => {
-    node.classList.toggle("active", node.dataset.region === regionKey);
-  });
-}
-
-["#product", "#region", "#margin", "#competitors", "#seasonality"].forEach((selector) => {
+[
+  "#materialsCost",
+  "#waste",
+  "#packagingCost",
+  "#deliveryCost",
+  "#laborMonthlyCost",
+  "#productiveHours",
+  "#laborHours",
+  "#monthlyFixedCosts",
+  "#monthlyVolume",
+  "#taxRate",
+  "#paymentFeeRate",
+  "#commissionRate",
+  "#margin",
+  "#competitorAverage",
+  "#receiveDays",
+  "#payDays",
+  "#capitalRate",
+].forEach((selector) => {
   $(selector).addEventListener("input", render);
-});
-
-$$(".strategy").forEach((button) => {
-  button.addEventListener("click", () => {
-    state.strategy = button.dataset.strategy;
-    render();
-  });
-});
-
-$$(".map-node").forEach((node) => {
-  node.addEventListener("click", () => {
-    $("#region").value = node.dataset.region;
-    render();
-  });
-
-  node.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      $("#region").value = node.dataset.region;
-      render();
-    }
-  });
 });
 
 render();
