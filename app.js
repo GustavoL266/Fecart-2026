@@ -6,6 +6,106 @@ const currency = new Intl.NumberFormat("pt-BR", {
 const PRODUCTIVE_HOURS_PER_WORKER_MONTH = 176;
 const $ = (selector) => document.querySelector(selector);
 
+const CATEGORY_PRESETS = {
+  comestiveis: {
+    materialsCost: 12,
+    waste: 8,
+    packagingCost: 2,
+    deliveryCost: 1.5,
+    totalPayroll: 12600,
+    workerCount: 6,
+    outputPerWorkerHour: 12,
+    monthlyFixedCosts: 16000,
+    monthlyVolume: 4000,
+    taxRate: 6,
+    paymentFeeRate: 2.8,
+    commissionRate: 0,
+    margin: 18,
+    competitorAverage: 32,
+    receiveDays: 7,
+    payDays: 14,
+    capitalRate: 2.5,
+  },
+  domesticos: {
+    materialsCost: 30,
+    waste: 2,
+    packagingCost: 3,
+    deliveryCost: 5,
+    totalPayroll: 10800,
+    workerCount: 4,
+    outputPerWorkerHour: 6,
+    monthlyFixedCosts: 18000,
+    monthlyVolume: 750,
+    taxRate: 6,
+    paymentFeeRate: 3.2,
+    commissionRate: 0,
+    margin: 22,
+    competitorAverage: 105,
+    receiveDays: 15,
+    payDays: 20,
+    capitalRate: 2.5,
+  },
+  eletrodomesticos: {
+    materialsCost: 320,
+    waste: 0.5,
+    packagingCost: 10,
+    deliveryCost: 35,
+    totalPayroll: 10000,
+    workerCount: 3,
+    outputPerWorkerHour: 1.5,
+    monthlyFixedCosts: 22000,
+    monthlyVolume: 250,
+    taxRate: 6,
+    paymentFeeRate: 4,
+    commissionRate: 1,
+    margin: 14,
+    competitorAverage: 650,
+    receiveDays: 30,
+    payDays: 30,
+    capitalRate: 2.5,
+  },
+  vestuario: {
+    materialsCost: 35,
+    waste: 2.5,
+    packagingCost: 3,
+    deliveryCost: 7,
+    totalPayroll: 12500,
+    workerCount: 5,
+    outputPerWorkerHour: 4,
+    monthlyFixedCosts: 20000,
+    monthlyVolume: 800,
+    taxRate: 6,
+    paymentFeeRate: 3.5,
+    commissionRate: 2,
+    margin: 28,
+    competitorAverage: 135,
+    receiveDays: 20,
+    payDays: 25,
+    capitalRate: 2.5,
+  },
+  cosmeticos: {
+    materialsCost: 20,
+    waste: 1.5,
+    packagingCost: 6,
+    deliveryCost: 4,
+    totalPayroll: 11000,
+    workerCount: 4,
+    outputPerWorkerHour: 5,
+    monthlyFixedCosts: 16000,
+    monthlyVolume: 600,
+    taxRate: 6,
+    paymentFeeRate: 3.5,
+    commissionRate: 4,
+    margin: 30,
+    competitorAverage: 125,
+    receiveDays: 30,
+    payDays: 15,
+    capitalRate: 2.5,
+  },
+};
+
+const PERCENTAGE_FIELDS = new Set(["waste", "taxRate", "paymentFeeRate", "commissionRate", "margin", "capitalRate"]);
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -42,6 +142,27 @@ function getInputs() {
     payDays: numberValue("#payDays"),
     capitalRate: clamp(numberValue("#capitalRate"), 0, 8) / 100,
   };
+}
+
+function averagePreset() {
+  const presets = Object.values(CATEGORY_PRESETS);
+  const fields = Object.keys(CATEGORY_PRESETS.comestiveis);
+
+  return Object.fromEntries(
+    fields.map((field) => {
+      const average = presets.reduce((sum, preset) => sum + preset[field], 0) / presets.length;
+      return [field, field === "workerCount" ? Math.max(1, Math.round(average)) : Number(average.toFixed(2))];
+    })
+  );
+}
+
+function applyCategoryPreset(category) {
+  const preset = category === "outros" ? averagePreset() : CATEGORY_PRESETS[category];
+
+  Object.entries(preset).forEach(([field, value]) => {
+    const input = $(`#${field}`);
+    input.value = PERCENTAGE_FIELDS.has(field) ? String(value).replace(".", ",") : value;
+  });
 }
 
 function calculateCosts(inputs) {
@@ -205,7 +326,6 @@ function renderAlerts(inputs, result) {
 }
 
 [
-  "#productType",
   "#materialsCost",
   "#waste",
   "#packagingCost",
@@ -226,6 +346,11 @@ function renderAlerts(inputs, result) {
   $(selector).addEventListener("input", render);
 });
 
+$("#productType").addEventListener("change", () => {
+  applyCategoryPreset($("#productType").value);
+  render();
+});
+
 $("#competitorAverage").addEventListener("input", () => {
   const field = $("#competitorAverage");
   if (numberValue("#competitorAverage") > 1000000) {
@@ -234,4 +359,5 @@ $("#competitorAverage").addEventListener("input", () => {
   render();
 });
 
+applyCategoryPreset($("#productType").value);
 render();
