@@ -2326,3 +2326,216 @@ tr:last-child td {
     width: 100%;
   }
 }
+
+/* Navegação em abas do formulário de precificação. */
+.sidebar-sticky-top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  width: 100%;
+  max-width: 100%;
+  background: var(--sidebar);
+  border-bottom: 1px solid var(--line);
+}
+
+.pricing-sidebar .sidebar-header {
+  position: static;
+  padding: 24px 2px 16px;
+}
+
+.pricing-tabs {
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+  gap: 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 2px 2px 12px;
+  scrollbar-color: var(--line) transparent;
+  scrollbar-width: thin;
+  scroll-snap-type: x proximity;
+}
+
+.pricing-tabs::-webkit-scrollbar {
+  height: 5px;
+}
+
+.pricing-tabs::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 99px;
+}
+
+.pricing-tab {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0 10px;
+  scroll-snap-align: start;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.pricing-tab:hover {
+  border-color: color-mix(in srgb, var(--green) 58%, var(--line));
+  color: var(--ink);
+}
+
+.pricing-tab:focus-visible {
+  border-color: var(--green);
+  outline: 2px solid color-mix(in srgb, var(--green) 22%, transparent);
+  outline-offset: 1px;
+}
+
+.pricing-tab.is-active {
+  border-color: color-mix(in srgb, var(--green) 66%, var(--line));
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.pricing-tab-status {
+  display: inline-grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  color: color-mix(in srgb, var(--muted) 76%, transparent);
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.pricing-tab.is-complete .pricing-tab-status {
+  color: var(--green);
+  font-weight: 900;
+}
+
+.pricing-tab-content {
+  width: 100%;
+  min-width: 0;
+}
+
+.pricing-sidebar .pricing-tab-panel {
+  margin: 0;
+  padding: 22px 2px 0;
+  border: 0;
+}
+
+.pricing-tab-panel.is-active {
+  animation: pricing-panel-in 170ms ease-out;
+}
+
+@keyframes pricing-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pricing-tab-panel.is-active {
+    animation: none;
+  }
+
+  .pricing-tab,
+  .pricing-sidebar .market-search-button {
+    transition: none;
+  }
+}
+
+.tab-panel-heading {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 18px;
+}
+
+.pricing-sidebar .tab-panel-heading .section-title {
+  margin: 0;
+}
+
+.section-description {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.48;
+}
+
+.pricing-step-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.pricing-step-actions.is-first {
+  justify-content: flex-end;
+}
+
+.pricing-step-actions.is-last {
+  justify-content: flex-start;
+}
+
+.pricing-step-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  border-radius: 7px;
+  font-size: 0.82rem;
+  padding: 0 14px;
+}
+
+@media (max-width: 1080px) {
+  .sidebar-sticky-top {
+    position: static;
+  }
+
+  .pricing-sidebar .sidebar-header {
+    padding-top: 0;
+  }
+}
+
+@media (max-width: 620px) {
+  .pricing-tabs {
+    margin-right: 0;
+    margin-left: 0;
+    padding-bottom: 10px;
+  }
+
+  .pricing-tab {
+    min-height: 38px;
+    font-size: 0.78rem;
+  }
+
+  .pricing-sidebar .pricing-tab-panel {
+    padding-top: 20px;
+  }
+
+  .pricing-step-actions {
+    gap: 10px;
+  }
+
+  .pricing-step-button {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .pricing-step-actions.is-first .pricing-step-button,
+  .pricing-step-actions.is-last .pricing-step-button {
+    flex: 0 1 auto;
+  }
+}

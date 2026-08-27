@@ -13,6 +13,7 @@ const sourceFiles = [
   "js/ui/form.js",
   "js/ui/dashboard.js",
   "js/ui/history.js",
+  "js/ui/pricing-tabs.js",
   "js/main.js",
 ];
 

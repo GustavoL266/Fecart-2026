@@ -4,6 +4,7 @@ import { ApiError, api } from "./services/api-client.js";
 import { applyCategoryPreset, applySavedInputs, isAboveCompetitorLimit, readInputs } from "./ui/form.js";
 import { renderDashboard } from "./ui/dashboard.js";
 import { renderProductDetails, renderProductsList } from "./ui/history.js";
+import { createPricingTabs } from "./ui/pricing-tabs.js";
 
 const $ = (selector) => document.querySelector(selector);
 const themeStorageKey = "assistente-precificacao-theme";
@@ -29,6 +30,7 @@ const formFieldIds = [
   "capitalRate",
 ];
 const elements = Object.fromEntries(formFieldIds.map((id) => [id, $(`#${id}`)]));
+const pricingTabs = createPricingTabs($(".pricing-sidebar"));
 const state = {
   user: null,
   products: [],
@@ -169,6 +171,7 @@ function setSubmitState(button, isLoading, label) {
 function render() {
   const inputs = readInputs(elements);
   renderDashboard(document, inputs, calculatePrice(inputs), meliState, marketSource);
+  pricingTabs.updateCompletion();
 }
 
 function showAuth(mode = "login", message = "") {
