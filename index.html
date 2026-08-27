@@ -7,7 +7,112 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="app-shell">
+    <div id="bootScreen" class="boot-screen" role="status">Carregando sua sessão…</div>
+
+    <section id="authView" class="auth-view" aria-labelledby="loginTitle" hidden>
+      <div class="auth-intro">
+        <div class="brand">
+          <span class="brand-mark">PC</span>
+          <div>
+            <p class="eyebrow">Assistente de Precificação</p>
+          </div>
+        </div>
+        <div class="auth-copy">
+          <h1>Decisões mais rentáveis, com segurança.</h1>
+          <p>Calcule, salve e reutilize suas precificações em uma área exclusiva para sua conta.</p>
+        </div>
+        <div class="auth-benefits" aria-label="Benefícios da plataforma">
+          <article class="auth-benefit">
+            <span class="benefit-icon" aria-hidden="true">✓</span>
+            <div><strong>Seus dados protegidos</strong><span>Segurança e privacidade para a sua operação.</span></div>
+          </article>
+          <article class="auth-benefit">
+            <span class="benefit-icon" aria-hidden="true">↺</span>
+            <div><strong>Histórico inteligente</strong><span>Acompanhe e reutilize suas precificações.</span></div>
+          </article>
+          <article class="auth-benefit">
+            <span class="benefit-icon" aria-hidden="true">↗</span>
+            <div><strong>Mais eficiência</strong><span>Decida com rapidez e tenha mais controle.</span></div>
+          </article>
+        </div>
+      </div>
+
+      <div class="auth-card">
+        <div class="auth-tabs" role="tablist" aria-label="Autenticação">
+          <button id="showLoginButton" type="button" class="auth-tab active" role="tab" aria-selected="true">Entrar</button>
+          <button id="showRegisterButton" type="button" class="auth-tab" role="tab" aria-selected="false">Criar conta</button>
+        </div>
+
+        <div id="authMessage" class="form-message" role="alert" hidden></div>
+
+        <form id="loginForm" class="auth-form" novalidate>
+          <div class="auth-form-heading">
+            <p class="eyebrow">Acesse sua conta</p>
+            <h2 id="loginTitle">Boas-vindas de volta</h2>
+            <p>Entre para acessar seus produtos e precificações.</p>
+          </div>
+          <div class="auth-field" data-field="loginEmail">
+            <label for="loginEmail">E-mail</label>
+            <input id="loginEmail" name="email" type="email" autocomplete="email" placeholder="seu@email.com" required maxlength="320" aria-describedby="loginEmailError" />
+            <p id="loginEmailError" class="field-error" role="alert" hidden></p>
+          </div>
+          <div class="auth-field" data-field="loginPassword">
+            <label for="loginPassword">Senha</label>
+            <div class="password-control">
+              <input id="loginPassword" name="password" type="password" autocomplete="current-password" placeholder="Digite sua senha" required minlength="8" maxlength="72" aria-describedby="loginPasswordError" />
+              <button type="button" class="password-toggle" data-password-toggle="loginPassword" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button>
+            </div>
+            <p id="loginPasswordError" class="field-error" role="alert" hidden></p>
+          </div>
+          <button id="loginSubmitButton" type="submit" class="auth-submit"><span>Entrar</span><span aria-hidden="true">→</span></button>
+        </form>
+
+        <form id="registerForm" class="auth-form" novalidate hidden>
+          <div class="auth-form-heading">
+            <p class="eyebrow">Nova conta</p>
+            <h2>Crie sua conta</h2>
+            <p>Comece a salvar suas decisões de precificação.</p>
+          </div>
+          <div class="auth-field" data-field="registerName">
+            <label for="registerName">Nome completo</label>
+            <input id="registerName" name="name" type="text" autocomplete="name" placeholder="Digite seu nome completo" required minlength="2" maxlength="120" aria-describedby="registerNameError" />
+            <p id="registerNameError" class="field-error" role="alert" hidden></p>
+          </div>
+          <div class="auth-field" data-field="registerEmail">
+            <label for="registerEmail">E-mail</label>
+            <input id="registerEmail" name="email" type="email" autocomplete="email" placeholder="seu@email.com" required maxlength="320" aria-describedby="registerEmailError" />
+            <p id="registerEmailError" class="field-error" role="alert" hidden></p>
+          </div>
+          <div class="auth-field" data-field="registerPassword">
+            <label for="registerPassword">Senha</label>
+            <div class="password-control">
+              <input id="registerPassword" name="password" type="password" autocomplete="new-password" placeholder="Mínimo de 8 caracteres" required minlength="8" maxlength="72" aria-describedby="registerPasswordError passwordRequirements" />
+              <button type="button" class="password-toggle" data-password-toggle="registerPassword" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button>
+            </div>
+            <p id="registerPasswordError" class="field-error" role="alert" hidden></p>
+            <div id="passwordRequirements" class="password-requirements" aria-live="polite">
+              <span>Sua senha deve conter:</span>
+              <ul>
+                <li data-password-rule="length">Pelo menos 8 caracteres</li>
+                <li data-password-rule="letter">Pelo menos 1 letra</li>
+                <li data-password-rule="number">Pelo menos 1 número</li>
+              </ul>
+            </div>
+          </div>
+          <div class="auth-field" data-field="registerPasswordConfirmation">
+            <label for="registerPasswordConfirmation">Confirmar senha</label>
+            <div class="password-control">
+              <input id="registerPasswordConfirmation" name="passwordConfirmation" type="password" autocomplete="new-password" placeholder="Repita sua senha" required minlength="8" maxlength="72" aria-describedby="registerPasswordConfirmationError" />
+              <button type="button" class="password-toggle" data-password-toggle="registerPasswordConfirmation" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button>
+            </div>
+            <p id="registerPasswordConfirmationError" class="field-error" role="alert" hidden></p>
+          </div>
+          <button id="registerSubmitButton" type="submit" class="auth-submit"><span>Criar conta</span><span aria-hidden="true">→</span></button>
+        </form>
+      </div>
+    </section>
+
+    <main id="assistantView" class="app-shell" hidden>
       <aside class="sidebar" aria-label="Dados financeiros da precificação">
         <div class="brand">
           <span class="brand-mark">PC</span>
@@ -27,6 +132,16 @@
             <option value="cosmeticos">Cosméticos</option>
             <option value="outros">Outros</option>
           </select>
+        </section>
+
+        <section class="control-section" aria-labelledby="product-data-title">
+          <p id="product-data-title" class="section-title">Produto</p>
+          <div class="field-grid">
+            <label for="productName">Nome do produto</label>
+            <input id="productName" type="text" maxlength="160" placeholder="Ex.: Bolo de chocolate 1 kg" autocomplete="off" />
+            <label for="productDescription">Descrição (opcional)</label>
+            <textarea id="productDescription" maxlength="2000" rows="3" placeholder="Detalhes que ajudam a identificar esta consulta"></textarea>
+          </div>
         </section>
 
         <section class="control-section" aria-labelledby="direct-costs-title">
@@ -98,6 +213,15 @@
             <label for="competitorAverage">Preço médio local dos concorrentes (R$)</label>
             <input id="competitorAverage" type="number" min="0.01" max="1000000" step="0.01" value="32" />
 
+            <div class="market-search">
+              <label for="meliQuery">Produto no Mercado Livre</label>
+              <div class="search-row">
+                <input id="meliQuery" type="text" placeholder="Ex.: iPhone 13 128GB" autocomplete="off" />
+                <button id="meliSearchButton" type="button">Pesquisar</button>
+              </div>
+              <p id="meliSearchStatus" class="helper-text">Use a consulta para substituir a média manual por dados reais quando desejar.</p>
+            </div>
+
             <div class="two-columns">
               <div>
                 <label for="receiveDays">Recebimento (dias)</label>
@@ -121,6 +245,12 @@
             <p class="eyebrow">Preço mínimo sustentável</p>
             <h2>O preço nasce do custo real da sua operação</h2>
           </div>
+          <div class="user-menu" aria-label="Menu da conta">
+            <span id="currentUserName" class="user-name"></span>
+            <button id="showProfileButton" type="button" class="secondary-button">Meu perfil</button>
+            <button id="showProductsButton" type="button" class="secondary-button">Meus produtos</button>
+            <button id="logoutButton" type="button" class="logout-button">Sair</button>
+          </div>
         </header>
 
         <section class="decision-grid">
@@ -131,6 +261,10 @@
                 <h3 id="suggestedPrice">R$ 0,00</h3>
               </div>
               <span id="priceStatus" class="confidence">Cálculo financeiro</span>
+            </div>
+            <div class="save-product-row">
+              <button id="saveProductButton" type="button">Salvar produto</button>
+              <p id="saveProductStatus" class="helper-text" role="status"></p>
             </div>
             <p id="recommendationText" class="recommendation-text"></p>
 
@@ -171,7 +305,20 @@
               <span>Custo-base máximo para caber no mercado</span>
               <strong id="marketCostLimit">R$ 0,00</strong>
             </div>
+            <div id="meliSummary" class="meli-summary" hidden></div>
           </article>
+        </section>
+
+        <section id="meliPanel" class="meli-panel" aria-labelledby="meli-title" hidden>
+          <div class="panel-heading compact">
+            <div>
+              <p class="eyebrow">Mercado Livre</p>
+              <h3 id="meli-title">Anúncios comparáveis</h3>
+            </div>
+            <button id="applyMeliMarket" type="button" class="secondary-button" disabled>Usar mediana</button>
+          </div>
+          <div id="meliStats" class="meli-stats"></div>
+          <div id="meliResults" class="meli-results"></div>
         </section>
 
         <section class="lower-grid">
@@ -217,6 +364,74 @@
       </section>
     </main>
 
-    <script src="app.js"></script>
+    <section id="productsView" class="history-view" aria-labelledby="products-title" hidden>
+      <header class="history-topbar">
+        <div>
+          <p class="eyebrow">Histórico privado</p>
+          <h1 id="products-title">Meus Produtos</h1>
+          <p>Consulte, reutilize, edite ou exclua somente os produtos da sua conta.</p>
+        </div>
+        <button id="backToAssistantButton" type="button" class="secondary-button">Voltar ao assistente</button>
+      </header>
+
+      <div class="history-controls">
+        <label for="productSearch">Pesquisar por nome</label>
+        <input id="productSearch" type="search" placeholder="Digite o nome do produto" autocomplete="off" />
+        <label for="productSort">Ordenar por data</label>
+        <select id="productSort">
+          <option value="desc">Mais recentes primeiro</option>
+          <option value="asc">Mais antigos primeiro</option>
+        </select>
+      </div>
+      <p id="historyMessage" class="form-message" role="status" hidden></p>
+      <div id="productsList" class="products-list" aria-live="polite"></div>
+    </section>
+
+    <dialog id="productDialog" class="modal-dialog" aria-labelledby="productDialogTitle">
+      <div class="dialog-header">
+        <div>
+          <p class="eyebrow">Produto salvo</p>
+          <h2 id="productDialogTitle">Detalhes do produto</h2>
+        </div>
+        <button type="button" class="icon-button" data-close-dialog aria-label="Fechar">×</button>
+      </div>
+      <div id="productDetails"></div>
+      <form id="productEditorForm" class="product-editor" hidden>
+        <label for="editProductName">Nome</label>
+        <input id="editProductName" name="name" type="text" maxlength="160" required />
+        <label for="editProductDescription">Descrição</label>
+        <textarea id="editProductDescription" name="description" maxlength="2000" rows="3"></textarea>
+        <label for="editProductCategory">Categoria</label>
+        <input id="editProductCategory" name="category" type="text" maxlength="100" required />
+        <div class="two-columns">
+          <div><label for="editCostPrice">Preço de custo (R$)</label><input id="editCostPrice" name="costPrice" type="number" min="0" step="0.01" required /></div>
+          <div><label for="editAdditionalCosts">Custos adicionais (R$)</label><input id="editAdditionalCosts" name="additionalCosts" type="number" min="0" step="0.01" required /></div>
+        </div>
+        <div class="two-columns">
+          <div><label for="editProfitMargin">Margem (%)</label><input id="editProfitMargin" name="profitMargin" type="number" min="0" max="100" step="0.01" required /></div>
+          <div><label for="editSuggestedPrice">Preço sugerido (R$)</label><input id="editSuggestedPrice" name="suggestedPrice" type="number" min="0" step="0.01" required /></div>
+        </div>
+        <label for="editMarketplace">Marketplace/plataforma</label>
+        <input id="editMarketplace" name="marketplace" type="text" maxlength="120" required />
+        <div class="dialog-actions">
+          <button type="button" class="secondary-button" data-close-dialog>Cancelar</button>
+          <button type="submit">Salvar alterações</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="profileDialog" class="modal-dialog profile-dialog" aria-labelledby="profileDialogTitle">
+      <div class="dialog-header">
+        <div>
+          <p class="eyebrow">Sua conta</p>
+          <h2 id="profileDialogTitle">Meu perfil</h2>
+        </div>
+        <button type="button" class="icon-button" data-close-dialog aria-label="Fechar">×</button>
+      </div>
+      <dl id="profileDetails" class="profile-details"></dl>
+    </dialog>
+
+    <script src="file-protocol-redirect.js"></script>
+    <script src="app.js" defer></script>
   </body>
 </html>

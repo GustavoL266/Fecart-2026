@@ -1,10 +1,27 @@
-const currency = new Intl.NumberFormat("pt-BR", {
-  style: "currency",
-  currency: "BRL",
-});
+/* Gerado por scripts/build.mjs. Edite os arquivos em js/ e execute npm run build. */
 
 const PRODUCTIVE_HOURS_PER_WORKER_MONTH = 176;
-const $ = (selector) => document.querySelector(selector);
+
+const MELI_CONFIG = {
+  siteId: "MLB",
+  searchLimit: 30,
+  minComparableResults: 3,
+  cacheTtlMs: 5 * 60 * 1000,
+};
+
+const MARKET_RULES = {
+  closeGap: 0.08,
+  attentionGap: 0.18,
+};
+
+const PERCENTAGE_FIELDS = new Set([
+  "waste",
+  "taxRate",
+  "paymentFeeRate",
+  "commissionRate",
+  "margin",
+  "capitalRate",
+]);
 
 const CATEGORY_PRESETS = {
   comestiveis: {
@@ -104,66 +121,28 @@ const CATEGORY_PRESETS = {
   },
 };
 
-const PERCENTAGE_FIELDS = new Set(["waste", "taxRate", "paymentFeeRate", "commissionRate", "margin", "capitalRate"]);
 
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function numberValue(selector, fallback = 0) {
-  const rawValue = String($(selector).value).trim();
-  const normalizedValue = rawValue.includes(",") ? rawValue.replace(/\./g, "").replace(",", ".") : rawValue;
-  const value = Number(normalizedValue);
-  return Number.isFinite(value) ? value : fallback;
-}
+const currency = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+});
 
 function percent(value) {
   return `${(value * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 }
 
-function getInputs() {
-  return {
-    productType: $("#productType").selectedOptions[0].textContent,
-    materialsCost: numberValue("#materialsCost"),
-    waste: clamp(numberValue("#waste"), 0, 100) / 100,
-    packagingCost: numberValue("#packagingCost"),
-    deliveryCost: numberValue("#deliveryCost"),
-    totalPayroll: numberValue("#totalPayroll"),
-    workerCount: Math.max(numberValue("#workerCount", 1), 1),
-    outputPerWorkerHour: Math.max(numberValue("#outputPerWorkerHour", 0.01), 0.01),
-    monthlyFixedCosts: numberValue("#monthlyFixedCosts"),
-    monthlyVolume: Math.max(numberValue("#monthlyVolume", 1), 1),
-    taxRate: clamp(numberValue("#taxRate"), 0, 60) / 100,
-    paymentFeeRate: clamp(numberValue("#paymentFeeRate"), 0, 30) / 100,
-    commissionRate: clamp(numberValue("#commissionRate"), 0, 50) / 100,
-    margin: clamp(numberValue("#margin"), 0.1, 60) / 100,
-    competitorAverage: clamp(numberValue("#competitorAverage", 0.01), 0.01, 1000000),
-    receiveDays: numberValue("#receiveDays"),
-    payDays: numberValue("#payDays"),
-    capitalRate: clamp(numberValue("#capitalRate"), 0, 8) / 100,
-  };
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
 }
 
-function averagePreset() {
-  const presets = Object.values(CATEGORY_PRESETS);
-  const fields = Object.keys(CATEGORY_PRESETS.comestiveis);
-
-  return Object.fromEntries(
-    fields.map((field) => {
-      const average = presets.reduce((sum, preset) => sum + preset[field], 0) / presets.length;
-      return [field, field === "workerCount" ? Math.max(1, Math.round(average)) : Number(average.toFixed(2))];
-    })
-  );
-}
-
-function applyCategoryPreset(category) {
-  const preset = category === "outros" ? averagePreset() : CATEGORY_PRESETS[category];
-
-  Object.entries(preset).forEach(([field, value]) => {
-    const input = $(`#${field}`);
-    input.value = PERCENTAGE_FIELDS.has(field) ? String(value).replace(".", ",") : value;
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => {
+    const entities = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" };
+    return entities[character];
   });
 }
+
+
 
 function calculateCosts(inputs) {
   const materialsWithWaste = inputs.materialsCost * (1 + inputs.waste);
@@ -194,7 +173,7 @@ function calculateCosts(inputs) {
 function calculatePrice(inputs) {
   const costs = calculateCosts(inputs);
   const availableRate = 1 - costs.salesRate - inputs.margin;
-  const isValid = availableRate > 0;
+  const isValid = availableRate > Number.EPSILON;
   const minimumPrice = isValid ? Math.ceil((costs.baseCost / availableRate) * 100) / 100 : null;
   const salesExpenses = isValid ? minimumPrice * costs.salesRate : 0;
   const profitPerSale = isValid ? minimumPrice - costs.baseCost - salesExpenses : 0;
@@ -217,49 +196,258 @@ function calculatePrice(inputs) {
   };
 }
 
-function render() {
-  const inputs = getInputs();
-  const result = calculatePrice(inputs);
-  const { costs } = result;
 
-  $("#baseCost").textContent = currency.format(costs.baseCost);
-  $("#salesRate").textContent = percent(costs.salesRate);
-  $("#marketPrice").textContent = currency.format(inputs.competitorAverage);
-  $("#marketCostLimit").textContent = currency.format(result.marketCostLimit);
-  $("#marketTitle").textContent = inputs.productType;
 
-  if (result.isValid) {
-    $("#suggestedPrice").textContent = currency.format(result.minimumPrice);
-    $("#profitPerSale").textContent = currency.format(result.profitPerSale);
-    $("#estimatedMargin").textContent = percent(result.actualMargin);
-    $("#priceStatus").textContent = result.marketGap >= 0 ? "Viável no mercado" : "Acima da média local";
-    $("#priceStatus").classList.toggle("risk-badge", result.marketGap < 0);
-    $("#recommendationText").textContent =
-      "Preço mínimo calculado para pagar todos os custos, despesas de venda e atingir a margem líquida definida.";
-    $("#marketStatus").textContent =
-      result.marketGap >= 0
-        ? `O preço calculado fica ${currency.format(result.marketGap * inputs.competitorAverage)} abaixo da média informada.`
-        : `O preço calculado fica ${currency.format(Math.abs(result.marketGap) * inputs.competitorAverage)} acima da média informada.`;
-    $("#marketMeter").style.width = `${clamp((result.minimumPrice / inputs.competitorAverage) * 100, 0, 100)}%`;
-    $("#marketMeter").classList.toggle("over", result.marketGap < 0);
-  } else {
-    $("#suggestedPrice").textContent = "Revise percentuais";
-    $("#profitPerSale").textContent = "-";
-    $("#estimatedMargin").textContent = "-";
-    $("#priceStatus").textContent = "Cálculo inviável";
-    $("#priceStatus").classList.add("risk-badge");
-    $("#recommendationText").textContent = "Impostos, taxas, comissão e margem somam 100% ou mais do preço. Reduza algum percentual para calcular.";
-    $("#marketStatus").textContent = "Não é possível validar o mercado enquanto os percentuais consumirem todo o preço.";
-    $("#marketMeter").style.width = "100%";
-    $("#marketMeter").classList.add("over");
-  }
+function marketBadgeForGap(gap) {
+  const absoluteGap = Math.abs(gap);
 
-  renderExplanation(inputs, result);
-  renderCostTable(result);
-  renderAlerts(inputs, result);
+  if (absoluteGap <= MARKET_RULES.closeGap) return ["ok", "Competitivo"];
+  if (absoluteGap <= MARKET_RULES.attentionGap) return ["warning", "Atenção"];
+
+  return ["risk", "Incompatível"];
 }
 
-function renderExplanation(inputs, result) {
+
+
+function normalizeText(value) {
+  return String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function extractTokens(value) {
+  return (
+    normalizeText(value)
+      .match(/[a-z0-9]+/g)
+      ?.filter((token) => token.length >= 3 || /^\d+$/.test(token)) || []
+  );
+}
+
+function normalizeItem(item) {
+  const image = item.thumbnail ? item.thumbnail.replace(/^http:/, "https:") : "";
+  const category = item.domain_id || item.category_id || item.attributes?.find((attribute) => attribute.id === "BRAND")?.value_name || "";
+
+  return {
+    id: item.id,
+    title: item.title,
+    price: Number(item.price),
+    image,
+    link: item.permalink,
+    category,
+    condition: item.condition,
+    attributes: Array.isArray(item.attributes) ? item.attributes : [],
+  };
+}
+
+function isComparable(listing, queryTokens) {
+  const title = normalizeText(listing.title);
+  const compactTitle = title.replace(/\s+/g, "");
+  const titleTokens = extractTokens(listing.title);
+
+  return queryTokens.every((token) => (/^\d+$/.test(token) ? titleTokens.includes(token) : titleTokens.includes(token) || compactTitle.includes(token)));
+}
+
+function filterComparableListings(listings, query) {
+  const queryTokens = extractTokens(query);
+  const seenIds = new Set();
+
+  return listings.filter((listing) => {
+    const isValid = Number.isFinite(listing.price) && listing.price > 0 && listing.title && listing.link;
+    if (!isValid || seenIds.has(listing.id)) return false;
+
+    seenIds.add(listing.id);
+    return queryTokens.length === 0 || isComparable(listing, queryTokens);
+  });
+}
+
+function calculateMedian(values) {
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+}
+
+function calculateStats(listings) {
+  const prices = listings.map((listing) => listing.price).filter((price) => Number.isFinite(price) && price > 0);
+  if (prices.length === 0) return null;
+
+  return {
+    min: Math.min(...prices),
+    max: Math.max(...prices),
+    average: prices.reduce((sum, price) => sum + price, 0) / prices.length,
+    median: calculateMedian(prices),
+    count: prices.length,
+  };
+}
+
+function buildSearchUrl(query) {
+  return `https://lista.mercadolivre.com.br/${encodeURIComponent(query.trim().replace(/\s+/g, "-"))}`;
+}
+
+class MercadoLivreService {
+  #cache = new Map();
+
+  async search(query) {
+    const cacheKey = normalizeText(query);
+    const cached = this.#cache.get(cacheKey);
+    if (cached && Date.now() - cached.createdAt < MELI_CONFIG.cacheTtlMs) return cached.data;
+
+    const params = new URLSearchParams({ q: query, limit: String(MELI_CONFIG.searchLimit) });
+    const response = await fetch(`https://api.mercadolibre.com/sites/${MELI_CONFIG.siteId}/search?${params.toString()}`);
+
+    if (!response.ok) {
+      const error = new Error("api-error");
+      error.status = response.status;
+      throw error;
+    }
+
+    const payload = await response.json();
+    const listings = Array.isArray(payload.results) ? payload.results.map(normalizeItem) : [];
+    const comparableListings = filterComparableListings(listings, query);
+    const data = {
+      query,
+      searchUrl: buildSearchUrl(query),
+      listings,
+      comparableListings,
+      stats: calculateStats(comparableListings),
+    };
+
+    this.#cache.set(cacheKey, { createdAt: Date.now(), data });
+    return data;
+  }
+}
+
+
+class ApiError extends Error {
+  constructor(message, status = 0) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+async function request(path, options = {}) {
+  const { method = "GET", body, handleUnauthorized = true } = options;
+  let response;
+  try {
+    response = await fetch(path, {
+      method,
+      credentials: "same-origin",
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (error) {
+    console.error(`[api] Falha de rede em ${method} ${path}:`, error);
+    throw new ApiError("Não foi possível conectar ao servidor.", 0);
+  }
+
+  const payload = response.status === 204 ? null : await response.json().catch(() => null);
+  if (response.ok) return payload;
+
+  const error = new ApiError(payload?.error || "Não foi possível concluir a operação.", response.status);
+  if (handleUnauthorized && response.status === 401) window.dispatchEvent(new CustomEvent("app:session-expired"));
+  throw error;
+}
+
+const api = {
+  get: (path, options) => request(path, options),
+  post: (path, body, options) => request(path, { ...options, method: "POST", body }),
+  patch: (path, body, options) => request(path, { ...options, method: "PATCH", body }),
+  delete: (path, options) => request(path, { ...options, method: "DELETE" }),
+};
+
+
+
+function numberValue(element, fallback = 0) {
+  const rawValue = String(element.value).trim();
+  const normalizedValue = rawValue.includes(",") ? rawValue.replace(/\./g, "").replace(",", ".") : rawValue;
+  const value = Number(normalizedValue);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function averagePreset() {
+  const presets = Object.values(CATEGORY_PRESETS);
+  const fields = Object.keys(CATEGORY_PRESETS.comestiveis);
+
+  return Object.fromEntries(
+    fields.map((field) => {
+      const average = presets.reduce((sum, preset) => sum + preset[field], 0) / presets.length;
+      return [field, field === "workerCount" ? Math.max(1, Math.round(average)) : Number(average.toFixed(2))];
+    }),
+  );
+}
+
+function readInputs(elements) {
+  return {
+    productType: elements.productType.selectedOptions[0].textContent,
+    materialsCost: numberValue(elements.materialsCost),
+    waste: clamp(numberValue(elements.waste), 0, 100) / 100,
+    packagingCost: numberValue(elements.packagingCost),
+    deliveryCost: numberValue(elements.deliveryCost),
+    totalPayroll: numberValue(elements.totalPayroll),
+    workerCount: Math.max(numberValue(elements.workerCount, 1), 1),
+    outputPerWorkerHour: Math.max(numberValue(elements.outputPerWorkerHour, 0.01), 0.01),
+    monthlyFixedCosts: numberValue(elements.monthlyFixedCosts),
+    monthlyVolume: Math.max(numberValue(elements.monthlyVolume, 1), 1),
+    taxRate: clamp(numberValue(elements.taxRate), 0, 60) / 100,
+    paymentFeeRate: clamp(numberValue(elements.paymentFeeRate), 0, 30) / 100,
+    commissionRate: clamp(numberValue(elements.commissionRate), 0, 50) / 100,
+    margin: clamp(numberValue(elements.margin), 0.1, 60) / 100,
+    competitorAverage: clamp(numberValue(elements.competitorAverage, 0.01), 0.01, 1000000),
+    receiveDays: numberValue(elements.receiveDays),
+    payDays: numberValue(elements.payDays),
+    capitalRate: clamp(numberValue(elements.capitalRate), 0, 8) / 100,
+  };
+}
+
+function applyCategoryPreset(category, elements) {
+  const preset = category === "outros" ? averagePreset() : CATEGORY_PRESETS[category];
+
+  Object.entries(preset).forEach(([field, value]) => {
+    elements[field].value = PERCENTAGE_FIELDS.has(field) ? String(value).replace(".", ",") : value;
+  });
+}
+
+function applySavedInputs(savedInputs, elements) {
+  if (!savedInputs || typeof savedInputs !== "object") return false;
+
+  const categoryOption = [...elements.productType.options].find((option) => option.textContent === savedInputs.productType);
+  if (categoryOption) elements.productType.value = categoryOption.value;
+
+  Object.entries(savedInputs).forEach(([field, value]) => {
+    if (!elements[field] || !Number.isFinite(value)) return;
+    const displayValue = PERCENTAGE_FIELDS.has(field) ? value * 100 : value;
+    elements[field].value = String(Number(displayValue.toFixed(4))).replace(".", ",");
+  });
+
+  return true;
+}
+
+function isAboveCompetitorLimit(elements) {
+  return numberValue(elements.competitorAverage) > 1000000;
+}
+
+
+
+function marketComparisonText(inputs, result, marketStats, marketSource) {
+  const difference = Math.abs(inputs.competitorAverage - result.minimumPrice);
+  const source =
+    marketSource === "meli-median"
+      ? "mediana dos anúncios comparáveis do Mercado Livre"
+      : marketSource === "meli-listing"
+        ? "anúncio selecionado no Mercado Livre"
+        : "média informada";
+  const relativeGap = Math.abs(result.marketGap);
+  const confidenceNote = marketStats && marketStats.count < MELI_CONFIG.minComparableResults ? " A amostra é pequena, então use como sinal preliminar." : "";
+
+  if (relativeGap <= 0.08) return `O preço calculado está próximo da ${source}, com diferença de ${percent(relativeGap)}.${confidenceNote}`;
+  if (result.marketGap >= 0) return `O preço calculado fica ${currency.format(difference)} (${percent(relativeGap)}) abaixo da ${source}.${confidenceNote}`;
+
+  return `O preço calculado fica ${currency.format(difference)} (${percent(relativeGap)}) acima da ${source}.${confidenceNote}`;
+}
+
+function renderExplanation(document, inputs, result) {
   const { costs } = result;
   const items = [
     `Insumos e matéria-prima, já com ${percent(inputs.waste)} de perda: ${currency.format(costs.materialsWithWaste)}.`,
@@ -267,18 +455,18 @@ function renderExplanation(inputs, result) {
     `Capacidade mensal de produção: ${costs.monthlyProductionCapacity.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} unidades, considerando ${PRODUCTIVE_HOURS_PER_WORKER_MONTH} horas produtivas por trabalhador no mês.`,
     `Rateio de custos fixos: ${currency.format(costs.fixedCostAllocation)} por venda, usando ${inputs.monthlyVolume.toLocaleString("pt-BR")} operações previstas no mês.`,
     `Impostos, taxa de pagamento e comissão somam ${percent(costs.salesRate)} e incidem sobre o preço final.`,
-    `Fórmula aplicada: custo-base ÷ (1 − despesas sobre a venda − margem líquida).`,
+    "Fórmula aplicada: custo-base ÷ (1 − despesas sobre a venda − margem líquida).",
   ];
 
-  $("#explanationList").innerHTML = items.map((item) => `<li>${item}</li>`).join("");
+  document.querySelector("#explanationList").innerHTML = items.map((item) => `<li>${item}</li>`).join("");
 }
 
-function renderCostTable(result) {
+function renderCostTable(document, inputs, result) {
   const { costs } = result;
   const price = result.minimumPrice || 0;
   const rows = [
     ["Insumos com perda", costs.materialsWithWaste],
-    ["Embalagem e entrega", 0],
+    ["Embalagem e entrega", inputs.packagingCost + inputs.deliveryCost],
     ["Mão de obra direta", costs.directLabor],
     ["Capital de giro", costs.workingCapitalCost],
     ["Rateio de custos fixos", costs.fixedCostAllocation],
@@ -286,78 +474,872 @@ function renderCostTable(result) {
     ["Lucro líquido", result.profitPerSale],
   ];
 
-  rows[1][1] = numberValue("#packagingCost") + numberValue("#deliveryCost");
-  $("#costRows").innerHTML = rows
-    .map(([label, value]) => `
-      <tr>
-        <td>${label}</td>
-        <td>${currency.format(value)}</td>
-        <td>${price > 0 ? percent(value / price) : "-"}</td>
-      </tr>
-    `)
+  document.querySelector("#costRows").innerHTML = rows
+    .map(
+      ([label, value]) => `
+        <tr>
+          <td>${label}</td>
+          <td>${currency.format(value)}</td>
+          <td>${price > 0 ? percent(value / price) : "-"}</td>
+        </tr>`,
+    )
     .join("");
 }
 
-function renderAlerts(inputs, result) {
+function renderAlerts(document, inputs, result) {
   const alerts = [];
   const { costs } = result;
 
-  if (!result.isValid) {
-    alerts.push(["risk", "A soma de impostos, taxas, comissão e margem não pode chegar a 100% do preço."]);
+  if (!result.isValid) alerts.push(["risk", "A soma de impostos, taxas, comissão e margem não pode chegar a 100% do preço."]);
+  if (result.isValid && result.marketGap < 0) alerts.push(["risk", `Para caber na média do mercado mantendo as taxas e a margem, o custo-base precisa cair ${currency.format(result.requiredCostReduction)} por venda.`]);
+  if (costs.cashGapDays > 0) alerts.push(["warning", `Você recebe ${costs.cashGapDays} dia(s) depois de pagar. O custo do capital acrescentou ${currency.format(costs.workingCapitalCost)} por venda.`]);
+  if (costs.salesRate > 0.2) alerts.push(["warning", `Impostos, taxas e comissão consomem ${percent(costs.salesRate)} do preço final.`]);
+  if (alerts.length === 0) alerts.push(["ok", "Preço sustentável: custos, despesas sobre a venda e margem foram cobertos sem ultrapassar a média informada."]);
+
+  document.querySelector("#alerts").innerHTML = alerts.map(([type, text]) => `<div class="${type}">${text}</div>`).join("");
+}
+
+function renderMeliPanel(document, result, meliState) {
+  const panel = document.querySelector("#meliPanel");
+  const summary = document.querySelector("#meliSummary");
+  const statsContainer = document.querySelector("#meliStats");
+  const resultsContainer = document.querySelector("#meliResults");
+  const applyButton = document.querySelector("#applyMeliMarket");
+  const searchStatus = document.querySelector("#meliSearchStatus");
+
+  panel.hidden = meliState.status === "idle";
+  summary.hidden = !meliState.stats;
+  applyButton.disabled = !meliState.stats;
+
+  if (meliState.status === "loading") {
+    searchStatus.textContent = "Consultando anúncios reais no Mercado Livre...";
+    statsContainer.innerHTML = '<p class="helper-text">Buscando produtos ativos no Mercado Livre.</p>';
+    resultsContainer.innerHTML = "";
+    return;
   }
 
-  if (result.isValid && result.marketGap < 0) {
-    alerts.push(["risk", `Para caber na média do mercado mantendo as taxas e a margem, o custo-base precisa cair ${currency.format(result.requiredCostReduction)} por venda.`]);
+  if (meliState.status === "error") {
+    searchStatus.textContent = meliState.error;
+    statsContainer.innerHTML = `
+      <div class="meli-fallback">
+        <p class="error-text">${escapeHtml(meliState.error)}</p>
+        <p class="helper-text">Você ainda pode abrir a busca, comparar alguns anúncios e preencher a média manualmente no campo de concorrentes.</p>
+        ${meliState.searchUrl ? `<a class="secondary-link" href="${escapeHtml(meliState.searchUrl)}" target="_blank" rel="noopener">Abrir busca no Mercado Livre</a>` : ""}
+      </div>`;
+    resultsContainer.innerHTML = "";
+    return;
   }
 
-  if (costs.cashGapDays > 0) {
-    alerts.push(["warning", `Você recebe ${costs.cashGapDays} dia(s) depois de pagar. O custo do capital acrescentou ${currency.format(costs.workingCapitalCost)} por venda.`]);
+  if (meliState.status === "empty") {
+    searchStatus.textContent = "Nenhum anúncio comparável foi encontrado para essa busca.";
+    statsContainer.innerHTML = '<p class="helper-text">Tente informar marca, modelo, capacidade, tamanho ou voltagem com mais precisão.</p>';
+    resultsContainer.innerHTML = "";
+    return;
   }
 
-  if (costs.salesRate > 0.2) {
-    alerts.push(["warning", `Impostos, taxas e comissão consomem ${percent(costs.salesRate)} do preço final.`]);
+  if (!meliState.stats) {
+    searchStatus.textContent = "Use a consulta para substituir a média manual por dados reais quando desejar.";
+    statsContainer.innerHTML = "";
+    resultsContainer.innerHTML = "";
+    return;
   }
 
-  if (alerts.length === 0) {
-    alerts.push(["ok", "Preço sustentável: custos, despesas sobre a venda e margem foram cobertos sem ultrapassar a média informada."]);
+  const { stats } = meliState;
+  const reliabilityText = stats.count < MELI_CONFIG.minComparableResults ? "Amostra pequena: referência preliminar." : "Amostra suficiente para referência inicial.";
+  const marketGap = result.isValid ? (stats.median - result.minimumPrice) / stats.median : 0;
+  const [badgeType, badgeText] = result.isValid ? marketBadgeForGap(marketGap) : ["risk", "Revise percentuais"];
+
+  searchStatus.textContent = `${stats.count} anúncio(s) comparável(is) analisado(s).`;
+  summary.innerHTML = `<span>Referência Mercado Livre</span><strong>${currency.format(stats.median)}</strong><small>Mediana de ${stats.count} anúncio(s)</small>`;
+  statsContainer.innerHTML = `
+    <div><span>Menor preço</span><strong>${currency.format(stats.min)}</strong></div>
+    <div><span>Preço médio</span><strong>${currency.format(stats.average)}</strong></div>
+    <div><span>Preço mediano</span><strong>${currency.format(stats.median)}</strong></div>
+    <div><span>Maior preço</span><strong>${currency.format(stats.max)}</strong></div>
+    <div><span>Análise</span><strong class="${badgeType}">${badgeText}</strong></div>
+    <div><span>Confiança</span><strong>${reliabilityText}</strong></div>`;
+  resultsContainer.innerHTML = meliState.comparableListings
+    .map((listing) => {
+      const isSelected = listing.id === meliState.selectedId;
+      const attributes = listing.attributes
+        .filter((attribute) => ["BRAND", "MODEL", "LINE", "VOLTAGE", "CAPACITY"].includes(attribute.id) && attribute.value_name)
+        .slice(0, 3)
+        .map((attribute) => attribute.value_name)
+        .join(" | ");
+
+      return `
+        <article class="meli-result ${isSelected ? "selected" : ""}">
+          ${listing.image ? `<img src="${escapeHtml(listing.image)}" alt="">` : '<div class="meli-image-placeholder"></div>'}
+          <div>
+            <h4>${escapeHtml(listing.title)}</h4>
+            <p>${[listing.condition, listing.category, attributes].filter(Boolean).map(escapeHtml).join(" | ")}</p>
+            <strong>${currency.format(listing.price)}</strong>
+          </div>
+          <div class="meli-actions">
+            <button type="button" data-meli-select="${escapeHtml(listing.id)}">${isSelected ? "Selecionado" : "Selecionar"}</button>
+            <a href="${escapeHtml(listing.link)}" target="_blank" rel="noopener">Abrir anúncio</a>
+          </div>
+        </article>`;
+    })
+    .join("");
+}
+
+function renderDashboard(document, inputs, result, meliState, marketSource) {
+  const { costs } = result;
+  const activeMarketStats = marketSource === "meli-median" ? meliState.stats : null;
+
+  document.querySelector("#baseCost").textContent = currency.format(costs.baseCost);
+  document.querySelector("#salesRate").textContent = percent(costs.salesRate);
+  document.querySelector("#marketPrice").textContent = currency.format(inputs.competitorAverage);
+  document.querySelector("#marketCostLimit").textContent = currency.format(result.marketCostLimit);
+  document.querySelector("#marketTitle").textContent = inputs.productType;
+
+  const suggestedPrice = document.querySelector("#suggestedPrice");
+  const profitPerSale = document.querySelector("#profitPerSale");
+  const estimatedMargin = document.querySelector("#estimatedMargin");
+  const priceStatus = document.querySelector("#priceStatus");
+  const recommendationText = document.querySelector("#recommendationText");
+  const marketStatus = document.querySelector("#marketStatus");
+  const marketMeter = document.querySelector("#marketMeter");
+
+  if (result.isValid) {
+    suggestedPrice.textContent = currency.format(result.minimumPrice);
+    profitPerSale.textContent = currency.format(result.profitPerSale);
+    estimatedMargin.textContent = percent(result.actualMargin);
+    const [badgeType, badgeText] = marketBadgeForGap(result.marketGap);
+    priceStatus.textContent = badgeText;
+    priceStatus.classList.toggle("risk-badge", badgeType === "risk");
+    priceStatus.classList.toggle("warning-badge", badgeType === "warning");
+    recommendationText.textContent = "Preço mínimo calculado para pagar todos os custos, despesas de venda e atingir a margem líquida definida.";
+    marketStatus.textContent = marketComparisonText(inputs, result, activeMarketStats, marketSource);
+    marketMeter.style.width = `${clamp((result.minimumPrice / inputs.competitorAverage) * 100, 0, 100)}%`;
+    marketMeter.classList.toggle("over", result.marketGap < 0);
+  } else {
+    suggestedPrice.textContent = "Revise percentuais";
+    profitPerSale.textContent = "-";
+    estimatedMargin.textContent = "-";
+    priceStatus.textContent = "Cálculo inviável";
+    priceStatus.classList.add("risk-badge");
+    priceStatus.classList.remove("warning-badge");
+    recommendationText.textContent = "Impostos, taxas, comissão e margem somam 100% ou mais do preço. Reduza algum percentual para calcular.";
+    marketStatus.textContent = "Não é possível validar o mercado enquanto os percentuais consumirem todo o preço.";
+    marketMeter.style.width = "100%";
+    marketMeter.classList.add("over");
   }
 
-  $("#alerts").innerHTML = alerts.map(([type, text]) => `<div class="${type}">${text}</div>`).join("");
+  renderExplanation(document, inputs, result);
+  renderCostTable(document, inputs, result);
+  renderAlerts(document, inputs, result);
+  renderMeliPanel(document, result, meliState);
+}
+
+
+
+function formatDate(value) {
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function detail(label, value, extraClass = "") {
+  return `<div class="${extraClass}"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`;
+}
+
+function renderProductsList(container, products) {
+  if (products.length === 0) {
+    container.innerHTML = '<div class="empty-history">Nenhum produto encontrado. Salve uma precificação no assistente para montar seu histórico.</div>';
+    return;
+  }
+
+  container.innerHTML = products
+    .map(
+      (product) => `
+        <article class="product-card">
+          <div>
+            <p class="eyebrow">${escapeHtml(product.category)}</p>
+            <h3>${escapeHtml(product.name)}</h3>
+            <div class="product-meta">
+              <span>Custo: <strong>${currency.format(product.costPrice)}</strong></span>
+              <span>Margem: <strong>${Number(product.profitMargin).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%</strong></span>
+              <span>Preço sugerido: <strong>${currency.format(product.suggestedPrice)}</strong></span>
+              <span>${escapeHtml(formatDate(product.consultationDate))}</span>
+            </div>
+          </div>
+          <div class="product-actions">
+            <button type="button" class="secondary-button" data-product-action="view" data-product-id="${escapeHtml(product.id)}">Visualizar</button>
+            <button type="button" class="secondary-button" data-product-action="reuse" data-product-id="${escapeHtml(product.id)}">Reutilizar</button>
+            <button type="button" class="secondary-button" data-product-action="edit" data-product-id="${escapeHtml(product.id)}">Editar</button>
+            <button type="button" class="danger-button" data-product-action="delete" data-product-id="${escapeHtml(product.id)}">Excluir</button>
+          </div>
+        </article>`,
+    )
+    .join("");
+}
+
+function renderProductDetails(container, product) {
+  const description = product.description || "Sem descrição informada.";
+  container.innerHTML = `
+    <dl class="product-details">
+      ${detail("Categoria", product.category)}
+      ${detail("Plataforma", product.marketplace)}
+      ${detail("Preço de custo", currency.format(product.costPrice))}
+      ${detail("Custos adicionais", currency.format(product.additionalCosts))}
+      ${detail("Margem desejada", `${Number(product.profitMargin).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`)}
+      ${detail("Preço sugerido", currency.format(product.suggestedPrice))}
+      ${detail("Data da consulta", formatDate(product.consultationDate))}
+      ${detail("Última atualização", formatDate(product.updatedAt))}
+      ${detail("Descrição", description, "product-description")}
+    </dl>
+    <div class="dialog-detail-actions">
+      <button type="button" class="secondary-button" data-dialog-product-action="reuse">Reutilizar consulta</button>
+      <button type="button" class="secondary-button" data-dialog-product-action="edit">Editar</button>
+      <button type="button" class="danger-button" data-dialog-product-action="delete">Excluir</button>
+    </div>`;
+}
+
+
+
+const $ = (selector) => document.querySelector(selector);
+const mercadoLivre = new MercadoLivreService();
+const formFieldIds = [
+  "productType",
+  "materialsCost",
+  "waste",
+  "packagingCost",
+  "deliveryCost",
+  "totalPayroll",
+  "workerCount",
+  "outputPerWorkerHour",
+  "monthlyFixedCosts",
+  "monthlyVolume",
+  "taxRate",
+  "paymentFeeRate",
+  "commissionRate",
+  "margin",
+  "competitorAverage",
+  "receiveDays",
+  "payDays",
+  "capitalRate",
+];
+const elements = Object.fromEntries(formFieldIds.map((id) => [id, $(`#${id}`)]));
+const state = {
+  user: null,
+  products: [],
+  selectedProduct: null,
+};
+
+let marketSource = "manual";
+let meliState = {
+  status: "idle",
+  query: "",
+  searchUrl: "",
+  listings: [],
+  comparableListings: [],
+  stats: null,
+  selectedId: null,
+  error: "",
+};
+let productSearchTimer;
+
+function messageFor(error) {
+  return error instanceof ApiError ? error.message : "Não foi possível concluir a operação. Tente novamente.";
+}
+
+function setMessage(element, message = "", success = false) {
+  element.hidden = !message;
+  element.textContent = message;
+  element.classList.toggle("success", success);
+}
+
+function setFieldError(fieldId, message = "") {
+  const input = $(`#${fieldId}`);
+  const field = input.closest(".auth-field");
+  const messageElement = $(`#${fieldId}Error`);
+  field?.classList.toggle("has-error", Boolean(message));
+  input.setAttribute("aria-invalid", String(Boolean(message)));
+  if (!messageElement) return;
+  messageElement.hidden = !message;
+  messageElement.textContent = message;
+}
+
+function clearAuthErrors(form) {
+  form.querySelectorAll(".auth-field input").forEach((input) => setFieldError(input.id));
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function passwordChecks(value) {
+  return {
+    length: value.length >= 8,
+    letter: /[A-Za-zÀ-ÖØ-öø-ÿ]/.test(value),
+    number: /\d/.test(value),
+  };
+}
+
+function isStrongPassword(value) {
+  return Object.values(passwordChecks(value)).every(Boolean);
+}
+
+function updatePasswordRequirements() {
+  const checks = passwordChecks($("#registerPassword").value);
+  document.querySelectorAll("[data-password-rule]").forEach((item) => item.classList.toggle("is-met", checks[item.dataset.passwordRule]));
+}
+
+function validateRegisterField(fieldId) {
+  const value = $(`#${fieldId}`).value;
+  const trimmedValue = value.trim();
+  let error = "";
+
+  if (fieldId === "registerName") {
+    if (!trimmedValue) error = "Preencha todos os campos obrigatórios.";
+    else if (trimmedValue.length < 2) error = "Informe seu nome completo.";
+  }
+
+  if (fieldId === "registerEmail") {
+    if (!trimmedValue) error = "Preencha todos os campos obrigatórios.";
+    else if (!isValidEmail(trimmedValue)) error = "Informe um e-mail válido.";
+  }
+
+  if (fieldId === "registerPassword") {
+    if (!value) error = "Preencha todos os campos obrigatórios.";
+    else if (!isStrongPassword(value)) error = "Use pelo menos 8 caracteres, incluindo letras e números.";
+  }
+
+  if (fieldId === "registerPasswordConfirmation") {
+    const password = $("#registerPassword").value;
+    if (!value) error = "Preencha todos os campos obrigatórios.";
+    else if (value !== password) error = "As senhas não coincidem.";
+  }
+
+  setFieldError(fieldId, error);
+  return !error;
+}
+
+function validateLoginField(fieldId) {
+  const value = $(`#${fieldId}`).value.trim();
+  const error = !value
+    ? "Preencha todos os campos obrigatórios."
+    : fieldId === "loginEmail" && !isValidEmail(value)
+      ? "Informe um e-mail válido."
+      : "";
+  setFieldError(fieldId, error);
+  return !error;
+}
+
+function setSubmitState(button, isLoading, label) {
+  button.disabled = isLoading;
+  button.setAttribute("aria-busy", String(isLoading));
+  button.querySelector("span").textContent = label;
+}
+
+function render() {
+  const inputs = readInputs(elements);
+  renderDashboard(document, inputs, calculatePrice(inputs), meliState, marketSource);
+}
+
+function showAuth(mode = "login", message = "") {
+  $("#bootScreen").hidden = true;
+  $("#authView").hidden = false;
+  $("#assistantView").hidden = true;
+  $("#productsView").hidden = true;
+  $("#loginForm").hidden = mode !== "login";
+  $("#registerForm").hidden = mode !== "register";
+  $("#showLoginButton").classList.toggle("active", mode === "login");
+  $("#showRegisterButton").classList.toggle("active", mode === "register");
+  $("#showLoginButton").setAttribute("aria-selected", String(mode === "login"));
+  $("#showRegisterButton").setAttribute("aria-selected", String(mode === "register"));
+  clearAuthErrors($("#loginForm"));
+  clearAuthErrors($("#registerForm"));
+  setMessage($("#authMessage"), message);
+}
+
+function showAssistant() {
+  $("#bootScreen").hidden = true;
+  $("#authView").hidden = true;
+  $("#assistantView").hidden = false;
+  $("#productsView").hidden = true;
+}
+
+async function showProducts() {
+  $("#bootScreen").hidden = true;
+  $("#authView").hidden = true;
+  $("#assistantView").hidden = true;
+  $("#productsView").hidden = false;
+  await loadProducts();
+}
+
+async function syncRoute() {
+  if (!state.user) return;
+  if (window.location.hash === "#produtos") await showProducts();
+  else showAssistant();
+}
+
+function navigate(view) {
+  const hash = view === "products" ? "#produtos" : "#assistente";
+  if (window.location.hash === hash) {
+    void syncRoute();
+  } else {
+    window.location.hash = hash;
+  }
+}
+
+function setAuthenticatedUser(user) {
+  state.user = user;
+  $("#currentUserName").textContent = user.name;
+  void syncRoute();
+}
+
+function setMeliError(query, status) {
+  const error =
+    status === 429
+      ? "O Mercado Livre limitou as consultas no momento. Aguarde um pouco e tente novamente."
+      : status === 403
+        ? "O Mercado Livre bloqueou a consulta automática de anúncios para este acesso."
+        : "Não foi possível consultar o Mercado Livre agora. Verifique sua conexão ou tente novamente mais tarde.";
+
+  meliState = { ...meliState, status: "error", query, searchUrl: buildSearchUrl(query), listings: [], comparableListings: [], stats: null, selectedId: null, error };
+}
+
+async function searchMercadoLivre() {
+  const query = $("#meliQuery").value.trim();
+  if (query.length < 3) {
+    meliState = { ...meliState, status: "error", error: "Informe pelo menos 3 caracteres para pesquisar." };
+    render();
+    return;
+  }
+
+  meliState = { status: "loading", query, searchUrl: buildSearchUrl(query), listings: [], comparableListings: [], stats: null, selectedId: null, error: "" };
+  render();
+
+  try {
+    const data = await mercadoLivre.search(query);
+    meliState = {
+      status: data.stats ? "success" : "empty",
+      ...data,
+      selectedId: data.comparableListings[0]?.id || null,
+      error: "",
+    };
+  } catch (error) {
+    setMeliError(query, error.status);
+  }
+
+  render();
+}
+
+function productPayloadFromCalculator() {
+  const name = $("#productName").value.trim();
+  const description = $("#productDescription").value.trim();
+  const inputs = readInputs(elements);
+  const result = calculatePrice(inputs);
+
+  if (!name) throw new ApiError("Informe o nome do produto antes de salvar.", 400);
+  if (!result.isValid || result.minimumPrice === null) throw new ApiError("Revise os percentuais antes de salvar um cálculo inviável.", 400);
+
+  const selectedListing = meliState.comparableListings.find((listing) => listing.id === meliState.selectedId);
+  return {
+    name,
+    description,
+    category: inputs.productType,
+    costPrice: inputs.materialsCost,
+    additionalCosts: Math.max(0, result.costs.baseCost - inputs.materialsCost),
+    profitMargin: inputs.margin * 100,
+    suggestedPrice: result.minimumPrice,
+    marketplace: marketSource.startsWith("meli") ? "Mercado Livre" : "Manual",
+    consultationDate: new Date().toISOString(),
+    calculationData: {
+      version: 1,
+      inputs,
+      result,
+      market: {
+        source: marketSource,
+        query: meliState.query,
+        stats: meliState.stats,
+        selectedListing: selectedListing
+          ? { id: selectedListing.id, title: selectedListing.title, price: selectedListing.price, link: selectedListing.link }
+          : null,
+      },
+    },
+  };
+}
+
+async function saveProduct() {
+  const status = $("#saveProductStatus");
+  const button = $("#saveProductButton");
+  try {
+    const payload = productPayloadFromCalculator();
+    button.disabled = true;
+    setMessage(status, "Salvando consulta…");
+    await api.post("/products", payload);
+    setMessage(status, "Produto salvo no seu histórico.", true);
+  } catch (error) {
+    setMessage(status, messageFor(error));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function loadProducts() {
+  const list = $("#productsList");
+  const search = $("#productSearch").value.trim();
+  const sort = $("#productSort").value;
+  setMessage($("#historyMessage"), "");
+  list.innerHTML = '<div class="empty-history">Carregando produtos…</div>';
+
+  try {
+    const params = new URLSearchParams({ search, sort });
+    const response = await api.get(`/products?${params.toString()}`);
+    state.products = response.products;
+    renderProductsList(list, state.products);
+  } catch (error) {
+    list.innerHTML = "";
+    setMessage($("#historyMessage"), messageFor(error));
+  }
+}
+
+function openDialog(dialog) {
+  if (!dialog.open) dialog.showModal();
+}
+
+function showProductDetails(product) {
+  state.selectedProduct = product;
+  $("#productDialogTitle").textContent = product.name;
+  $("#productDetails").hidden = false;
+  $("#productEditorForm").hidden = true;
+  renderProductDetails($("#productDetails"), product);
+  openDialog($("#productDialog"));
+}
+
+function showProductEditor(product) {
+  state.selectedProduct = product;
+  $("#productDialogTitle").textContent = `Editar ${product.name}`;
+  $("#productDetails").hidden = true;
+  const form = $("#productEditorForm");
+  form.hidden = false;
+  $("#editProductName").value = product.name;
+  $("#editProductDescription").value = product.description;
+  $("#editProductCategory").value = product.category;
+  $("#editCostPrice").value = product.costPrice;
+  $("#editAdditionalCosts").value = product.additionalCosts;
+  $("#editProfitMargin").value = product.profitMargin;
+  $("#editSuggestedPrice").value = product.suggestedPrice;
+  $("#editMarketplace").value = product.marketplace;
+  openDialog($("#productDialog"));
+}
+
+async function getProduct(id) {
+  const response = await api.get(`/products/${encodeURIComponent(id)}`);
+  return response.product;
+}
+
+function reuseProduct(product) {
+  const savedInputs = product.calculationData?.inputs;
+  if (!applySavedInputs(savedInputs, elements)) {
+    setMessage($("#historyMessage"), "Esta consulta não possui os dados necessários para ser reutilizada.");
+    return;
+  }
+
+  $("#productName").value = product.name;
+  $("#productDescription").value = product.description || "";
+  marketSource = product.calculationData?.market?.source || "manual";
+  meliState = { ...meliState, status: "idle", query: product.calculationData?.market?.query || "", stats: product.calculationData?.market?.stats || null };
+  $("#meliQuery").value = meliState.query;
+  $("#productDialog").close();
+  render();
+  navigate("assistant");
+  setMessage($("#saveProductStatus"), "Consulta anterior carregada. Ajuste o que quiser e salve uma nova versão.", true);
+}
+
+async function deleteProduct(id) {
+  if (!window.confirm("Excluir este produto do seu histórico? Esta ação não pode ser desfeita.")) return;
+
+  try {
+    await api.delete(`/products/${encodeURIComponent(id)}`);
+    if ($("#productDialog").open) $("#productDialog").close();
+    setMessage($("#historyMessage"), "Produto excluído do seu histórico.", true);
+    await loadProducts();
+  } catch (error) {
+    setMessage($("#historyMessage"), messageFor(error));
+  }
+}
+
+async function editCurrentProduct(event) {
+  event.preventDefault();
+  const product = state.selectedProduct;
+  const form = event.currentTarget;
+  if (!product || !form.reportValidity()) return;
+
+  const payload = {
+    name: $("#editProductName").value.trim(),
+    description: $("#editProductDescription").value.trim(),
+    category: $("#editProductCategory").value.trim(),
+    costPrice: Number($("#editCostPrice").value),
+    additionalCosts: Number($("#editAdditionalCosts").value),
+    profitMargin: Number($("#editProfitMargin").value),
+    suggestedPrice: Number($("#editSuggestedPrice").value),
+    marketplace: $("#editMarketplace").value.trim(),
+    consultationDate: product.consultationDate,
+    calculationData: product.calculationData || {},
+  };
+
+  try {
+    const response = await api.patch(`/products/${encodeURIComponent(product.id)}`, payload);
+    state.selectedProduct = response.product;
+    $("#productDialog").close();
+    setMessage($("#historyMessage"), "Produto atualizado com sucesso.", true);
+    await loadProducts();
+  } catch (error) {
+    setMessage($("#historyMessage"), messageFor(error));
+  }
+}
+
+function showProfile() {
+  const details = $("#profileDetails");
+  details.replaceChildren();
+  [["Nome", state.user.name], ["E-mail", state.user.email]].forEach(([label, value]) => {
+    const item = document.createElement("div");
+    const term = document.createElement("dt");
+    const definition = document.createElement("dd");
+    term.textContent = label;
+    definition.textContent = value;
+    item.append(term, definition);
+    details.append(item);
+  });
+  openDialog($("#profileDialog"));
+}
+
+async function logout() {
+  try {
+    await api.post("/auth/logout", undefined, { handleUnauthorized: false });
+  } catch (error) {
+    setMessage($("#saveProductStatus"), messageFor(error));
+    return;
+  }
+
+  state.user = null;
+  state.products = [];
+  state.selectedProduct = null;
+  window.history.replaceState(null, "", window.location.pathname);
+  showAuth("login", "Você saiu da sua conta.");
+}
+
+async function submitLogin(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const isValid = ["loginEmail", "loginPassword"].every(validateLoginField);
+  if (!isValid) return;
+  const button = form.querySelector("button[type=submit]");
+
+  try {
+    setSubmitState(button, true, "Entrando...");
+    setMessage($("#authMessage"), "");
+    const response = await api.post("/auth/login", {
+      email: $("#loginEmail").value.trim(),
+      password: $("#loginPassword").value,
+    }, { handleUnauthorized: false });
+    form.reset();
+    setAuthenticatedUser(response.user);
+  } catch (error) {
+    setMessage($("#authMessage"), messageFor(error));
+  } finally {
+    setSubmitState(button, false, "Entrar");
+  }
+}
+
+async function submitRegistration(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const password = $("#registerPassword").value;
+  const confirmation = $("#registerPasswordConfirmation").value;
+  const isValid = ["registerName", "registerEmail", "registerPassword", "registerPasswordConfirmation"].every(validateRegisterField);
+  if (!isValid) return;
+  const button = form.querySelector("button[type=submit]");
+
+  try {
+    setSubmitState(button, true, "Criando conta...");
+    setMessage($("#authMessage"), "");
+    const response = await api.post("/auth/register", {
+      name: $("#registerName").value.trim(),
+      email: $("#registerEmail").value.trim(),
+      password,
+      passwordConfirmation: confirmation,
+    }, { handleUnauthorized: false });
+    form.reset();
+    updatePasswordRequirements();
+    setAuthenticatedUser(response.user);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 409) {
+      setFieldError("registerEmail", "Já existe uma conta cadastrada com este e-mail.");
+      $("#registerEmail").focus();
+    } else {
+      setMessage($("#authMessage"), messageFor(error));
+    }
+  } finally {
+    setSubmitState(button, false, "Criar conta");
+  }
 }
 
 [
-  "#materialsCost",
-  "#waste",
-  "#packagingCost",
-  "#deliveryCost",
-  "#totalPayroll",
-  "#workerCount",
-  "#outputPerWorkerHour",
-  "#monthlyFixedCosts",
-  "#monthlyVolume",
-  "#taxRate",
-  "#paymentFeeRate",
-  "#commissionRate",
-  "#margin",
-  "#receiveDays",
-  "#payDays",
-  "#capitalRate",
-].forEach((selector) => {
-  $(selector).addEventListener("input", render);
-});
+  elements.materialsCost,
+  elements.waste,
+  elements.packagingCost,
+  elements.deliveryCost,
+  elements.totalPayroll,
+  elements.workerCount,
+  elements.outputPerWorkerHour,
+  elements.monthlyFixedCosts,
+  elements.monthlyVolume,
+  elements.taxRate,
+  elements.paymentFeeRate,
+  elements.commissionRate,
+  elements.margin,
+  elements.receiveDays,
+  elements.payDays,
+  elements.capitalRate,
+].forEach((field) => field.addEventListener("input", render));
 
-$("#productType").addEventListener("change", () => {
-  applyCategoryPreset($("#productType").value);
+elements.productType.addEventListener("change", () => {
+  applyCategoryPreset(elements.productType.value, elements);
+  marketSource = "manual";
   render();
 });
 
-$("#competitorAverage").addEventListener("input", () => {
-  const field = $("#competitorAverage");
-  if (numberValue("#competitorAverage") > 1000000) {
-    field.value = "1000000";
+elements.competitorAverage.addEventListener("input", () => {
+  marketSource = "manual";
+  if (isAboveCompetitorLimit(elements)) elements.competitorAverage.value = "1000000";
+  render();
+});
+
+$("#meliSearchButton").addEventListener("click", searchMercadoLivre);
+$("#meliQuery").addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  searchMercadoLivre();
+});
+$("#applyMeliMarket").addEventListener("click", () => {
+  if (!meliState.stats) return;
+  elements.competitorAverage.value = meliState.stats.median.toFixed(2);
+  marketSource = "meli-median";
+  render();
+});
+$("#meliResults").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-meli-select]");
+  if (!button) return;
+  const selectedListing = meliState.comparableListings.find((listing) => listing.id === button.dataset.meliSelect);
+  meliState = { ...meliState, selectedId: button.dataset.meliSelect };
+  if (selectedListing) {
+    elements.competitorAverage.value = selectedListing.price.toFixed(2);
+    marketSource = "meli-listing";
   }
   render();
 });
 
-applyCategoryPreset($("#productType").value);
+$("#showLoginButton").addEventListener("click", () => showAuth("login"));
+$("#showRegisterButton").addEventListener("click", () => showAuth("register"));
+$("#loginForm").addEventListener("submit", submitLogin);
+$("#registerForm").addEventListener("submit", submitRegistration);
+
+["loginEmail", "loginPassword"].forEach((fieldId) => {
+  const field = $(`#${fieldId}`);
+  field.addEventListener("blur", () => validateLoginField(fieldId));
+  field.addEventListener("input", () => {
+    if (field.getAttribute("aria-invalid") === "true") validateLoginField(fieldId);
+  });
+});
+
+["registerName", "registerEmail", "registerPassword", "registerPasswordConfirmation"].forEach((fieldId) => {
+  const field = $(`#${fieldId}`);
+  field.addEventListener("blur", () => {
+    if (fieldId === "registerEmail") field.value = field.value.trim().toLowerCase();
+    validateRegisterField(fieldId);
+  });
+  field.addEventListener("input", () => {
+    if (fieldId === "registerPassword") {
+      updatePasswordRequirements();
+      if ($("#registerPasswordConfirmation").value) validateRegisterField("registerPasswordConfirmation");
+    }
+    if (field.getAttribute("aria-invalid") === "true" || fieldId === "registerPassword") validateRegisterField(fieldId);
+  });
+});
+
+document.querySelectorAll("[data-password-toggle]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const input = $(`#${button.dataset.passwordToggle}`);
+    const isPassword = input.type === "password";
+    input.type = isPassword ? "text" : "password";
+    button.textContent = isPassword ? "Ocultar" : "Mostrar";
+    button.setAttribute("aria-label", isPassword ? "Ocultar senha" : "Mostrar senha");
+    button.setAttribute("aria-pressed", String(isPassword));
+  });
+});
+
+$("#logoutButton").addEventListener("click", logout);
+$("#showProfileButton").addEventListener("click", showProfile);
+$("#showProductsButton").addEventListener("click", () => navigate("products"));
+$("#backToAssistantButton").addEventListener("click", () => navigate("assistant"));
+$("#saveProductButton").addEventListener("click", saveProduct);
+$("#productEditorForm").addEventListener("submit", editCurrentProduct);
+
+$("#productSearch").addEventListener("input", () => {
+  clearTimeout(productSearchTimer);
+  productSearchTimer = setTimeout(() => void loadProducts(), 250);
+});
+$("#productSort").addEventListener("change", () => void loadProducts());
+$("#productsList").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-product-action]");
+  if (!button) return;
+  const { productAction: action, productId: id } = button.dataset;
+  if (action === "delete") return deleteProduct(id);
+
+  try {
+    const product = await getProduct(id);
+    if (action === "view") showProductDetails(product);
+    if (action === "edit") showProductEditor(product);
+    if (action === "reuse") reuseProduct(product);
+  } catch (error) {
+    setMessage($("#historyMessage"), messageFor(error));
+  }
+});
+$("#productDetails").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-dialog-product-action]");
+  if (!button || !state.selectedProduct) return;
+  const action = button.dataset.dialogProductAction;
+  if (action === "edit") showProductEditor(state.selectedProduct);
+  if (action === "reuse") reuseProduct(state.selectedProduct);
+  if (action === "delete") void deleteProduct(state.selectedProduct.id);
+});
+document.addEventListener("click", (event) => {
+  const closeButton = event.target.closest("[data-close-dialog]");
+  if (!closeButton) return;
+  closeButton.closest("dialog")?.close();
+});
+window.addEventListener("hashchange", () => void syncRoute());
+window.addEventListener("app:session-expired", () => {
+  state.user = null;
+  state.products = [];
+  state.selectedProduct = null;
+  window.history.replaceState(null, "", window.location.pathname);
+  showAuth("login", "Sua sessão expirou. Entre novamente para continuar.");
+});
+
+applyCategoryPreset(elements.productType.value, elements);
 render();
+
+async function bootstrap(attempt = 0) {
+  try {
+    const response = await api.get("/auth/me", { handleUnauthorized: false });
+    setAuthenticatedUser(response.user);
+  } catch (error) {
+    const isInactiveSession = error instanceof ApiError && error.status === 401;
+    if (!isInactiveSession && attempt < 2) {
+      window.setTimeout(() => void bootstrap(attempt + 1), 800);
+      return;
+    }
+    const message = error instanceof ApiError && error.status === 401
+      ? ""
+      : "Não foi possível conectar ao servidor.";
+    showAuth("login", message);
+  }
+}
+
+updatePasswordRequirements();
+void bootstrap();
