@@ -8,6 +8,11 @@
   --input: #ffffff;
   --sidebar: #eef5f0;
   --subtle-surface: #f3f7f4;
+  --notice-surface: #f6faf7;
+  --warning-surface: #fff2d8;
+  --risk-surface: #fae9e9;
+  --meter-track: #e7eee9;
+  --selected-surface: #f4fbf6;
   --green: #1f7a4d;
   --green-soft: #dff3e8;
   --teal: #176b73;
@@ -27,6 +32,11 @@
   --input: #0e1511;
   --sidebar: #101812;
   --subtle-surface: #101812;
+  --notice-surface: #13221a;
+  --warning-surface: #372a13;
+  --risk-surface: #381b1b;
+  --meter-track: #26342c;
+  --selected-surface: #15261b;
   --green: #3cc878;
   --green-soft: #153a25;
   --teal: #61c6ca;
@@ -357,12 +367,12 @@ input[type="range"] {
 
 .confidence.risk-badge {
   color: var(--red);
-  background: #fae9e9;
+  background: var(--risk-surface);
 }
 
 .confidence.warning-badge {
   color: var(--amber);
-  background: #fff2d8;
+  background: var(--warning-surface);
 }
 
 .recommendation-text {
@@ -426,7 +436,7 @@ input[type="range"] {
   margin: 20px 0 12px;
   overflow: hidden;
   border-radius: 8px;
-  background: #e7eee9;
+  background: var(--meter-track);
 }
 
 .market-meter span {
@@ -541,7 +551,8 @@ input[type="range"] {
 .explanation-list li,
 .alerts div {
   border-left: 4px solid var(--green);
-  background: #f6faf7;
+  background: var(--notice-surface);
+  color: var(--ink);
   border-radius: 6px;
   padding: 12px;
   line-height: 1.42;
@@ -655,7 +666,7 @@ input[type="range"] {
 
 .meli-result.selected {
   border-color: var(--green);
-  background: #f4fbf6;
+  background: var(--selected-surface);
 }
 
 .meli-result img,
