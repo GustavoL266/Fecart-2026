@@ -113,61 +113,93 @@
     </section>
 
     <main id="assistantView" class="app-shell" hidden>
-      <aside class="sidebar" aria-label="Dados financeiros da precificação">
-        <div class="brand">
-          <span class="brand-mark">PC</span>
-          <div>
-            <p class="eyebrow">Simulador financeiro</p>
-            <h1>Precificação por Custos</h1>
+      <aside class="sidebar pricing-sidebar" aria-label="Dados financeiros da precificação">
+        <header class="sidebar-header">
+          <div class="brand">
+            <span class="brand-mark">PC</span>
+            <div>
+              <p class="eyebrow">Simulador financeiro</p>
+              <h1>Precificação por Custos</h1>
+            </div>
           </div>
-        </div>
-
-        <section class="control-block">
-          <label for="productType">Tipo de produto</label>
-          <select id="productType">
-            <option value="comestiveis">Comestíveis</option>
-            <option value="domesticos">Domésticos</option>
-            <option value="eletrodomesticos">Eletrodomésticos</option>
-            <option value="vestuario">Vestuário</option>
-            <option value="cosmeticos">Cosméticos</option>
-            <option value="outros">Outros</option>
-          </select>
-        </section>
+          <p class="sidebar-description">Preencha os dados abaixo para calcular seu preço sustentável.</p>
+        </header>
 
         <section class="control-section" aria-labelledby="product-data-title">
           <p id="product-data-title" class="section-title">Produto</p>
           <div class="field-grid">
-            <label for="productName">Nome do produto</label>
-            <input id="productName" type="text" maxlength="160" placeholder="Ex.: Bolo de chocolate 1 kg" autocomplete="off" />
-            <label for="productDescription">Descrição (opcional)</label>
-            <textarea id="productDescription" maxlength="2000" rows="3" placeholder="Detalhes que ajudam a identificar esta consulta"></textarea>
+            <div class="sidebar-field">
+              <label for="productType">Tipo de produto</label>
+              <select id="productType">
+                <option value="comestiveis">Comestíveis</option>
+                <option value="domesticos">Domésticos</option>
+                <option value="eletrodomesticos">Eletrodomésticos</option>
+                <option value="vestuario">Vestuário</option>
+                <option value="cosmeticos">Cosméticos</option>
+                <option value="outros">Outros</option>
+              </select>
+            </div>
+            <div class="sidebar-field">
+              <label for="productName">Nome do produto</label>
+              <input id="productName" type="text" maxlength="160" placeholder="Ex.: Bolo de chocolate 1 kg" autocomplete="off" />
+            </div>
+            <div class="sidebar-field">
+              <label for="productDescription">Descrição <span>(opcional)</span></label>
+              <textarea id="productDescription" maxlength="2000" rows="4" placeholder="Detalhes que ajudam a identificar esta consulta"></textarea>
+            </div>
           </div>
         </section>
 
         <section class="control-section" aria-labelledby="direct-costs-title">
           <p id="direct-costs-title" class="section-title">Custos diretos</p>
           <div class="field-grid">
-            <label for="materialsCost">Insumos e matéria-prima (R$)</label>
-            <input id="materialsCost" type="number" min="0" step="0.01" value="12" />
+            <div class="sidebar-field">
+              <label for="materialsCost">Insumos e matéria-prima</label>
+              <div class="sidebar-input-wrap has-prefix">
+                <span class="input-affix input-prefix" aria-hidden="true">R$</span>
+                <input id="materialsCost" type="number" min="0" step="0.01" value="12" />
+              </div>
+            </div>
+            <div class="sidebar-field">
+              <label for="waste">Perda e desperdício</label>
+              <div class="sidebar-input-wrap has-suffix">
+                <input id="waste" type="text" inputmode="decimal" value="8" />
+                <span class="input-affix input-suffix" aria-hidden="true">%</span>
+              </div>
+            </div>
+            <div class="sidebar-field">
+              <label for="packagingCost">Embalagem e rotulagem</label>
+              <div class="sidebar-input-wrap has-prefix">
+                <span class="input-affix input-prefix" aria-hidden="true">R$</span>
+                <input id="packagingCost" type="number" min="0" step="0.01" value="2" />
+              </div>
+            </div>
+            <div class="sidebar-field">
+              <label for="deliveryCost">Frete ou entrega por venda</label>
+              <div class="sidebar-input-wrap has-prefix">
+                <span class="input-affix input-prefix" aria-hidden="true">R$</span>
+                <input id="deliveryCost" type="number" min="0" step="0.01" value="1.5" />
+              </div>
+            </div>
+          </div>
+        </section>
 
-            <label for="waste">Perda e desperdício (%)</label>
-            <input id="waste" type="text" inputmode="decimal" value="8" />
-
-            <label for="packagingCost">Embalagem e rotulagem (R$)</label>
-            <input id="packagingCost" type="number" min="0" step="0.01" value="2" />
-
-            <label for="deliveryCost">Frete ou entrega por venda (R$)</label>
-            <input id="deliveryCost" type="number" min="0" step="0.01" value="1.5" />
-
-            <label for="totalPayroll">Folha salarial mensal total (R$)</label>
-            <input id="totalPayroll" type="number" min="0" step="0.01" value="12600" />
-
-            <div class="two-columns">
-              <div>
+        <section class="control-section" aria-labelledby="production-title">
+          <p id="production-title" class="section-title">Produção</p>
+          <div class="field-grid">
+            <div class="sidebar-field">
+              <label for="totalPayroll">Folha salarial mensal</label>
+              <div class="sidebar-input-wrap has-prefix">
+                <span class="input-affix input-prefix" aria-hidden="true">R$</span>
+                <input id="totalPayroll" type="number" min="0" step="0.01" value="12600" />
+              </div>
+            </div>
+            <div class="sidebar-grid sidebar-grid--two">
+              <div class="sidebar-field">
                 <label for="workerCount">Número de trabalhadores</label>
                 <input id="workerCount" type="number" min="1" step="1" value="6" />
               </div>
-              <div>
+              <div class="sidebar-field">
                 <label for="outputPerWorkerHour">Produção por trabalhador/hora</label>
                 <input id="outputPerWorkerHour" type="number" min="0.01" step="0.01" value="12" />
               </div>
@@ -178,63 +210,101 @@
         <section class="control-section" aria-labelledby="fixed-costs-title">
           <p id="fixed-costs-title" class="section-title">Estrutura mensal</p>
           <div class="field-grid">
-            <label for="monthlyFixedCosts">Custos fixos mensais (R$)</label>
-            <input id="monthlyFixedCosts" type="number" min="0" step="0.01" value="16000" />
-
-            <label for="monthlyVolume">Operações previstas/mês</label>
-            <input id="monthlyVolume" type="number" min="1" step="1" value="4000" />
+            <div class="sidebar-field">
+              <label for="monthlyFixedCosts">Custos fixos mensais</label>
+              <div class="sidebar-input-wrap has-prefix">
+                <span class="input-affix input-prefix" aria-hidden="true">R$</span>
+                <input id="monthlyFixedCosts" type="number" min="0" step="0.01" value="16000" />
+              </div>
+            </div>
+            <div class="sidebar-field">
+              <label for="monthlyVolume">Operações previstas/mês</label>
+              <input id="monthlyVolume" type="number" min="1" step="1" value="4000" />
+            </div>
           </div>
         </section>
 
         <section class="control-section" aria-labelledby="sales-costs-title">
           <p id="sales-costs-title" class="section-title">Despesas sobre a venda</p>
-          <div class="three-columns">
-            <div>
-              <label for="taxRate">Impostos (%)</label>
-              <input id="taxRate" type="text" inputmode="decimal" value="6" />
+          <div class="sidebar-grid sidebar-grid--two sidebar-sales-grid">
+            <div class="sidebar-field">
+              <label for="taxRate">Impostos</label>
+              <div class="sidebar-input-wrap has-suffix">
+                <input id="taxRate" type="text" inputmode="decimal" value="6" />
+                <span class="input-affix input-suffix" aria-hidden="true">%</span>
+              </div>
             </div>
-            <div>
-              <label for="paymentFeeRate">Taxa de pagamento (%)</label>
-              <input id="paymentFeeRate" type="text" inputmode="decimal" value="2,8" />
+            <div class="sidebar-field">
+              <label for="paymentFeeRate">Taxa de pagamento</label>
+              <div class="sidebar-input-wrap has-suffix">
+                <input id="paymentFeeRate" type="text" inputmode="decimal" value="2,8" />
+                <span class="input-affix input-suffix" aria-hidden="true">%</span>
+              </div>
             </div>
-            <div>
-              <label for="commissionRate">Comissão (%)</label>
-              <input id="commissionRate" type="text" inputmode="decimal" value="0" />
+            <div class="sidebar-field">
+              <label for="commissionRate">Comissão</label>
+              <div class="sidebar-input-wrap has-suffix">
+                <input id="commissionRate" type="text" inputmode="decimal" value="0" />
+                <span class="input-affix input-suffix" aria-hidden="true">%</span>
+              </div>
             </div>
           </div>
         </section>
 
-        <section class="control-section" aria-labelledby="financial-title">
-          <p id="financial-title" class="section-title">Meta e caixa</p>
+        <section class="control-section" aria-labelledby="market-title">
+          <p id="market-title" class="section-title">Meta e mercado</p>
           <div class="field-grid">
-            <label for="margin">Margem líquida desejada (%)</label>
-            <input id="margin" type="text" inputmode="decimal" value="18" />
-
-            <label for="competitorAverage">Preço médio local dos concorrentes (R$)</label>
-            <input id="competitorAverage" type="number" min="0.01" max="1000000" step="0.01" value="32" />
-
+            <div class="sidebar-field">
+              <label for="margin">Margem líquida desejada</label>
+              <div class="sidebar-input-wrap has-suffix">
+                <input id="margin" type="text" inputmode="decimal" value="18" />
+                <span class="input-affix input-suffix" aria-hidden="true">%</span>
+              </div>
+            </div>
+            <div class="sidebar-field">
+              <label for="competitorAverage">Preço médio local dos concorrentes</label>
+              <div class="sidebar-input-wrap has-prefix">
+                <span class="input-affix input-prefix" aria-hidden="true">R$</span>
+                <input id="competitorAverage" type="number" min="0.01" max="1000000" step="0.01" value="32" />
+              </div>
+            </div>
             <div class="market-search">
               <label for="meliQuery">Produto no Mercado Livre</label>
               <div class="search-row">
                 <input id="meliQuery" type="text" placeholder="Ex.: iPhone 13 128GB" autocomplete="off" />
-                <button id="meliSearchButton" type="button">Pesquisar</button>
+                <button id="meliSearchButton" class="market-search-button" type="button">Pesquisar</button>
               </div>
               <p id="meliSearchStatus" class="helper-text">Use a consulta para substituir a média manual por dados reais quando desejar.</p>
             </div>
+          </div>
+        </section>
 
-            <div class="two-columns">
-              <div>
-                <label for="receiveDays">Recebimento (dias)</label>
-                <input id="receiveDays" type="number" min="0" step="1" value="7" />
+        <section class="control-section" aria-labelledby="capital-title">
+          <p id="capital-title" class="section-title">Prazos e capital</p>
+          <div class="field-grid">
+            <div class="sidebar-grid sidebar-grid--two">
+              <div class="sidebar-field">
+                <label for="receiveDays">Recebimento</label>
+                <div class="sidebar-input-wrap has-suffix">
+                  <input id="receiveDays" type="number" min="0" step="1" value="7" />
+                  <span class="input-affix input-suffix" aria-hidden="true">dias</span>
+                </div>
               </div>
-              <div>
-                <label for="payDays">Pagamento (dias)</label>
-                <input id="payDays" type="number" min="0" step="1" value="14" />
+              <div class="sidebar-field">
+                <label for="payDays">Pagamento</label>
+                <div class="sidebar-input-wrap has-suffix">
+                  <input id="payDays" type="number" min="0" step="1" value="14" />
+                  <span class="input-affix input-suffix" aria-hidden="true">dias</span>
+                </div>
               </div>
             </div>
-
-            <label for="capitalRate">Custo do capital/mês (%)</label>
-            <input id="capitalRate" type="text" inputmode="decimal" value="2,5" />
+            <div class="sidebar-field">
+              <label for="capitalRate">Custo do capital/mês</label>
+              <div class="sidebar-input-wrap has-suffix">
+                <input id="capitalRate" type="text" inputmode="decimal" value="2,5" />
+                <span class="input-affix input-suffix" aria-hidden="true">%</span>
+              </div>
+            </div>
           </div>
         </section>
       </aside>
