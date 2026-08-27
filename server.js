@@ -254,6 +254,7 @@ app.delete("/products/:id", requireAuth, async (req, res, next) => {
 
 app.get(["/", "/index.html"], (req, res) => res.sendFile(resolve(projectRoot, "index.html")));
 app.get("/styles.css", (req, res) => res.sendFile(resolve(projectRoot, "styles.css")));
+app.get("/favicon.svg", (req, res) => res.sendFile(resolve(projectRoot, "favicon.svg")));
 app.get("/file-protocol-redirect.js", (req, res) => res.sendFile(resolve(projectRoot, "file-protocol-redirect.js")));
 app.get("/app.js", (req, res) => res.sendFile(resolve(projectRoot, "app.js")));
 
