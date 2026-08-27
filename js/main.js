@@ -543,6 +543,9 @@ $("#meliResults").addEventListener("click", (event) => {
 
 $("#showLoginButton").addEventListener("click", () => showAuth("login"));
 $("#showRegisterButton").addEventListener("click", () => showAuth("register"));
+document.querySelectorAll("[data-auth-switch]").forEach((button) => {
+  button.addEventListener("click", () => showAuth(button.dataset.authSwitch));
+});
 $("#loginForm").addEventListener("submit", submitLogin);
 $("#registerForm").addEventListener("submit", submitRegistration);
 
@@ -637,6 +640,10 @@ async function bootstrap(attempt = 0) {
     const response = await api.get("/auth/me", { handleUnauthorized: false });
     setAuthenticatedUser(response.user);
   } catch (error) {
+    if (error instanceof ApiError && error.code === "STATIC_HOSTING") {
+      showAuth("login", error.message);
+      return;
+    }
     const isInactiveSession = error instanceof ApiError && error.status === 401;
     if (!isInactiveSession && attempt < 2) {
       window.setTimeout(() => void bootstrap(attempt + 1), 800);

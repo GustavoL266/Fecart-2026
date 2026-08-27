@@ -15,27 +15,29 @@
         <div class="brand">
           <span class="brand-mark">PC</span>
           <div>
-            <p class="eyebrow">Assistente de Precificação</p>
+            <p class="auth-brand-name">Assistente de<br />Precificação</p>
           </div>
         </div>
         <div class="auth-copy">
-          <h1>Decisões mais rentáveis, com segurança.</h1>
+          <p class="auth-kicker">Assistente de Precificação</p>
+          <h1>Decisões mais rentáveis, com <span>segurança.</span></h1>
           <p>Calcule, salve e reutilize suas precificações em uma área exclusiva para sua conta.</p>
         </div>
         <div class="auth-benefits" aria-label="Benefícios da plataforma">
           <article class="auth-benefit">
-            <span class="benefit-icon" aria-hidden="true">✓</span>
-            <div><strong>Seus dados protegidos</strong><span>Segurança e privacidade para a sua operação.</span></div>
+            <span class="benefit-icon" aria-hidden="true">⌾</span>
+            <div><strong>Seus dados protegidos</strong><span>Segurança e privacidade.</span></div>
           </article>
           <article class="auth-benefit">
-            <span class="benefit-icon" aria-hidden="true">↺</span>
-            <div><strong>Histórico inteligente</strong><span>Acompanhe e reutilize suas precificações.</span></div>
+            <span class="benefit-icon" aria-hidden="true">▥</span>
+            <div><strong>Histórico inteligente</strong><span>Acompanhe e reutilize.</span></div>
           </article>
           <article class="auth-benefit">
-            <span class="benefit-icon" aria-hidden="true">↗</span>
-            <div><strong>Mais eficiência</strong><span>Decida com rapidez e tenha mais controle.</span></div>
+            <span class="benefit-icon" aria-hidden="true">ϟ</span>
+            <div><strong>Mais eficiência no dia a dia</strong><span>Decida com rapidez.</span></div>
           </article>
         </div>
+        <p class="auth-footer">© 2026 Assistente de Precificação. Todos os direitos reservados.</p>
       </div>
 
       <div class="auth-card">
@@ -48,9 +50,8 @@
 
         <form id="loginForm" class="auth-form" novalidate>
           <div class="auth-form-heading">
-            <p class="eyebrow">Acesse sua conta</p>
-            <h2 id="loginTitle">Boas-vindas de volta</h2>
-            <p>Entre para acessar seus produtos e precificações.</p>
+            <span class="auth-heading-icon" aria-hidden="true">↪</span>
+            <div><p class="eyebrow">Acesse sua conta</p><h2 id="loginTitle">Boas-vindas de volta</h2><p>Entre para acessar seus produtos e precificações.</p></div>
           </div>
           <div class="auth-field" data-field="loginEmail">
             <label for="loginEmail">E-mail</label>
@@ -66,13 +67,13 @@
             <p id="loginPasswordError" class="field-error" role="alert" hidden></p>
           </div>
           <button id="loginSubmitButton" type="submit" class="auth-submit"><span>Entrar</span><span aria-hidden="true">→</span></button>
+          <p class="auth-mode-hint">Ainda não possui conta? <button type="button" data-auth-switch="register">Criar conta</button></p>
         </form>
 
         <form id="registerForm" class="auth-form" novalidate hidden>
           <div class="auth-form-heading">
-            <p class="eyebrow">Nova conta</p>
-            <h2>Crie sua conta</h2>
-            <p>Comece a salvar suas decisões de precificação.</p>
+            <span class="auth-heading-icon" aria-hidden="true">♙</span>
+            <div><p class="eyebrow">Nova conta</p><h2>Crie sua conta</h2><p>Preencha os dados para começar.</p></div>
           </div>
           <div class="auth-field" data-field="registerName">
             <label for="registerName">Nome completo</label>
@@ -84,31 +85,27 @@
             <input id="registerEmail" name="email" type="email" autocomplete="email" placeholder="seu@email.com" required maxlength="320" aria-describedby="registerEmailError" />
             <p id="registerEmailError" class="field-error" role="alert" hidden></p>
           </div>
-          <div class="auth-field" data-field="registerPassword">
-            <label for="registerPassword">Senha</label>
-            <div class="password-control">
-              <input id="registerPassword" name="password" type="password" autocomplete="new-password" placeholder="Mínimo de 8 caracteres" required minlength="8" maxlength="72" aria-describedby="registerPasswordError passwordRequirements" />
-              <button type="button" class="password-toggle" data-password-toggle="registerPassword" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button>
+          <div class="auth-password-row">
+            <div class="auth-field" data-field="registerPassword">
+              <label for="registerPassword">Senha</label>
+              <div class="password-control">
+                <input id="registerPassword" name="password" type="password" autocomplete="new-password" placeholder="Mínimo de 8 caracteres" required minlength="8" maxlength="72" aria-describedby="registerPasswordError passwordRequirements" />
+                <button type="button" class="password-toggle" data-password-toggle="registerPassword" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button>
+              </div>
+              <p id="registerPasswordError" class="field-error" role="alert" hidden></p>
             </div>
-            <p id="registerPasswordError" class="field-error" role="alert" hidden></p>
-            <div id="passwordRequirements" class="password-requirements" aria-live="polite">
-              <span>Sua senha deve conter:</span>
-              <ul>
-                <li data-password-rule="length">Pelo menos 8 caracteres</li>
-                <li data-password-rule="letter">Pelo menos 1 letra</li>
-                <li data-password-rule="number">Pelo menos 1 número</li>
-              </ul>
+            <div class="auth-field" data-field="registerPasswordConfirmation">
+              <label for="registerPasswordConfirmation">Confirmar senha</label>
+              <div class="password-control">
+                <input id="registerPasswordConfirmation" name="passwordConfirmation" type="password" autocomplete="new-password" placeholder="Repita sua senha" required minlength="8" maxlength="72" aria-describedby="registerPasswordConfirmationError" />
+                <button type="button" class="password-toggle" data-password-toggle="registerPasswordConfirmation" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button>
+              </div>
+              <p id="registerPasswordConfirmationError" class="field-error" role="alert" hidden></p>
             </div>
           </div>
-          <div class="auth-field" data-field="registerPasswordConfirmation">
-            <label for="registerPasswordConfirmation">Confirmar senha</label>
-            <div class="password-control">
-              <input id="registerPasswordConfirmation" name="passwordConfirmation" type="password" autocomplete="new-password" placeholder="Repita sua senha" required minlength="8" maxlength="72" aria-describedby="registerPasswordConfirmationError" />
-              <button type="button" class="password-toggle" data-password-toggle="registerPasswordConfirmation" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button>
-            </div>
-            <p id="registerPasswordConfirmationError" class="field-error" role="alert" hidden></p>
-          </div>
+          <div id="passwordRequirements" class="password-requirements" aria-live="polite"><span>Sua senha deve conter:</span><ul><li data-password-rule="length">No mínimo 8 caracteres</li><li data-password-rule="letter">Pelo menos 1 letra</li><li data-password-rule="number">Pelo menos 1 número</li></ul></div>
           <button id="registerSubmitButton" type="submit" class="auth-submit"><span>Criar conta</span><span aria-hidden="true">→</span></button>
+          <p class="auth-mode-hint">Já tem uma conta? <button type="button" data-auth-switch="login">Fazer login</button></p>
         </form>
       </div>
     </section>

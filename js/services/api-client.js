@@ -1,13 +1,25 @@
 export class ApiError extends Error {
-  constructor(message, status = 0) {
+  constructor(message, status = 0, code = "") {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
+}
+
+function isGitHubPages() {
+  return window.location.hostname.endsWith(".github.io");
 }
 
 async function request(path, options = {}) {
   const { method = "GET", body, handleUnauthorized = true } = options;
+  if (isGitHubPages() && (path.startsWith("/auth") || path.startsWith("/products"))) {
+    throw new ApiError(
+      "Este endereço do GitHub Pages exibe apenas a interface. Abra a URL da aplicação no Render para criar ou acessar sua conta.",
+      503,
+      "STATIC_HOSTING",
+    );
+  }
   let response;
   try {
     response = await fetch(path, {

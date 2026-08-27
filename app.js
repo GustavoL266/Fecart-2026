@@ -320,15 +320,27 @@ class MercadoLivreService {
 
 
 class ApiError extends Error {
-  constructor(message, status = 0) {
+  constructor(message, status = 0, code = "") {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
+}
+
+function isGitHubPages() {
+  return window.location.hostname.endsWith(".github.io");
 }
 
 async function request(path, options = {}) {
   const { method = "GET", body, handleUnauthorized = true } = options;
+  if (isGitHubPages() && (path.startsWith("/auth") || path.startsWith("/products"))) {
+    throw new ApiError(
+      "Este endereço do GitHub Pages exibe apenas a interface. Abra a URL da aplicação no Render para criar ou acessar sua conta.",
+      503,
+      "STATIC_HOSTING",
+    );
+  }
   let response;
   try {
     response = await fetch(path, {
@@ -1235,6 +1247,9 @@ $("#meliResults").addEventListener("click", (event) => {
 
 $("#showLoginButton").addEventListener("click", () => showAuth("login"));
 $("#showRegisterButton").addEventListener("click", () => showAuth("register"));
+document.querySelectorAll("[data-auth-switch]").forEach((button) => {
+  button.addEventListener("click", () => showAuth(button.dataset.authSwitch));
+});
 $("#loginForm").addEventListener("submit", submitLogin);
 $("#registerForm").addEventListener("submit", submitRegistration);
 
@@ -1329,6 +1344,10 @@ async function bootstrap(attempt = 0) {
     const response = await api.get("/auth/me", { handleUnauthorized: false });
     setAuthenticatedUser(response.user);
   } catch (error) {
+    if (error instanceof ApiError && error.code === "STATIC_HOSTING") {
+      showAuth("login", error.message);
+      return;
+    }
     const isInactiveSession = error instanceof ApiError && error.status === 401;
     if (!isInactiveSession && attempt < 2) {
       window.setTimeout(() => void bootstrap(attempt + 1), 800);
