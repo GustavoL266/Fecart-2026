@@ -5,12 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Precificação por Custos</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <script src="theme-init.js"></script>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div id="bootScreen" class="boot-screen" role="status">Carregando sua sessão…</div>
 
     <section id="authView" class="auth-view" aria-labelledby="loginTitle" hidden>
+      <button type="button" class="theme-toggle auth-theme-toggle" data-theme-toggle aria-label="Ativar modo claro" aria-pressed="false"><span class="theme-symbol" aria-hidden="true">☾</span><span data-theme-label>Modo claro</span></button>
       <div class="auth-intro">
         <div class="brand">
           <span class="brand-mark">PC</span>
@@ -245,6 +247,7 @@
           </div>
           <div class="user-menu" aria-label="Menu da conta">
             <span id="currentUserName" class="user-name"></span>
+            <button type="button" class="theme-toggle" data-theme-toggle aria-label="Ativar modo escuro" aria-pressed="false"><span class="theme-symbol" aria-hidden="true">☼</span><span data-theme-label>Modo escuro</span></button>
             <button id="showProfileButton" type="button" class="secondary-button">Meu perfil</button>
             <button id="showProductsButton" type="button" class="secondary-button">Meus produtos</button>
             <button id="logoutButton" type="button" class="logout-button">Sair</button>

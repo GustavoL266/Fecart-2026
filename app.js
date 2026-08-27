@@ -710,6 +710,7 @@ function renderProductDetails(container, product) {
 
 
 const $ = (selector) => document.querySelector(selector);
+const themeStorageKey = "assistente-precificacao-theme";
 const mercadoLivre = new MercadoLivreService();
 const formFieldIds = [
   "productType",
@@ -750,6 +751,31 @@ let meliState = {
   error: "",
 };
 let productSearchTimer;
+
+function applyTheme(theme, persist = true) {
+  const normalizedTheme = theme === "dark" ? "dark" : "light";
+  const isDark = normalizedTheme === "dark";
+  document.documentElement.dataset.theme = normalizedTheme;
+  document.documentElement.style.colorScheme = normalizedTheme;
+  if (persist) {
+    try {
+      localStorage.setItem(themeStorageKey, normalizedTheme);
+    } catch {
+      // O tema continua funcionando mesmo que o armazenamento esteja indisponível.
+    }
+  }
+  document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
+    const nextThemeLabel = isDark ? "Modo claro" : "Modo escuro";
+    button.setAttribute("aria-label", `Ativar ${nextThemeLabel.toLowerCase()}`);
+    button.setAttribute("aria-pressed", String(isDark));
+    button.querySelector("[data-theme-label]").textContent = nextThemeLabel;
+    button.querySelector(".theme-symbol").textContent = isDark ? "☼" : "☾";
+  });
+}
+
+function toggleTheme() {
+  applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+}
 
 function messageFor(error) {
   return error instanceof ApiError ? error.message : "Não foi possível concluir a operação. Tente novamente.";
@@ -1247,6 +1273,7 @@ $("#meliResults").addEventListener("click", (event) => {
 
 $("#showLoginButton").addEventListener("click", () => showAuth("login"));
 $("#showRegisterButton").addEventListener("click", () => showAuth("register"));
+document.querySelectorAll("[data-theme-toggle]").forEach((button) => button.addEventListener("click", toggleTheme));
 document.querySelectorAll("[data-auth-switch]").forEach((button) => {
   button.addEventListener("click", () => showAuth(button.dataset.authSwitch));
 });
@@ -1337,6 +1364,7 @@ window.addEventListener("app:session-expired", () => {
 });
 
 applyCategoryPreset(elements.productType.value, elements);
+applyTheme(document.documentElement.dataset.theme, false);
 render();
 
 async function bootstrap(attempt = 0) {
