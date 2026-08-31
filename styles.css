@@ -1783,6 +1783,71 @@ tr:last-child td {
   text-underline-offset: 3px;
 }
 
+.auth-inline-link {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -8px;
+}
+
+.auth-inline-link button,
+.auth-secondary-actions button {
+  min-height: auto;
+  border: 0;
+  background: transparent;
+  color: #42d77d;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 750;
+  padding: 2px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.auth-inline-link button:hover,
+.auth-inline-link button:focus-visible,
+.auth-secondary-actions button:hover,
+.auth-secondary-actions button:focus-visible {
+  color: #72e8a2;
+}
+
+.auth-secondary-actions {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  border-top: 1px solid rgba(166, 182, 172, 0.13);
+  color: #a3aca6;
+  font-size: 0.88rem;
+  padding-top: 16px;
+  text-align: center;
+}
+
+.auth-secondary-actions p {
+  margin: 0;
+}
+
+.auth-secondary-actions button:disabled {
+  color: #778079;
+  cursor: wait;
+  text-decoration: none;
+}
+
+.verification-field input {
+  font-size: clamp(1.7rem, 5vw, 2.2rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: 0.45em;
+  padding-left: calc(0.45em + 14px);
+  text-align: center;
+}
+
+.auth-success-panel {
+  text-align: left;
+}
+
+.auth-success-panel .auth-heading-icon {
+  background: rgba(48, 204, 108, 0.2);
+}
+
 .form-message {
   border-color: rgba(246, 119, 119, 0.48);
   background: rgba(123, 33, 33, 0.22);
@@ -2019,6 +2084,15 @@ tr:last-child td {
 
 :root[data-theme="light"] .auth-mode-hint {
   border-color: #dce6df;
+}
+
+:root[data-theme="light"] .auth-secondary-actions {
+  border-color: #dce6df;
+  color: #64716c;
+}
+
+:root[data-theme="light"] .auth-secondary-actions button:disabled {
+  color: #89958e;
 }
 
 :root[data-theme="light"] .form-message {

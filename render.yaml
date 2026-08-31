@@ -20,6 +20,12 @@ services:
         fromDatabase:
           name: assistente-precificacao-db
           property: connectionString
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: APP_URL
+        sync: false
 
 databases:
   - name: assistente-precificacao-db

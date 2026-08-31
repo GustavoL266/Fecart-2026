@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { hashPassword, verifyPassword } from "../lib/passwords.js";
-import { productSchema, registerSchema, validate } from "../lib/validation.js";
+import { loginVerificationSchema, productSchema, registerSchema, resetPasswordSchema, validate } from "../lib/validation.js";
 
 test("gera hash bcrypt verificável sem manter a senha em texto puro", async () => {
   const password = "senha-segura-123";
@@ -40,6 +40,19 @@ test("rejeita senha sem letra, sem número ou confirmação diferente", () => {
   assert.equal(registerSchema.safeParse({ ...baseRegistration, password: "somenteletras", passwordConfirmation: "somenteletras" }).success, false);
   assert.equal(registerSchema.safeParse({ ...baseRegistration, password: "12345678", passwordConfirmation: "12345678" }).success, false);
   assert.equal(registerSchema.safeParse({ ...baseRegistration, passwordConfirmation: "senha-outra-123" }).success, false);
+});
+
+test("aceita somente código de login com 6 dígitos", () => {
+  assert.equal(loginVerificationSchema.safeParse({ code: "042019" }).success, true);
+  assert.equal(loginVerificationSchema.safeParse({ code: "42019" }).success, false);
+  assert.equal(loginVerificationSchema.safeParse({ code: "ABC123" }).success, false);
+});
+
+test("aplica as mesmas regras fortes à redefinição de senha", () => {
+  const validReset = { token: "token-temporario", password: "nova-senha-123", passwordConfirmation: "nova-senha-123" };
+  assert.equal(resetPasswordSchema.safeParse(validReset).success, true);
+  assert.equal(resetPasswordSchema.safeParse({ ...validReset, password: "so-letras", passwordConfirmation: "so-letras" }).success, false);
+  assert.equal(resetPasswordSchema.safeParse({ ...validReset, passwordConfirmation: "outra-senha-456" }).success, false);
 });
 
 test("rejeita produto com margem fora dos limites", () => {

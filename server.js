@@ -9,14 +9,45 @@ import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import { getConfig } from "./lib/config.js";
 import { pool, verifyDatabase } from "./lib/database.js";
+import { sendLoginVerificationEmail, sendPasswordResetEmail } from "./lib/email.js";
 import { productForClient, userForClient } from "./lib/models.js";
 import { hashPassword, verifyPassword } from "./lib/passwords.js";
-import { loginSchema, productIdSchema, productListSchema, productSchema, registerSchema, validate } from "./lib/validation.js";
+import {
+  generateLoginCode,
+  generatePasswordResetToken,
+  hashesMatch,
+  hashLoginCode,
+  hashPasswordResetToken,
+  hashRateLimitKey,
+  LOGIN_CODE_MAX_ATTEMPTS,
+  LOGIN_CODE_RESEND_DELAY_MS,
+  LOGIN_CODE_TTL_MS,
+  LOGIN_CODE_WINDOW_LIMIT,
+  LOGIN_CODE_WINDOW_MS,
+  loginVerificationStatus,
+  parsePasswordResetToken,
+  PASSWORD_RESET_TTL_MS,
+  passwordResetStatus,
+} from "./lib/auth-security.js";
+import {
+  forgotPasswordSchema,
+  loginSchema,
+  loginVerificationSchema,
+  productIdSchema,
+  productListSchema,
+  productSchema,
+  registerSchema,
+  resetPasswordSchema,
+  resetTokenSchema,
+  validate,
+} from "./lib/validation.js";
 
 const config = getConfig();
 const projectRoot = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PgSession = connectPgSimple(session);
+const genericPasswordResetMessage = "Se existir uma conta com este e-mail, enviaremos as instruções para redefinir sua senha.";
+const dummyPasswordHashPromise = hashPassword("comparacao-temporal-sem-usuario-48291");
 
 app.disable("x-powered-by");
 if (config.secureCookie) app.set("trust proxy", 1);
@@ -61,13 +92,251 @@ app.use(
   }),
 );
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 15,
-  standardHeaders: "draft-8",
-  legacyHeaders: false,
-  message: { error: "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente." },
-});
+function createRateLimiter(limit, windowMs = 15 * 60 * 1000) {
+  return rateLimit({
+    windowMs,
+    limit,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: { error: "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente." },
+  });
+}
+
+const registrationLimiter = createRateLimiter(10);
+const loginLimiter = createRateLimiter(10);
+const verificationLimiter = createRateLimiter(15);
+const resendLimiter = createRateLimiter(5);
+const forgotPasswordLimiter = createRateLimiter(5);
+const resetPasswordLimiter = createRateLimiter(10);
+
+function httpError(message, status, code) {
+  const error = new Error(message);
+  error.status = status;
+  error.code = code;
+  return error;
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
+}
+
+async function consumeIdentifierRateLimit(action, identifier, limit, windowMs) {
+  const keyHash = hashRateLimitKey(identifier, config.sessionSecret);
+  const { rows } = await pool.query(
+    `INSERT INTO auth_rate_limits (action, key_hash, window_started_at, attempts, updated_at)
+     VALUES ($1, $2, NOW(), 1, NOW())
+     ON CONFLICT (action, key_hash) DO UPDATE SET
+       attempts = CASE
+         WHEN auth_rate_limits.window_started_at <= NOW() - ($3::double precision * INTERVAL '1 millisecond') THEN 1
+         ELSE auth_rate_limits.attempts + 1
+       END,
+       window_started_at = CASE
+         WHEN auth_rate_limits.window_started_at <= NOW() - ($3::double precision * INTERVAL '1 millisecond') THEN NOW()
+         ELSE auth_rate_limits.window_started_at
+       END,
+       updated_at = NOW()
+     RETURNING attempts`,
+    [action, keyHash, windowMs],
+  );
+  return Number(rows[0].attempts) <= limit;
+}
+
+async function createLoginVerification(user, minimumIntervalMs) {
+  const verificationId = randomUUID();
+  const code = generateLoginCode();
+  const codeHash = hashLoginCode(code, verificationId, config.sessionSecret);
+  const expiresAt = new Date(Date.now() + LOGIN_CODE_TTL_MS);
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [user.id]);
+    const { rows } = await client.query(
+      `SELECT created_at, COUNT(*) OVER ()::integer AS recent_count
+       FROM login_verifications
+       WHERE user_id = $1 AND created_at > NOW() - ($2::double precision * INTERVAL '1 millisecond')
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [user.id, LOGIN_CODE_WINDOW_MS],
+    );
+    const latest = rows[0];
+    if (latest && Number(latest.recent_count) >= LOGIN_CODE_WINDOW_LIMIT) {
+      throw httpError("Muitas solicitações de código. Aguarde alguns minutos e tente novamente.", 429, "LOGIN_CODE_RATE_LIMIT");
+    }
+    if (latest && Date.now() - new Date(latest.created_at).getTime() < minimumIntervalMs) {
+      throw httpError("Aguarde alguns segundos antes de solicitar outro código.", 429, "LOGIN_CODE_COOLDOWN");
+    }
+
+    await client.query("UPDATE login_verifications SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL", [user.id]);
+    await client.query(
+      `INSERT INTO login_verifications (id, user_id, code_hash, expires_at)
+       VALUES ($1, $2, $3, $4)`,
+      [verificationId, user.id, codeHash, expiresAt],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  try {
+    const providerId = await sendLoginVerificationEmail(config, user.email, code);
+    console.info(`[auth] Código de login enviado: verification=${verificationId} provider=${providerId}`);
+  } catch (error) {
+    await pool.query("UPDATE login_verifications SET used_at = NOW() WHERE id = $1", [verificationId]);
+    console.error(`[auth] Falha ao enviar código de login (${error.code || "EMAIL_ERROR"}): ${error.message}`);
+    throw httpError("Não foi possível enviar o código de acesso. Tente novamente em instantes.", 503, "LOGIN_CODE_DELIVERY_FAILED");
+  }
+
+  return { id: verificationId, expiresAt };
+}
+
+async function setPendingLogin(req, userId, verificationId, regenerate = false) {
+  if (regenerate) await sessionRegenerate(req);
+  req.session.pendingLogin = { userId, verificationId };
+  delete req.session.userId;
+  await sessionSave(req);
+}
+
+async function attemptLoginVerification(pendingLogin, code) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query(
+      `SELECT lv.*, u.name, u.email, u.created_at AS user_created_at, u.updated_at AS user_updated_at
+       FROM login_verifications lv
+       JOIN users u ON u.id = lv.user_id
+       WHERE lv.id = $1 AND lv.user_id = $2
+       FOR UPDATE OF lv`,
+      [pendingLogin.verificationId, pendingLogin.userId],
+    );
+    const verification = rows[0];
+    const status = loginVerificationStatus(verification);
+    if (status !== "active") {
+      await client.query("COMMIT");
+      return { status };
+    }
+
+    const candidateHash = hashLoginCode(code, verification.id, config.sessionSecret);
+    if (!hashesMatch(candidateHash, verification.code_hash)) {
+      const attempts = Number(verification.attempts) + 1;
+      await client.query("UPDATE login_verifications SET attempts = $2 WHERE id = $1", [verification.id, attempts]);
+      await client.query("COMMIT");
+      return { status: attempts >= LOGIN_CODE_MAX_ATTEMPTS ? "attempts_exceeded" : "incorrect" };
+    }
+
+    await client.query("UPDATE login_verifications SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL", [verification.user_id]);
+    await client.query("COMMIT");
+    return {
+      status: "verified",
+      user: {
+        id: verification.user_id,
+        name: verification.name,
+        email: verification.email,
+        created_at: verification.user_created_at,
+        updated_at: verification.user_updated_at,
+      },
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function createPasswordReset(user) {
+  const tokenId = randomUUID();
+  const token = generatePasswordResetToken(tokenId);
+  const parsed = parsePasswordResetToken(token);
+  const tokenHash = hashPasswordResetToken(parsed.secret, tokenId, config.sessionSecret);
+  const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [user.id]);
+    await client.query("UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL", [user.id]);
+    await client.query(
+      `INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3, $4)`,
+      [tokenId, user.id, tokenHash, expiresAt],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  try {
+    const resetUrl = `${config.appUrl}/reset-password?token=${encodeURIComponent(token)}`;
+    const providerId = await sendPasswordResetEmail(config, user.email, resetUrl);
+    console.info(`[auth] E-mail de recuperação enviado: reset=${tokenId} provider=${providerId}`);
+  } catch (error) {
+    await pool.query("UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1", [tokenId]);
+    console.error(`[auth] Falha ao enviar recuperação de senha (${error.code || "EMAIL_ERROR"}): ${error.message}`);
+  }
+}
+
+async function applyPasswordReset(parsedToken, passwordHash) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query(
+      `SELECT pr.*
+       FROM password_reset_tokens pr
+       JOIN users u ON u.id = pr.user_id
+       WHERE pr.id = $1
+       FOR UPDATE OF pr`,
+      [parsedToken.id],
+    );
+    const resetToken = rows[0];
+    if (!resetToken) {
+      await client.query("COMMIT");
+      return "invalid";
+    }
+
+    const candidateHash = hashPasswordResetToken(parsedToken.secret, parsedToken.id, config.sessionSecret);
+    if (!hashesMatch(candidateHash, resetToken.token_hash)) {
+      await client.query("COMMIT");
+      return "invalid";
+    }
+
+    const status = passwordResetStatus(resetToken);
+    if (status !== "active") {
+      await client.query("COMMIT");
+      return status;
+    }
+
+    await client.query("UPDATE users SET password_hash = $2 WHERE id = $1", [resetToken.user_id, passwordHash]);
+    await client.query("UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL", [resetToken.user_id]);
+    await client.query("UPDATE login_verifications SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL", [resetToken.user_id]);
+    await client.query("DELETE FROM user_sessions WHERE sess->>'userId' = $1", [resetToken.user_id]);
+    await client.query("COMMIT");
+    console.info(`[auth] Senha redefinida e sessões invalidadas: user=${resetToken.user_id}`);
+    return "reset";
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function isPasswordResetTokenValid(parsedToken) {
+  const { rows } = await pool.query(
+    "SELECT token_hash, expires_at, used_at FROM password_reset_tokens WHERE id = $1",
+    [parsedToken.id],
+  );
+  const resetToken = rows[0];
+  if (!resetToken) return false;
+  const candidateHash = hashPasswordResetToken(parsedToken.secret, parsedToken.id, config.sessionSecret);
+  return hashesMatch(candidateHash, resetToken.token_hash) && passwordResetStatus(resetToken) === "active";
+}
 
 function sessionRegenerate(req) {
   return new Promise((resolvePromise, reject) => req.session.regenerate((error) => (error ? reject(error) : resolvePromise())));
@@ -105,7 +374,7 @@ function productColumns(includeCalculation = true) {
   return `id, name, description, category, cost_price, additional_costs, profit_margin, suggested_price, marketplace, consultation_date, created_at, updated_at${calculation}`;
 }
 
-app.post("/auth/register", authLimiter, async (req, res, next) => {
+app.post("/auth/register", registrationLimiter, async (req, res, next) => {
   try {
     const input = validate(registerSchema, req.body);
     const passwordHash = await hashPassword(input.password);
@@ -123,16 +392,115 @@ app.post("/auth/register", authLimiter, async (req, res, next) => {
   }
 });
 
-app.post("/auth/login", authLimiter, async (req, res, next) => {
+app.post("/auth/login", loginLimiter, async (req, res, next) => {
   try {
     const input = validate(loginSchema, req.body);
     const { rows } = await pool.query("SELECT id, name, email, password_hash, created_at, updated_at FROM users WHERE email = $1", [input.email]);
     const user = rows[0];
-    const validPassword = user && (await verifyPassword(input.password, user.password_hash));
-    if (!validPassword) return res.status(401).json({ error: "E-mail ou senha inválidos." });
+    const passwordHash = user?.password_hash || (await dummyPasswordHashPromise);
+    const validPassword = await verifyPassword(input.password, passwordHash);
+    if (!user || !validPassword) return res.status(401).json({ error: "E-mail ou senha inválidos." });
 
-    await authenticateSession(req, user);
-    return res.json({ user: userForClient(user) });
+    const verification = await createLoginVerification(user, 0);
+    await setPendingLogin(req, user.id, verification.id, true);
+    return res.status(202).json({
+      requiresVerification: true,
+      expiresInSeconds: Math.round(LOGIN_CODE_TTL_MS / 1000),
+      resendAfterSeconds: Math.round(LOGIN_CODE_RESEND_DELAY_MS / 1000),
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/auth/verify-login", verificationLimiter, async (req, res, next) => {
+  try {
+    const input = validate(loginVerificationSchema, req.body);
+    const pendingLogin = req.session.pendingLogin;
+    if (!pendingLogin) return res.status(400).json({ error: "Inicie o login novamente para solicitar um novo código." });
+
+    const result = await attemptLoginVerification(pendingLogin, input.code);
+    if (result.status === "incorrect") return res.status(400).json({ error: "O código informado está incorreto." });
+    if (result.status === "expired") return res.status(410).json({ error: "Este código expirou. Solicite um novo." });
+    if (result.status === "attempts_exceeded") {
+      return res.status(429).json({ error: "Você excedeu o número de tentativas. Solicite um novo código." });
+    }
+    if (result.status !== "verified") {
+      return res.status(400).json({ error: "Este código não é mais válido. Inicie o login novamente." });
+    }
+
+    await authenticateSession(req, result.user);
+    console.info(`[auth] Login confirmado por código: user=${result.user.id}`);
+    return res.json({ user: userForClient(result.user) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/auth/resend-login-code", resendLimiter, async (req, res, next) => {
+  try {
+    const pendingLogin = req.session.pendingLogin;
+    if (!pendingLogin) return res.status(400).json({ error: "Inicie o login novamente para solicitar um novo código." });
+
+    const { rows } = await pool.query("SELECT id, email FROM users WHERE id = $1", [pendingLogin.userId]);
+    const user = rows[0];
+    if (!user) return res.status(400).json({ error: "Inicie o login novamente para solicitar um novo código." });
+
+    const verification = await createLoginVerification(user, LOGIN_CODE_RESEND_DELAY_MS);
+    await setPendingLogin(req, user.id, verification.id);
+    return res.status(202).json({
+      requiresVerification: true,
+      expiresInSeconds: Math.round(LOGIN_CODE_TTL_MS / 1000),
+      resendAfterSeconds: Math.round(LOGIN_CODE_RESEND_DELAY_MS / 1000),
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/auth/forgot-password", forgotPasswordLimiter, async (req, res, next) => {
+  const startedAt = Date.now();
+  try {
+    const input = validate(forgotPasswordSchema, req.body);
+    const allowed = await consumeIdentifierRateLimit("forgot-password", input.email, 3, 60 * 60 * 1000);
+    if (allowed) {
+      const { rows } = await pool.query("SELECT id, email FROM users WHERE email = $1", [input.email]);
+      if (rows[0]) await createPasswordReset(rows[0]);
+    } else {
+      console.warn("[auth] Solicitação de recuperação limitada por identificador.");
+    }
+    await sleep(Math.max(0, 350 - (Date.now() - startedAt)));
+    return res.json({ message: genericPasswordResetMessage });
+  } catch (error) {
+    if (error.code === "VALIDATION_ERROR") return next(error);
+    console.error(`[auth] Falha interna na recuperação de senha (${error.code || "UNKNOWN"}): ${error.message}`);
+    await sleep(Math.max(0, 350 - (Date.now() - startedAt)));
+    return res.json({ message: genericPasswordResetMessage });
+  }
+});
+
+app.post("/auth/reset-password", resetPasswordLimiter, async (req, res, next) => {
+  try {
+    const input = validate(resetPasswordSchema, req.body);
+    const parsedToken = parsePasswordResetToken(input.token);
+    if (!parsedToken) return res.status(400).json({ error: "Este link de redefinição é inválido ou expirou." });
+
+    const passwordHash = await hashPassword(input.password);
+    const result = await applyPasswordReset(parsedToken, passwordHash);
+    if (result !== "reset") return res.status(400).json({ error: "Este link de redefinição é inválido ou expirou." });
+    return res.json({ message: "Senha redefinida com sucesso." });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/auth/validate-reset-token", resetPasswordLimiter, async (req, res, next) => {
+  try {
+    const input = validate(resetTokenSchema, req.body);
+    const parsedToken = parsePasswordResetToken(input.token);
+    const valid = parsedToken && (await isPasswordResetTokenValid(parsedToken));
+    if (!valid) return res.status(400).json({ error: "Este link de redefinição é inválido ou expirou." });
+    return res.json({ valid: true });
   } catch (error) {
     return next(error);
   }
@@ -252,7 +620,7 @@ app.delete("/products/:id", requireAuth, async (req, res, next) => {
   }
 });
 
-app.get(["/", "/index.html"], (req, res) => res.sendFile(resolve(projectRoot, "index.html")));
+app.get(["/", "/index.html", "/reset-password"], (req, res) => res.sendFile(resolve(projectRoot, "index.html")));
 app.get("/styles.css", (req, res) => res.sendFile(resolve(projectRoot, "styles.css")));
 app.get("/favicon.svg", (req, res) => res.sendFile(resolve(projectRoot, "favicon.svg")));
 app.get("/theme-init.js", (req, res) => res.sendFile(resolve(projectRoot, "theme-init.js")));

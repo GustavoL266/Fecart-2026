@@ -43,7 +43,7 @@
       </div>
 
       <div class="auth-card">
-        <div class="auth-tabs" role="tablist" aria-label="Autenticação">
+        <div id="authTabs" class="auth-tabs" role="tablist" aria-label="Autenticação">
           <button id="showLoginButton" type="button" class="auth-tab active" role="tab" aria-selected="true">Entrar</button>
           <button id="showRegisterButton" type="button" class="auth-tab" role="tab" aria-selected="false">Criar conta</button>
         </div>
@@ -68,6 +68,7 @@
             </div>
             <p id="loginPasswordError" class="field-error" role="alert" hidden></p>
           </div>
+          <div class="auth-inline-link"><button id="showForgotPasswordButton" type="button">Esqueceu sua senha?</button></div>
           <button id="loginSubmitButton" type="submit" class="auth-submit"><span>Entrar</span><span aria-hidden="true">→</span></button>
           <p class="auth-mode-hint">Ainda não possui conta? <button type="button" data-auth-switch="register">Criar conta</button></p>
         </form>
@@ -109,6 +110,70 @@
           <button id="registerSubmitButton" type="submit" class="auth-submit"><span>Criar conta</span><span aria-hidden="true">→</span></button>
           <p class="auth-mode-hint">Já tem uma conta? <button type="button" data-auth-switch="login">Fazer login</button></p>
         </form>
+
+        <form id="verificationForm" class="auth-form" novalidate hidden>
+          <div class="auth-form-heading">
+            <span class="auth-heading-icon" aria-hidden="true">✉</span>
+            <div><p class="eyebrow">Verificação de segurança</p><h2 id="verificationTitle">Confirme seu acesso</h2><p>Enviamos um código de 6 dígitos para o seu e-mail.</p></div>
+          </div>
+          <div class="auth-field verification-field" data-field="loginVerificationCode">
+            <label for="loginVerificationCode">Código de verificação</label>
+            <input id="loginVerificationCode" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" required minlength="6" maxlength="6" pattern="[0-9]{6}" aria-describedby="loginVerificationCodeError" />
+            <p id="loginVerificationCodeError" class="field-error" role="alert" hidden></p>
+          </div>
+          <button id="verificationSubmitButton" type="submit" class="auth-submit"><span>Confirmar código</span><span aria-hidden="true">→</span></button>
+          <div class="auth-secondary-actions">
+            <p>Não recebeu? <button id="resendLoginCodeButton" type="button">Reenviar código</button></p>
+            <button id="backToLoginButton" type="button" class="auth-back-button">← Voltar para o login</button>
+          </div>
+        </form>
+
+        <form id="forgotPasswordForm" class="auth-form" novalidate hidden>
+          <div class="auth-form-heading">
+            <span class="auth-heading-icon" aria-hidden="true">↺</span>
+            <div><p class="eyebrow">Recuperar senha</p><h2 id="forgotPasswordTitle">Vamos ajudar você</h2><p>Digite o e-mail cadastrado na sua conta.</p></div>
+          </div>
+          <div class="auth-field" data-field="forgotPasswordEmail">
+            <label for="forgotPasswordEmail">E-mail</label>
+            <input id="forgotPasswordEmail" name="email" type="email" autocomplete="email" placeholder="seu@email.com" required maxlength="320" aria-describedby="forgotPasswordEmailError" />
+            <p id="forgotPasswordEmailError" class="field-error" role="alert" hidden></p>
+          </div>
+          <button id="forgotPasswordSubmitButton" type="submit" class="auth-submit"><span>Enviar instruções</span><span aria-hidden="true">→</span></button>
+          <div class="auth-secondary-actions"><button type="button" class="auth-back-button" data-auth-switch="login">← Voltar para o login</button></div>
+        </form>
+
+        <form id="resetPasswordForm" class="auth-form" novalidate hidden>
+          <div class="auth-form-heading">
+            <span class="auth-heading-icon" aria-hidden="true">⌘</span>
+            <div><p class="eyebrow">Criar nova senha</p><h2 id="resetPasswordTitle">Proteja sua conta</h2><p>Escolha uma senha nova e segura.</p></div>
+          </div>
+          <div class="auth-field" data-field="resetPassword">
+            <label for="resetPassword">Nova senha</label>
+            <div class="password-control">
+              <input id="resetPassword" name="password" type="password" autocomplete="new-password" placeholder="Mínimo de 8 caracteres" required minlength="8" maxlength="72" aria-describedby="resetPasswordError resetPasswordRequirements" />
+              <button type="button" class="password-toggle" data-password-toggle="resetPassword" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button>
+            </div>
+            <p id="resetPasswordError" class="field-error" role="alert" hidden></p>
+          </div>
+          <div class="auth-field" data-field="resetPasswordConfirmation">
+            <label for="resetPasswordConfirmation">Confirmar nova senha</label>
+            <div class="password-control">
+              <input id="resetPasswordConfirmation" name="passwordConfirmation" type="password" autocomplete="new-password" placeholder="Repita a nova senha" required minlength="8" maxlength="72" aria-describedby="resetPasswordConfirmationError" />
+              <button type="button" class="password-toggle" data-password-toggle="resetPasswordConfirmation" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button>
+            </div>
+            <p id="resetPasswordConfirmationError" class="field-error" role="alert" hidden></p>
+          </div>
+          <div id="resetPasswordRequirements" class="password-requirements" aria-live="polite"><span>Sua senha deve conter:</span><ul><li data-reset-password-rule="length">No mínimo 8 caracteres</li><li data-reset-password-rule="letter">Pelo menos 1 letra</li><li data-reset-password-rule="number">Pelo menos 1 número</li></ul></div>
+          <button id="resetPasswordSubmitButton" type="submit" class="auth-submit"><span>Redefinir senha</span><span aria-hidden="true">→</span></button>
+        </form>
+
+        <section id="passwordResetSuccess" class="auth-form auth-success-panel" aria-labelledby="passwordResetSuccessTitle" hidden>
+          <div class="auth-form-heading">
+            <span class="auth-heading-icon" aria-hidden="true">✓</span>
+            <div><p class="eyebrow">Tudo certo</p><h2 id="passwordResetSuccessTitle">Senha redefinida</h2><p>Sua senha foi alterada com segurança. Entre novamente para acessar sua conta.</p></div>
+          </div>
+          <button id="passwordResetLoginButton" type="button" class="auth-submit"><span>Ir para o login</span><span aria-hidden="true">→</span></button>
+        </section>
       </div>
     </section>
 

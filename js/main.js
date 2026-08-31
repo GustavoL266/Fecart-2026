@@ -35,6 +35,7 @@ const state = {
   user: null,
   products: [],
   selectedProduct: null,
+  resetToken: null,
 };
 
 let marketSource = "manual";
@@ -49,6 +50,7 @@ let meliState = {
   error: "",
 };
 let productSearchTimer;
+let resendCountdownTimer;
 
 function applyTheme(theme, persist = true) {
   const normalizedTheme = theme === "dark" ? "dark" : "light";
@@ -121,6 +123,11 @@ function updatePasswordRequirements() {
   document.querySelectorAll("[data-password-rule]").forEach((item) => item.classList.toggle("is-met", checks[item.dataset.passwordRule]));
 }
 
+function updateResetPasswordRequirements() {
+  const checks = passwordChecks($("#resetPassword").value);
+  document.querySelectorAll("[data-reset-password-rule]").forEach((item) => item.classList.toggle("is-met", checks[item.dataset.resetPasswordRule]));
+}
+
 function validateRegisterField(fieldId) {
   const value = $(`#${fieldId}`).value;
   const trimmedValue = value.trim();
@@ -162,6 +169,31 @@ function validateLoginField(fieldId) {
   return !error;
 }
 
+function validateEmailField(fieldId) {
+  const value = $(`#${fieldId}`).value.trim();
+  const error = !value ? "Informe seu e-mail." : !isValidEmail(value) ? "Informe um e-mail válido." : "";
+  setFieldError(fieldId, error);
+  return !error;
+}
+
+function validateVerificationCode() {
+  const field = $("#loginVerificationCode");
+  field.value = field.value.replace(/\D/g, "").slice(0, 6);
+  const error = /^\d{6}$/.test(field.value) ? "" : "Informe o código de 6 dígitos.";
+  setFieldError("loginVerificationCode", error);
+  return !error;
+}
+
+function validateResetPasswordField(fieldId) {
+  const value = $(`#${fieldId}`).value;
+  let error = "";
+  if (!value) error = "Preencha todos os campos obrigatórios.";
+  else if (fieldId === "resetPassword" && !isStrongPassword(value)) error = "Use pelo menos 8 caracteres, incluindo letras e números.";
+  else if (fieldId === "resetPasswordConfirmation" && value !== $("#resetPassword").value) error = "As senhas não coincidem.";
+  setFieldError(fieldId, error);
+  return !error;
+}
+
 function setSubmitState(button, isLoading, label) {
   button.disabled = isLoading;
   button.setAttribute("aria-busy", String(isLoading));
@@ -174,20 +206,58 @@ function render() {
   pricingTabs.updateCompletion();
 }
 
-function showAuth(mode = "login", message = "") {
+function showAuth(mode = "login", message = "", success = false) {
   $("#bootScreen").hidden = true;
   $("#authView").hidden = false;
   $("#assistantView").hidden = true;
   $("#productsView").hidden = true;
-  $("#loginForm").hidden = mode !== "login";
-  $("#registerForm").hidden = mode !== "register";
+  const panels = {
+    login: $("#loginForm"),
+    register: $("#registerForm"),
+    verification: $("#verificationForm"),
+    forgotPassword: $("#forgotPasswordForm"),
+    resetPassword: $("#resetPasswordForm"),
+    resetSuccess: $("#passwordResetSuccess"),
+  };
+  Object.entries(panels).forEach(([panelMode, panel]) => { panel.hidden = panelMode !== mode; });
+  $("#authTabs").hidden = !["login", "register"].includes(mode);
   $("#showLoginButton").classList.toggle("active", mode === "login");
   $("#showRegisterButton").classList.toggle("active", mode === "register");
   $("#showLoginButton").setAttribute("aria-selected", String(mode === "login"));
   $("#showRegisterButton").setAttribute("aria-selected", String(mode === "register"));
-  clearAuthErrors($("#loginForm"));
-  clearAuthErrors($("#registerForm"));
-  setMessage($("#authMessage"), message);
+  document.querySelectorAll(".auth-card .auth-form").forEach((form) => clearAuthErrors(form));
+  setMessage($("#authMessage"), message, success);
+  const headingIds = {
+    login: "loginTitle",
+    verification: "verificationTitle",
+    forgotPassword: "forgotPasswordTitle",
+    resetPassword: "resetPasswordTitle",
+    resetSuccess: "passwordResetSuccessTitle",
+  };
+  $("#authView").setAttribute("aria-labelledby", headingIds[mode] || "loginTitle");
+}
+
+function goToLogin(message = "") {
+  state.resetToken = null;
+  window.history.replaceState(null, "", "/");
+  showAuth("login", message);
+}
+
+function startResendCountdown(seconds = 45) {
+  window.clearInterval(resendCountdownTimer);
+  const button = $("#resendLoginCodeButton");
+  let remaining = Math.max(0, Number(seconds) || 0);
+  const renderCountdown = () => {
+    button.disabled = remaining > 0;
+    button.textContent = remaining > 0 ? `Reenviar em ${remaining}s` : "Reenviar código";
+  };
+  renderCountdown();
+  if (!remaining) return;
+  resendCountdownTimer = window.setInterval(() => {
+    remaining -= 1;
+    renderCountdown();
+    if (remaining <= 0) window.clearInterval(resendCountdownTimer);
+  }, 1000);
 }
 
 function showAssistant() {
@@ -222,6 +292,8 @@ function navigate(view) {
 
 function setAuthenticatedUser(user) {
   state.user = user;
+  state.resetToken = null;
+  if (window.location.pathname === "/reset-password") window.history.replaceState(null, "", "/#assistente");
   $("#currentUserName").textContent = user.name;
   void syncRoute();
 }
@@ -455,7 +527,7 @@ async function logout() {
   state.user = null;
   state.products = [];
   state.selectedProduct = null;
-  window.history.replaceState(null, "", window.location.pathname);
+  window.history.replaceState(null, "", "/");
   showAuth("login", "Você saiu da sua conta.");
 }
 
@@ -474,11 +546,107 @@ async function submitLogin(event) {
       password: $("#loginPassword").value,
     }, { handleUnauthorized: false });
     form.reset();
-    setAuthenticatedUser(response.user);
+    showAuth("verification");
+    startResendCountdown(response.resendAfterSeconds);
+    $("#loginVerificationCode").focus();
   } catch (error) {
     setMessage($("#authMessage"), messageFor(error));
   } finally {
     setSubmitState(button, false, "Entrar");
+  }
+}
+
+async function submitLoginVerification(event) {
+  event.preventDefault();
+  if (!validateVerificationCode()) return;
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+
+  try {
+    setSubmitState(button, true, "Confirmando...");
+    setMessage($("#authMessage"), "");
+    const response = await api.post("/auth/verify-login", { code: $("#loginVerificationCode").value }, { handleUnauthorized: false });
+    window.clearInterval(resendCountdownTimer);
+    form.reset();
+    setAuthenticatedUser(response.user);
+  } catch (error) {
+    setMessage($("#authMessage"), messageFor(error));
+    $("#loginVerificationCode").select();
+  } finally {
+    setSubmitState(button, false, "Confirmar código");
+  }
+}
+
+async function resendLoginCode() {
+  const button = $("#resendLoginCodeButton");
+  button.disabled = true;
+  button.textContent = "Enviando...";
+  setMessage($("#authMessage"), "");
+  try {
+    const response = await api.post("/auth/resend-login-code", undefined, { handleUnauthorized: false });
+    $("#loginVerificationCode").value = "";
+    setFieldError("loginVerificationCode");
+    setMessage($("#authMessage"), "Enviamos um novo código para o seu e-mail.", true);
+    startResendCountdown(response.resendAfterSeconds);
+    $("#loginVerificationCode").focus();
+  } catch (error) {
+    setMessage($("#authMessage"), messageFor(error));
+    startResendCountdown(45);
+  }
+}
+
+async function cancelPendingLogin() {
+  window.clearInterval(resendCountdownTimer);
+  try {
+    await api.post("/auth/logout", undefined, { handleUnauthorized: false });
+  } catch {
+    // Voltar à tela de login continua seguro: nenhum userId autenticado existe nesta etapa.
+  }
+  $("#verificationForm").reset();
+  goToLogin();
+}
+
+async function submitForgotPassword(event) {
+  event.preventDefault();
+  if (!validateEmailField("forgotPasswordEmail")) return;
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+  try {
+    setSubmitState(button, true, "Enviando...");
+    setMessage($("#authMessage"), "");
+    const response = await api.post("/auth/forgot-password", { email: $("#forgotPasswordEmail").value.trim() }, { handleUnauthorized: false });
+    form.reset();
+    setMessage($("#authMessage"), response.message, true);
+  } catch (error) {
+    setMessage($("#authMessage"), messageFor(error));
+  } finally {
+    setSubmitState(button, false, "Enviar instruções");
+  }
+}
+
+async function submitPasswordReset(event) {
+  event.preventDefault();
+  const isValid = ["resetPassword", "resetPasswordConfirmation"].every(validateResetPasswordField);
+  if (!isValid || !state.resetToken) return;
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+  try {
+    setSubmitState(button, true, "Redefinindo...");
+    setMessage($("#authMessage"), "");
+    await api.post("/auth/reset-password", {
+      token: state.resetToken,
+      password: $("#resetPassword").value,
+      passwordConfirmation: $("#resetPasswordConfirmation").value,
+    }, { handleUnauthorized: false });
+    state.resetToken = null;
+    form.reset();
+    updateResetPasswordRequirements();
+    window.history.replaceState(null, "", "/");
+    showAuth("resetSuccess");
+  } catch (error) {
+    setMessage($("#authMessage"), messageFor(error));
+  } finally {
+    setSubmitState(button, false, "Redefinir senha");
   }
 }
 
@@ -570,14 +738,25 @@ $("#meliResults").addEventListener("click", (event) => {
   render();
 });
 
-$("#showLoginButton").addEventListener("click", () => showAuth("login"));
+$("#showLoginButton").addEventListener("click", () => goToLogin());
 $("#showRegisterButton").addEventListener("click", () => showAuth("register"));
+$("#showForgotPasswordButton").addEventListener("click", () => {
+  $("#forgotPasswordEmail").value = $("#loginEmail").value.trim();
+  showAuth("forgotPassword");
+  $("#forgotPasswordEmail").focus();
+});
+$("#backToLoginButton").addEventListener("click", () => void cancelPendingLogin());
+$("#resendLoginCodeButton").addEventListener("click", () => void resendLoginCode());
+$("#passwordResetLoginButton").addEventListener("click", () => goToLogin("Senha redefinida com sucesso. Entre com sua nova senha."));
 document.querySelectorAll("[data-theme-toggle]").forEach((button) => button.addEventListener("click", toggleTheme));
 document.querySelectorAll("[data-auth-switch]").forEach((button) => {
-  button.addEventListener("click", () => showAuth(button.dataset.authSwitch));
+  button.addEventListener("click", () => button.dataset.authSwitch === "login" ? goToLogin() : showAuth(button.dataset.authSwitch));
 });
 $("#loginForm").addEventListener("submit", submitLogin);
 $("#registerForm").addEventListener("submit", submitRegistration);
+$("#verificationForm").addEventListener("submit", submitLoginVerification);
+$("#forgotPasswordForm").addEventListener("submit", submitForgotPassword);
+$("#resetPasswordForm").addEventListener("submit", submitPasswordReset);
 
 ["loginEmail", "loginPassword"].forEach((fieldId) => {
   const field = $(`#${fieldId}`);
@@ -585,6 +764,20 @@ $("#registerForm").addEventListener("submit", submitRegistration);
   field.addEventListener("input", () => {
     if (field.getAttribute("aria-invalid") === "true") validateLoginField(fieldId);
   });
+});
+
+$("#loginVerificationCode").addEventListener("input", (event) => {
+  event.currentTarget.value = event.currentTarget.value.replace(/\D/g, "").slice(0, 6);
+  if (event.currentTarget.getAttribute("aria-invalid") === "true") validateVerificationCode();
+});
+$("#loginVerificationCode").addEventListener("blur", validateVerificationCode);
+
+$("#forgotPasswordEmail").addEventListener("blur", () => {
+  $("#forgotPasswordEmail").value = $("#forgotPasswordEmail").value.trim().toLowerCase();
+  validateEmailField("forgotPasswordEmail");
+});
+$("#forgotPasswordEmail").addEventListener("input", () => {
+  if ($("#forgotPasswordEmail").getAttribute("aria-invalid") === "true") validateEmailField("forgotPasswordEmail");
 });
 
 ["registerName", "registerEmail", "registerPassword", "registerPasswordConfirmation"].forEach((fieldId) => {
@@ -599,6 +792,18 @@ $("#registerForm").addEventListener("submit", submitRegistration);
       if ($("#registerPasswordConfirmation").value) validateRegisterField("registerPasswordConfirmation");
     }
     if (field.getAttribute("aria-invalid") === "true" || fieldId === "registerPassword") validateRegisterField(fieldId);
+  });
+});
+
+["resetPassword", "resetPasswordConfirmation"].forEach((fieldId) => {
+  const field = $(`#${fieldId}`);
+  field.addEventListener("blur", () => validateResetPasswordField(fieldId));
+  field.addEventListener("input", () => {
+    if (fieldId === "resetPassword") {
+      updateResetPasswordRequirements();
+      if ($("#resetPasswordConfirmation").value) validateResetPasswordField("resetPasswordConfirmation");
+    }
+    if (field.getAttribute("aria-invalid") === "true" || fieldId === "resetPassword") validateResetPasswordField(fieldId);
   });
 });
 
@@ -658,8 +863,7 @@ window.addEventListener("app:session-expired", () => {
   state.user = null;
   state.products = [];
   state.selectedProduct = null;
-  window.history.replaceState(null, "", window.location.pathname);
-  showAuth("login", "Sua sessão expirou. Entre novamente para continuar.");
+  goToLogin("Sua sessão expirou. Entre novamente para continuar.");
 });
 
 applyCategoryPreset(elements.productType.value, elements);
@@ -667,6 +871,23 @@ applyTheme(document.documentElement.dataset.theme, false);
 render();
 
 async function bootstrap(attempt = 0) {
+  if (window.location.pathname === "/reset-password") {
+    const token = new URLSearchParams(window.location.search).get("token");
+    if (!token) {
+      goToLogin("Este link de redefinição é inválido ou expirou.");
+      return;
+    }
+    try {
+      await api.post("/auth/validate-reset-token", { token }, { handleUnauthorized: false });
+      state.resetToken = token;
+      showAuth("resetPassword");
+      $("#resetPassword").focus();
+    } catch (error) {
+      goToLogin(messageFor(error));
+    }
+    return;
+  }
+
   try {
     const response = await api.get("/auth/me", { handleUnauthorized: false });
     setAuthenticatedUser(response.user);
@@ -688,4 +909,5 @@ async function bootstrap(attempt = 0) {
 }
 
 updatePasswordRequirements();
+updateResetPasswordRequirements();
 void bootstrap();
