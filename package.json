@@ -8,9 +8,7 @@
     "dev": "node --watch server.js",
     "migrate": "node scripts/migrate.mjs",
     "build": "node scripts/build.mjs",
-    "lint": "node scripts/lint.mjs",
-    "email:test": "node scripts/test-email.mjs",
-    "test": "node --test --test-isolation=none tests/all.test.js"
+    "test": "node --test"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
