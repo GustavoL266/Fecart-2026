@@ -36,7 +36,7 @@ async function request(path, options = {}) {
   const payload = response.status === 204 ? null : await response.json().catch(() => null);
   if (response.ok) return payload;
 
-  const error = new ApiError(payload?.error || "Não foi possível concluir a operação.", response.status);
+  const error = new ApiError(payload?.error || "Não foi possível concluir a operação.", response.status, payload?.code || "");
   if (handleUnauthorized && response.status === 401) window.dispatchEvent(new CustomEvent("app:session-expired"));
   throw error;
 }

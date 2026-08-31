@@ -1,4 +1,5 @@
 import { calculatePrice } from "./domain/pricing-calculator.js";
+import { buildCalculationMemory, ConfiguredTaxRuleEngine, fiscalDataForStorage } from "./domain/tax-rule-engine.js";
 import { buildSearchUrl, MercadoLivreService } from "./services/mercado-livre-service.js";
 import { ApiError, api } from "./services/api-client.js";
 import { applyCategoryPreset, applySavedInputs, isAboveCompetitorLimit, readInputs } from "./ui/form.js";
@@ -9,12 +10,24 @@ import { createPricingTabs } from "./ui/pricing-tabs.js";
 const $ = (selector) => document.querySelector(selector);
 const themeStorageKey = "assistente-precificacao-theme";
 const mercadoLivre = new MercadoLivreService();
+const taxRuleEngine = new ConfiguredTaxRuleEngine();
 const formFieldIds = [
   "productType",
+  "ncmCode",
+  "taxRegime",
+  "originState",
+  "destinationState",
+  "cfop",
+  "taxSituation",
+  "customerType",
+  "operationPurpose",
   "materialsCost",
   "waste",
   "packagingCost",
   "deliveryCost",
+  "insuranceCost",
+  "discountAmount",
+  "otherExpenses",
   "totalPayroll",
   "workerCount",
   "outputPerWorkerHour",
@@ -38,6 +51,13 @@ const state = {
 };
 
 let marketSource = "manual";
+let focusState = {
+  status: "idle",
+  ncm: null,
+  environment: "",
+  error: "",
+  unavailable: false,
+};
 let meliState = {
   status: "idle",
   query: "",
@@ -170,9 +190,54 @@ function setSubmitState(button, isLoading, label) {
 
 function render() {
   const inputs = readInputs(elements);
-  renderDashboard(document, inputs, calculatePrice(inputs), meliState, marketSource);
+  const result = calculatePrice(inputs);
+  const fiscalAssessment = taxRuleEngine.assess(inputs, focusState);
+  const memory = buildCalculationMemory(inputs, result, fiscalAssessment);
+  renderDashboard(document, inputs, result, meliState, marketSource, fiscalAssessment, memory);
+  renderNcmState();
   $("#mobileSuggestedPrice").textContent = $("#suggestedPrice").textContent;
   pricingTabs.updateCompletion();
+}
+
+function renderNcmState() {
+  const status = $("#ncmLookupStatus");
+  const description = $("#ncmDescription");
+  const button = $("#ncmLookupButton");
+  button.disabled = focusState.status === "loading";
+
+  if (focusState.status === "loading") status.textContent = "Consultando o NCM na Focus NFe…";
+  else if (focusState.status === "success") status.textContent = `NCM confirmado pela Focus NFe em ${focusState.environment}. Isso não calcula a tributação.`;
+  else if (focusState.status === "error") status.textContent = focusState.error;
+  else status.textContent = "Consulte a classificação na Focus NFe. O NCM isolado não determina impostos.";
+
+  description.hidden = !focusState.ncm?.descricao_completa;
+  description.textContent = focusState.ncm?.descricao_completa || "";
+}
+
+async function lookupNcm() {
+  const code = String(elements.ncmCode.value || "").replace(/\D/g, "");
+  elements.ncmCode.value = code;
+  if (!/^\d{8}$/.test(code)) {
+    focusState = { status: "error", ncm: null, environment: "", error: "Informe um NCM com exatamente 8 dígitos.", unavailable: false };
+    render();
+    return;
+  }
+
+  focusState = { status: "loading", ncm: null, environment: "", error: "", unavailable: false };
+  render();
+  try {
+    const response = await api.get(`/fiscal/ncms/${encodeURIComponent(code)}`);
+    focusState = { status: "success", ncm: response.ncm, environment: response.environment, error: "", unavailable: false };
+  } catch (error) {
+    focusState = {
+      status: "error",
+      ncm: null,
+      environment: "",
+      error: `${messageFor(error)} O cálculo financeiro foi mantido, mas não está fiscalmente validado.`,
+      unavailable: true,
+    };
+  }
+  render();
 }
 
 function closeMobileMenus({ restoreFocus = false } = {}) {
@@ -295,6 +360,8 @@ function productPayloadFromCalculator() {
   const description = $("#productDescription").value.trim();
   const inputs = readInputs(elements);
   const result = calculatePrice(inputs);
+  const fiscalAssessment = taxRuleEngine.assess(inputs, focusState);
+  const memory = buildCalculationMemory(inputs, result, fiscalAssessment);
 
   if (!name) throw new ApiError("Informe o nome do produto antes de salvar.", 400);
   if (!result.isValid || result.minimumPrice === null) throw new ApiError("Revise os percentuais antes de salvar um cálculo inviável.", 400);
@@ -311,9 +378,10 @@ function productPayloadFromCalculator() {
     marketplace: marketSource.startsWith("meli") ? "Mercado Livre" : "Manual",
     consultationDate: new Date().toISOString(),
     calculationData: {
-      version: 1,
+      version: 2,
       inputs,
       result,
+      fiscal: fiscalDataForStorage(fiscalAssessment, memory),
       market: {
         source: marketSource,
         query: meliState.query,
@@ -404,6 +472,10 @@ function reuseProduct(product) {
 
   $("#productName").value = product.name;
   $("#productDescription").value = product.description || "";
+  const savedNcm = product.calculationData?.fiscal?.ncm;
+  focusState = savedNcm?.codigo
+    ? { status: "success", ncm: savedNcm, environment: "consulta salva", error: "", unavailable: false }
+    : { status: "idle", ncm: null, environment: "", error: "", unavailable: false };
   marketSource = product.calculationData?.market?.source || "manual";
   meliState = { ...meliState, status: "idle", query: product.calculationData?.market?.query || "", stats: product.calculationData?.market?.stats || null };
   $("#meliQuery").value = meliState.query;
@@ -547,6 +619,9 @@ async function submitRegistration(event) {
   elements.waste,
   elements.packagingCost,
   elements.deliveryCost,
+  elements.insuranceCost,
+  elements.discountAmount,
+  elements.otherExpenses,
   elements.totalPayroll,
   elements.workerCount,
   elements.outputPerWorkerHour,
@@ -560,6 +635,32 @@ async function submitRegistration(event) {
   elements.payDays,
   elements.capitalRate,
 ].forEach((field) => field.addEventListener("input", render));
+
+[
+  elements.taxRegime,
+  elements.originState,
+  elements.destinationState,
+  elements.cfop,
+  elements.taxSituation,
+  elements.customerType,
+  elements.operationPurpose,
+].forEach((field) => {
+  field.addEventListener("input", render);
+  field.addEventListener("change", render);
+});
+
+elements.ncmCode.addEventListener("input", () => {
+  const currentCode = String(elements.ncmCode.value || "").replace(/\D/g, "");
+  if (focusState.ncm?.codigo !== currentCode) focusState = { status: "idle", ncm: null, environment: "", error: "", unavailable: false };
+  render();
+});
+
+$("#ncmLookupButton").addEventListener("click", lookupNcm);
+elements.ncmCode.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  void lookupNcm();
+});
 
 elements.productType.addEventListener("change", () => {
   applyCategoryPreset(elements.productType.value, elements);

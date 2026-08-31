@@ -7,6 +7,7 @@ const sourceFiles = [
   "js/config/pricing.js",
   "js/utils/formatters.js",
   "js/domain/pricing-calculator.js",
+  "js/domain/tax-rule-engine.js",
   "js/domain/market-analysis.js",
   "js/services/mercado-livre-service.js",
   "js/services/api-client.js",

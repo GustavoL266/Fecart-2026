@@ -146,6 +146,9 @@
             <button id="pricing-tab-product" class="pricing-tab is-active" type="button" role="tab" aria-controls="pricing-panel-product" aria-selected="true" data-pricing-tab="product" data-pricing-label="Produto">
               <span class="pricing-tab-status" aria-hidden="true">○</span><span>Produto</span>
             </button>
+            <button id="pricing-tab-fiscal" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-fiscal" aria-selected="false" tabindex="-1" data-pricing-tab="fiscal" data-pricing-label="Contexto fiscal">
+              <span class="pricing-tab-status" aria-hidden="true">○</span><span>Fiscal</span>
+            </button>
             <button id="pricing-tab-direct" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-direct" aria-selected="false" tabindex="-1" data-pricing-tab="direct" data-pricing-label="Custos diretos">
               <span class="pricing-tab-status" aria-hidden="true">○</span><span>Diretos</span>
             </button>
@@ -195,6 +198,80 @@
             </div>
           </div>
           <footer class="pricing-step-actions is-first">
+            <button class="pricing-step-button" type="button" data-pricing-go="fiscal">Próximo <span aria-hidden="true">→</span></button>
+          </footer>
+        </section>
+
+        <section id="pricing-panel-fiscal" class="control-section pricing-tab-panel" role="tabpanel" aria-labelledby="pricing-tab-fiscal" data-pricing-panel="fiscal" hidden>
+          <div class="tab-panel-heading">
+            <p class="section-title">Contexto fiscal</p>
+            <p class="section-description">A Focus NFe valida a classificação NCM. Os demais dados precisam ser confirmados com seu contador.</p>
+          </div>
+          <div class="field-grid">
+            <div class="sidebar-field">
+              <label for="ncmCode">NCM (8 dígitos)</label>
+              <div class="search-row fiscal-search-row">
+                <input id="ncmCode" type="text" inputmode="numeric" maxlength="8" pattern="[0-9]{8}" placeholder="Ex.: 90049090" autocomplete="off" />
+                <button id="ncmLookupButton" class="market-search-button" type="button">Consultar</button>
+              </div>
+              <p id="ncmLookupStatus" class="helper-text" role="status">A consulta ocorre no backend; nenhuma credencial é enviada ao navegador.</p>
+              <p id="ncmDescription" class="fiscal-description" hidden></p>
+            </div>
+            <div class="sidebar-field">
+              <label for="taxRegime">Regime tributário</label>
+              <select id="taxRegime">
+                <option value="">Selecione</option>
+                <option value="simples-nacional">Simples Nacional</option>
+                <option value="lucro-presumido">Lucro Presumido</option>
+                <option value="lucro-real">Lucro Real</option>
+                <option value="mei">MEI</option>
+                <option value="outro">Outro / confirmar</option>
+              </select>
+            </div>
+            <div class="sidebar-grid sidebar-grid--two">
+              <div class="sidebar-field">
+                <label for="originState">UF de origem</label>
+                <input id="originState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="SP" autocomplete="off" />
+              </div>
+              <div class="sidebar-field">
+                <label for="destinationState">UF de destino</label>
+                <input id="destinationState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="RJ" autocomplete="off" />
+              </div>
+            </div>
+            <div class="sidebar-grid sidebar-grid--two">
+              <div class="sidebar-field">
+                <label for="cfop">CFOP</label>
+                <input id="cfop" type="text" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="5102" autocomplete="off" />
+              </div>
+              <div class="sidebar-field">
+                <label for="taxSituation">CST/CSOSN</label>
+                <input id="taxSituation" type="text" maxlength="4" placeholder="Ex.: 00 ou 102" autocomplete="off" />
+              </div>
+            </div>
+            <div class="sidebar-field">
+              <label for="customerType">Tipo de cliente</label>
+              <select id="customerType">
+                <option value="">Selecione</option>
+                <option value="contribuinte">Contribuinte de ICMS</option>
+                <option value="nao-contribuinte">Não contribuinte</option>
+                <option value="consumidor-final">Consumidor final</option>
+              </select>
+            </div>
+            <div class="sidebar-field">
+              <label for="operationPurpose">Finalidade da operação</label>
+              <select id="operationPurpose">
+                <option value="">Selecione</option>
+                <option value="venda">Venda normal</option>
+                <option value="revenda">Revenda</option>
+                <option value="industrializacao">Industrialização</option>
+                <option value="consumo">Uso/consumo</option>
+                <option value="ativo">Ativo imobilizado</option>
+                <option value="outra">Outra / confirmar</option>
+              </select>
+            </div>
+          </div>
+          <footer class="pricing-step-actions">
+            <button class="pricing-step-button secondary-button" type="button" data-pricing-go="product"><span aria-hidden="true">←</span> Anterior</button>
             <button class="pricing-step-button" type="button" data-pricing-go="direct">Próximo <span aria-hidden="true">→</span></button>
           </footer>
         </section>
@@ -233,9 +310,32 @@
                 <input id="deliveryCost" type="number" inputmode="decimal" min="0" step="0.01" value="1.5" />
               </div>
             </div>
+            <div class="sidebar-grid sidebar-grid--two">
+              <div class="sidebar-field">
+                <label for="insuranceCost">Seguro</label>
+                <div class="sidebar-input-wrap has-prefix">
+                  <span class="input-affix input-prefix" aria-hidden="true">R$</span>
+                  <input id="insuranceCost" type="number" inputmode="decimal" min="0" step="0.01" value="0" />
+                </div>
+              </div>
+              <div class="sidebar-field">
+                <label for="discountAmount">Desconto</label>
+                <div class="sidebar-input-wrap has-prefix">
+                  <span class="input-affix input-prefix" aria-hidden="true">R$</span>
+                  <input id="discountAmount" type="number" inputmode="decimal" min="0" step="0.01" value="0" />
+                </div>
+              </div>
+            </div>
+            <div class="sidebar-field">
+              <label for="otherExpenses">Outras despesas adicionais</label>
+              <div class="sidebar-input-wrap has-prefix">
+                <span class="input-affix input-prefix" aria-hidden="true">R$</span>
+                <input id="otherExpenses" type="number" inputmode="decimal" min="0" step="0.01" value="0" />
+              </div>
+            </div>
           </div>
           <footer class="pricing-step-actions">
-            <button class="pricing-step-button secondary-button" type="button" data-pricing-go="product"><span aria-hidden="true">←</span> Anterior</button>
+            <button class="pricing-step-button secondary-button" type="button" data-pricing-go="fiscal"><span aria-hidden="true">←</span> Anterior</button>
             <button class="pricing-step-button" type="button" data-pricing-go="indirect">Próximo <span aria-hidden="true">→</span></button>
           </footer>
         </section>
@@ -301,11 +401,12 @@
           </div>
           <div class="sidebar-grid sidebar-grid--two sidebar-sales-grid">
             <div class="sidebar-field">
-              <label for="taxRate">Impostos</label>
+              <label for="taxRate">Carga tributária estimada</label>
               <div class="sidebar-input-wrap has-suffix">
                 <input id="taxRate" type="text" inputmode="decimal" value="6" />
                 <span class="input-affix input-suffix" aria-hidden="true">%</span>
               </div>
+              <p class="helper-text">Informe a taxa validada por sua regra fiscal/contador. A Focus NFe não calcula este percentual.</p>
             </div>
             <div class="sidebar-field">
               <label for="paymentFeeRate">Taxa de pagamento</label>
@@ -484,6 +585,16 @@
         </section>
 
         <section class="lower-grid">
+          <article class="fiscal-panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">Contexto fiscal</p>
+                <h3>Limites da estimativa</h3>
+              </div>
+            </div>
+            <div id="fiscalSummary" class="fiscal-summary"></div>
+          </article>
+
           <article class="insight-panel">
             <div class="panel-heading compact">
               <div>
@@ -506,7 +617,8 @@
                 <tr>
                   <th>Componente</th>
                   <th>Valor</th>
-                  <th>Do preço</th>
+                  <th>Base/alíquota</th>
+                  <th>Origem</th>
                 </tr>
               </thead>
               <tbody id="costRows"></tbody>

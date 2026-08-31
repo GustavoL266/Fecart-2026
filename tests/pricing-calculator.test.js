@@ -49,3 +49,38 @@ test("marca o cálculo como inviável quando as taxas e a margem consomem todo o
   assert.equal(result.minimumPrice, null);
   assert.equal(result.profitPerSale, 0);
 });
+
+test("calcula dinheiro em centavos e arredonda o preço sempre para cima", () => {
+  const result = calculatePrice({
+    ...baseInputs,
+    materialsCost: 0.1,
+    waste: 0.1,
+    packagingCost: 0.2,
+    deliveryCost: 0.3,
+    totalPayroll: 0,
+    monthlyFixedCosts: 0,
+    taxRate: 0,
+    paymentFeeRate: 0,
+    margin: 0.3333,
+  });
+
+  assert.equal(Number.isInteger(result.costs.baseCostCents), true);
+  assert.equal(Number.isInteger(result.minimumPriceCents), true);
+  assert.equal(result.minimumPrice, result.minimumPriceCents / 100);
+  assert.ok(result.minimumPriceCents >= result.costs.baseCostCents);
+});
+
+test("incorpora frete, seguro, desconto e despesas adicionais sem ponto flutuante monetário", () => {
+  const result = calculatePrice({
+    ...baseInputs,
+    insuranceCost: 1.25,
+    discountAmount: 0.5,
+    otherExpenses: 0.75,
+  });
+
+  assert.equal(result.costs.deliveryCostCents, 150);
+  assert.equal(result.costs.insuranceCostCents, 125);
+  assert.equal(result.costs.discountAmountCents, 50);
+  assert.equal(result.costs.otherExpensesCents, 75);
+  assert.equal(Number.isInteger(result.salesExpensesCents), true);
+});

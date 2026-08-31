@@ -328,6 +328,7 @@ input[type="range"] {
 .recommendation-panel,
 .market-panel,
 .meli-panel,
+.fiscal-panel,
 .insight-panel,
 .table-panel,
 .alerts-panel {
@@ -337,6 +338,37 @@ input[type="range"] {
   box-shadow: var(--shadow);
   padding: 22px;
   min-width: 0;
+}
+
+.fiscal-panel {
+  grid-column: 1 / -1;
+}
+
+.fiscal-summary {
+  display: grid;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.fiscal-summary p {
+  margin: 0;
+}
+
+.fiscal-summary strong {
+  color: var(--ink);
+}
+
+.fiscal-description {
+  margin: 2px 0 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--green-soft);
+  color: var(--ink);
+  font-size: 0.8rem;
+  line-height: 1.45;
 }
 
 .panel-heading {
@@ -2803,6 +2835,7 @@ tr:last-child td {
   .recommendation-panel,
   .market-panel,
   .meli-panel,
+  .fiscal-panel,
   .insight-panel,
   .table-panel,
   .alerts-panel {
@@ -2909,7 +2942,8 @@ tr:last-child td {
   }
 
   .table-panel td:nth-child(2)::before,
-  .table-panel td:nth-child(3)::before {
+  .table-panel td:nth-child(3)::before,
+  .table-panel td:nth-child(4)::before {
     display: block;
     color: var(--muted);
     font-size: 0.7rem;
@@ -2922,7 +2956,11 @@ tr:last-child td {
   }
 
   .table-panel td:nth-child(3)::before {
-    content: "Do preço";
+    content: "Base/alíquota";
+  }
+
+  .table-panel td:nth-child(4)::before {
+    content: "Origem";
   }
 
   .mobile-price-summary {

@@ -41,6 +41,13 @@ export function renderProductsList(container, products) {
 
 export function renderProductDetails(container, product) {
   const description = product.description || "Sem descrição informada.";
+  const fiscal = product.calculationData?.fiscal;
+  const fiscalDetails = fiscal
+    ? `
+      ${detail("NCM", `${fiscal.ncm?.codigo || "Não informado"} (${fiscal.ncmSource || "origem desconhecida"})`)}
+      ${detail("Status fiscal", fiscal.complete ? "Validado" : "Estimativa financeira pendente de validação fiscal")}
+      ${detail("Tributos ainda dependentes de regra externa", (fiscal.unresolvedTaxes || []).join(", ") || "Não registrado")}`
+    : detail("Status fiscal", "Consulta antiga: contexto fiscal não registrado");
   container.innerHTML = `
     <dl class="product-details">
       ${detail("Categoria", product.category)}
@@ -51,6 +58,7 @@ export function renderProductDetails(container, product) {
       ${detail("Preço sugerido", currency.format(product.suggestedPrice))}
       ${detail("Data da consulta", formatDate(product.consultationDate))}
       ${detail("Última atualização", formatDate(product.updatedAt))}
+      ${fiscalDetails}
       ${detail("Descrição", description, "product-description")}
     </dl>
     <div class="dialog-detail-actions">

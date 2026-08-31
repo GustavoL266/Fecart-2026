@@ -27,6 +27,9 @@ export function readInputs(elements) {
     waste: clamp(numberValue(elements.waste), 0, 100) / 100,
     packagingCost: numberValue(elements.packagingCost),
     deliveryCost: numberValue(elements.deliveryCost),
+    insuranceCost: numberValue(elements.insuranceCost),
+    discountAmount: numberValue(elements.discountAmount),
+    otherExpenses: numberValue(elements.otherExpenses),
     totalPayroll: numberValue(elements.totalPayroll),
     workerCount: Math.max(numberValue(elements.workerCount, 1), 1),
     outputPerWorkerHour: Math.max(numberValue(elements.outputPerWorkerHour, 0.01), 0.01),
@@ -40,6 +43,16 @@ export function readInputs(elements) {
     receiveDays: numberValue(elements.receiveDays),
     payDays: numberValue(elements.payDays),
     capitalRate: clamp(numberValue(elements.capitalRate), 0, 8) / 100,
+    fiscalContext: {
+      ncmCode: String(elements.ncmCode.value || "").replace(/\D/g, ""),
+      taxRegime: elements.taxRegime.value,
+      originState: elements.originState.value.trim().toUpperCase(),
+      destinationState: elements.destinationState.value.trim().toUpperCase(),
+      cfop: String(elements.cfop.value || "").replace(/\D/g, ""),
+      taxSituation: elements.taxSituation.value.trim().toUpperCase(),
+      customerType: elements.customerType.value,
+      operationPurpose: elements.operationPurpose.value,
+    },
   };
 }
 
@@ -62,6 +75,12 @@ export function applySavedInputs(savedInputs, elements) {
     const displayValue = PERCENTAGE_FIELDS.has(field) ? value * 100 : value;
     elements[field].value = String(Number(displayValue.toFixed(4))).replace(".", ",");
   });
+
+  if (savedInputs.fiscalContext && typeof savedInputs.fiscalContext === "object") {
+    Object.entries(savedInputs.fiscalContext).forEach(([field, value]) => {
+      if (elements[field] && typeof value === "string") elements[field].value = value;
+    });
+  }
 
   return true;
 }

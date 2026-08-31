@@ -20,6 +20,12 @@ services:
         fromDatabase:
           name: assistente-precificacao-db
           property: connectionString
+      - key: FOCUS_NFE_BASE_URL
+        value: https://homologacao.focusnfe.com.br
+      - key: FOCUS_NFE_TIMEOUT_MS
+        value: "5000"
+      - key: FOCUS_NFE_TOKEN
+        sync: false
 
 databases:
   - name: assistente-precificacao-db

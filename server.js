@@ -7,13 +7,16 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
-import { getConfig } from "./lib/config.js";
+import { getConfig, getFocusNfeConfig } from "./lib/config.js";
 import { pool, verifyDatabase } from "./lib/database.js";
+import { createFocusNFeClient, focusNFeErrorForClient, FocusNFeError, redactFocusNFeSensitiveData } from "./lib/focus-nfe-client.js";
 import { productForClient, userForClient } from "./lib/models.js";
 import { hashPassword, verifyPassword } from "./lib/passwords.js";
 import { loginSchema, productIdSchema, productListSchema, productSchema, registerSchema, validate } from "./lib/validation.js";
 
 const config = getConfig();
+const focusNfeConfig = getFocusNfeConfig();
+const focusNfeClient = focusNfeConfig.isConfigured ? createFocusNFeClient(focusNfeConfig) : null;
 const projectRoot = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PgSession = connectPgSimple(session);
@@ -42,7 +45,9 @@ app.use(
 );
 app.use(express.json({ limit: "100kb" }));
 app.use((req, res, next) => {
-  if (req.path.startsWith("/auth") || req.path.startsWith("/products")) res.set("Cache-Control", "no-store");
+  if (req.path.startsWith("/auth") || req.path.startsWith("/products") || req.path.startsWith("/fiscal")) {
+    res.set("Cache-Control", "no-store");
+  }
   next();
 });
 app.use(
@@ -67,6 +72,14 @@ const authLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: { error: "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente." },
+});
+
+const fiscalLookupLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Muitas consultas fiscais. Aguarde um minuto e tente novamente." },
 });
 
 function sessionRegenerate(req) {
@@ -168,6 +181,27 @@ app.get("/health", async (req, res, next) => {
   }
 });
 
+app.get("/fiscal/ncms/:codigo", requireAuth, fiscalLookupLimiter, async (req, res, next) => {
+  try {
+    if (!focusNfeClient) {
+      throw new FocusNFeError("A consulta fiscal ainda não foi configurada neste ambiente.", {
+        code: "FOCUS_NFE_NOT_CONFIGURED",
+        status: 503,
+      });
+    }
+
+    const ncm = await focusNfeClient.getNcm(req.params.codigo);
+    return res.json({
+      ncm,
+      source: "Focus NFe",
+      environment: focusNfeConfig.environment === "production" ? "produção" : "homologação",
+      taxCalculationAvailable: false,
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 app.get("/products", requireAuth, async (req, res, next) => {
   try {
     const { search, sort, limit } = validate(productListSchema, req.query);
@@ -264,7 +298,10 @@ function isDatabaseError(error) {
 }
 
 app.use((error, req, res, next) => {
-  console.error(`[api] ${req.method} ${req.path} falhou (${error.code || "UNKNOWN"}):`, error.message);
+  const safeLogMessage = error instanceof FocusNFeError
+    ? redactFocusNFeSensitiveData(error.message, [focusNfeConfig.token])
+    : error.message;
+  console.error(`[api] ${req.method} ${req.path} falhou (${error.code || "UNKNOWN"}):`, safeLogMessage);
   if (res.headersSent) return next(error);
   const status = isDatabaseError(error) ? 503 : error.status || 500;
   const message =
@@ -275,7 +312,8 @@ app.use((error, req, res, next) => {
         : status >= 500
           ? "Não foi possível concluir a operação. Tente novamente em instantes."
           : error.message;
-  return res.status(status).json({ error: message });
+  const payload = error instanceof FocusNFeError ? focusNFeErrorForClient(error, [focusNfeConfig.token]) : { error: message };
+  return res.status(status).json(payload);
 });
 
 async function startServer() {

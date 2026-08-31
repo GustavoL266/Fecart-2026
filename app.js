@@ -144,55 +144,226 @@ function escapeHtml(value) {
 
 
 
+const RATE_SCALE = 1_000_000;
+
+function toCents(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(value * 100);
+}
+
+function fromCents(value) {
+  return value / 100;
+}
+
+function toRateParts(value) {
+  return Math.round(value * RATE_SCALE);
+}
+
+function roundedRatio(numerator, denominator) {
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return 0;
+  return Math.round(numerator / denominator);
+}
+
+function multiplyCentsByRate(cents, rate) {
+  const numerator = BigInt(cents) * BigInt(toRateParts(rate));
+  return Number((numerator + BigInt(RATE_SCALE / 2)) / BigInt(RATE_SCALE));
+}
+
+function ceilPriceCents(baseCostCents, availableRateParts) {
+  const numerator = BigInt(baseCostCents) * BigInt(RATE_SCALE);
+  const denominator = BigInt(availableRateParts);
+  return Number((numerator + denominator - 1n) / denominator);
+}
+
+function moneyFields(cents) {
+  return Object.fromEntries(Object.entries(cents).map(([key, value]) => [key.replace(/Cents$/, ""), fromCents(value)]));
+}
+
 function calculateCosts(inputs) {
-  const materialsWithWaste = inputs.materialsCost * (1 + inputs.waste);
-  const laborHourlyCost = inputs.totalPayroll / (inputs.workerCount * PRODUCTIVE_HOURS_PER_WORKER_MONTH);
+  const materialsCostCents = toCents(inputs.materialsCost);
+  const materialsWithWasteCents = materialsCostCents + multiplyCentsByRate(materialsCostCents, inputs.waste);
+  const totalPayrollCents = toCents(inputs.totalPayroll);
   const monthlyProductionCapacity = inputs.workerCount * inputs.outputPerWorkerHour * PRODUCTIVE_HOURS_PER_WORKER_MONTH;
-  const directLabor = inputs.totalPayroll / monthlyProductionCapacity;
-  const directCashCost = materialsWithWaste + inputs.packagingCost + inputs.deliveryCost + directLabor;
+  const laborHourlyCostCents = roundedRatio(totalPayrollCents, inputs.workerCount * PRODUCTIVE_HOURS_PER_WORKER_MONTH);
+  const directLaborCents = roundedRatio(totalPayrollCents, monthlyProductionCapacity);
+  const packagingCostCents = toCents(inputs.packagingCost);
+  const deliveryCostCents = toCents(inputs.deliveryCost);
+  const insuranceCostCents = toCents(inputs.insuranceCost || 0);
+  const discountAmountCents = toCents(inputs.discountAmount || 0);
+  const otherExpensesCents = toCents(inputs.otherExpenses || 0);
+  const grossDirectCashCostCents = materialsWithWasteCents + packagingCostCents + deliveryCostCents + insuranceCostCents + otherExpensesCents + directLaborCents;
+  const directCashCostCents = Math.max(0, grossDirectCashCostCents - discountAmountCents);
   const cashGapDays = Math.max(inputs.receiveDays - inputs.payDays, 0);
-  const workingCapitalCost = directCashCost * inputs.capitalRate * (cashGapDays / 30);
-  const fixedCostAllocation = inputs.monthlyFixedCosts / inputs.monthlyVolume;
-  const baseCost = directCashCost + workingCapitalCost + fixedCostAllocation;
-  const salesRate = inputs.taxRate + inputs.paymentFeeRate + inputs.commissionRate;
+  const workingCapitalCostCents = multiplyCentsByRate(directCashCostCents, inputs.capitalRate * (cashGapDays / 30));
+  const fixedCostAllocationCents = roundedRatio(toCents(inputs.monthlyFixedCosts), inputs.monthlyVolume);
+  const baseCostCents = directCashCostCents + workingCapitalCostCents + fixedCostAllocationCents;
+  const salesRateParts = toRateParts(inputs.taxRate) + toRateParts(inputs.paymentFeeRate) + toRateParts(inputs.commissionRate);
+
+  const cents = {
+    materialsCostCents,
+    materialsWithWasteCents,
+    laborHourlyCostCents,
+    directLaborCents,
+    packagingCostCents,
+    deliveryCostCents,
+    insuranceCostCents,
+    discountAmountCents,
+    otherExpensesCents,
+    directCashCostCents,
+    workingCapitalCostCents,
+    fixedCostAllocationCents,
+    baseCostCents,
+  };
 
   return {
-    materialsWithWaste,
-    laborHourlyCost,
-    directLabor,
+    ...moneyFields(cents),
+    ...cents,
     monthlyProductionCapacity,
-    directCashCost,
     cashGapDays,
-    workingCapitalCost,
-    fixedCostAllocation,
-    baseCost,
-    salesRate,
+    salesRate: salesRateParts / RATE_SCALE,
+    salesRateParts,
   };
 }
 
 function calculatePrice(inputs) {
   const costs = calculateCosts(inputs);
-  const availableRate = 1 - costs.salesRate - inputs.margin;
-  const isValid = availableRate > Number.EPSILON;
-  const minimumPrice = isValid ? Math.ceil((costs.baseCost / availableRate) * 100) / 100 : null;
-  const salesExpenses = isValid ? minimumPrice * costs.salesRate : 0;
-  const profitPerSale = isValid ? minimumPrice - costs.baseCost - salesExpenses : 0;
-  const actualMargin = isValid ? profitPerSale / minimumPrice : 0;
-  const marketGap = isValid ? (inputs.competitorAverage - minimumPrice) / inputs.competitorAverage : 0;
-  const marketCostLimit = Math.max(0, inputs.competitorAverage * availableRate);
-  const requiredCostReduction = Math.max(0, costs.baseCost - marketCostLimit);
+  const marginRateParts = toRateParts(inputs.margin);
+  const availableRateParts = RATE_SCALE - costs.salesRateParts - marginRateParts;
+  const availableRate = availableRateParts / RATE_SCALE;
+  const isValid = availableRateParts > 0;
+  const minimumPriceCents = isValid ? ceilPriceCents(costs.baseCostCents, availableRateParts) : null;
+  const taxExpensesCents = isValid ? multiplyCentsByRate(minimumPriceCents, inputs.taxRate) : 0;
+  const paymentFeeCents = isValid ? multiplyCentsByRate(minimumPriceCents, inputs.paymentFeeRate) : 0;
+  const commissionCents = isValid ? multiplyCentsByRate(minimumPriceCents, inputs.commissionRate) : 0;
+  const salesExpensesCents = taxExpensesCents + paymentFeeCents + commissionCents;
+  const profitPerSaleCents = isValid ? minimumPriceCents - costs.baseCostCents - salesExpensesCents : 0;
+  const actualMargin = isValid && minimumPriceCents > 0 ? profitPerSaleCents / minimumPriceCents : 0;
+  const competitorAverageCents = toCents(inputs.competitorAverage);
+  const marketGap = isValid && competitorAverageCents > 0 ? (competitorAverageCents - minimumPriceCents) / competitorAverageCents : 0;
+  const marketCostLimitCents = Math.max(0, multiplyCentsByRate(competitorAverageCents, availableRate));
+  const requiredCostReductionCents = Math.max(0, costs.baseCostCents - marketCostLimitCents);
 
   return {
     costs,
     availableRate,
+    availableRateParts,
     isValid,
-    minimumPrice,
-    salesExpenses,
-    profitPerSale,
+    minimumPrice: minimumPriceCents === null ? null : fromCents(minimumPriceCents),
+    minimumPriceCents,
+    taxExpenses: fromCents(taxExpensesCents),
+    taxExpensesCents,
+    paymentFee: fromCents(paymentFeeCents),
+    paymentFeeCents,
+    commission: fromCents(commissionCents),
+    commissionCents,
+    salesExpenses: fromCents(salesExpensesCents),
+    salesExpensesCents,
+    profitPerSale: fromCents(profitPerSaleCents),
+    profitPerSaleCents,
     actualMargin,
     marketGap,
-    marketCostLimit,
-    requiredCostReduction,
+    marketCostLimit: fromCents(marketCostLimitCents),
+    marketCostLimitCents,
+    requiredCostReduction: fromCents(requiredCostReductionCents),
+    requiredCostReductionCents,
+  };
+}
+
+
+const REQUIRED_FISCAL_FIELDS = Object.freeze([
+  ["taxRegime", "regime tributário"],
+  ["originState", "UF de origem"],
+  ["destinationState", "UF de destino"],
+  ["cfop", "CFOP"],
+  ["taxSituation", "CST/CSOSN"],
+  ["customerType", "tipo de cliente"],
+  ["operationPurpose", "finalidade da operação"],
+]);
+
+const TAXES_REQUIRING_EXTERNAL_RULES = Object.freeze([
+  "ICMS",
+  "ICMS-ST",
+  "DIFAL",
+  "FCP",
+  "IPI",
+  "PIS/COFINS",
+  "IBS/CBS/IS e demais regras da reforma tributária",
+]);
+
+class TaxRuleEngine {
+  assess() {
+    throw new Error("O motor tributário deve implementar assess().");
+  }
+}
+
+class ConfiguredTaxRuleEngine extends TaxRuleEngine {
+  assess(inputs, focusState = {}) {
+    const fiscalContext = inputs.fiscalContext || {};
+    const missingFields = REQUIRED_FISCAL_FIELDS
+      .filter(([key]) => !String(fiscalContext[key] || "").trim())
+      .map(([, label]) => label);
+    const ncmVerified = focusState.status === "success" && focusState.ncm?.codigo === fiscalContext.ncmCode;
+    const focusUnavailable = focusState.unavailable === true;
+
+    return {
+      automaticCalculation: false,
+      complete: false,
+      focusUnavailable,
+      fiscalContext,
+      missingFields,
+      ncm: focusState.ncm || (fiscalContext.ncmCode ? { codigo: fiscalContext.ncmCode } : null),
+      ncmSource: ncmVerified ? "Focus NFe" : fiscalContext.ncmCode ? "Usuário (não validado)" : "Não informado",
+      taxes: [
+        {
+          key: "aggregate",
+          label: "Carga tributária agregada estimada",
+          rate: inputs.taxRate,
+          source: "Usuário/regra configurada",
+        },
+      ],
+      unresolvedTaxes: TAXES_REQUIRING_EXTERNAL_RULES,
+      warnings: [
+        "A Focus NFe confirma apenas a classificação NCM; ela não calcula os tributos desta venda.",
+        "O NCM isolado não determina a tributação aplicável.",
+        "A carga tributária agregada deve ser validada por contador ou especialista fiscal antes do uso operacional.",
+      ],
+    };
+  }
+}
+
+function buildCalculationMemory(inputs, result, assessment) {
+  const priceCents = result.minimumPriceCents || 0;
+  const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+  const rateDescription = (rate) => `Base ${money.format(priceCents / 100)} | alíquota ${(rate * 100).toLocaleString("pt-BR", { maximumFractionDigits: 4 })}%`;
+
+  return [
+    { group: "Custo", label: "Custo do produto com perdas", valueCents: result.costs.materialsWithWasteCents, basis: "Custo informado + perda", source: "Usuário" },
+    { group: "Custo", label: "Embalagem", valueCents: result.costs.packagingCostCents, basis: "Valor por venda", source: "Usuário" },
+    { group: "Custo", label: "Frete/entrega", valueCents: result.costs.deliveryCostCents, basis: "Valor por venda", source: "Usuário" },
+    { group: "Custo", label: "Seguro", valueCents: result.costs.insuranceCostCents, basis: "Valor por venda", source: "Usuário" },
+    { group: "Custo", label: "Desconto", valueCents: -result.costs.discountAmountCents, basis: "Redução do custo", source: "Usuário" },
+    { group: "Custo", label: "Despesas adicionais", valueCents: result.costs.otherExpensesCents, basis: "Valor por venda", source: "Usuário" },
+    { group: "Custo", label: "Mão de obra direta", valueCents: result.costs.directLaborCents, basis: "176 h produtivas/mês", source: "Regra configurada" },
+    { group: "Custo", label: "Capital de giro", valueCents: result.costs.workingCapitalCostCents, basis: "Prazos informados", source: "Usuário + regra configurada" },
+    { group: "Custo", label: "Rateio de custos fixos", valueCents: result.costs.fixedCostAllocationCents, basis: "Volume mensal informado", source: "Usuário + regra configurada" },
+    { group: "Tributo", label: assessment.taxes[0].label, valueCents: result.taxExpensesCents, basis: rateDescription(inputs.taxRate), baseCents: priceCents, rate: inputs.taxRate, source: assessment.taxes[0].source },
+    { group: "Venda", label: "Taxa de pagamento", valueCents: result.paymentFeeCents, basis: rateDescription(inputs.paymentFeeRate), baseCents: priceCents, rate: inputs.paymentFeeRate, source: "Usuário" },
+    { group: "Venda", label: "Comissão", valueCents: result.commissionCents, basis: rateDescription(inputs.commissionRate), baseCents: priceCents, rate: inputs.commissionRate, source: "Usuário" },
+    { group: "Margem", label: "Margem líquida", valueCents: result.profitPerSaleCents, basis: rateDescription(inputs.margin), baseCents: priceCents, rate: inputs.margin, source: "Usuário" },
+    { group: "Resultado", label: "Preço sugerido", valueCents: priceCents, basis: "Custo-base ÷ percentual disponível", source: "Regra configurada" },
+  ];
+}
+
+function fiscalDataForStorage(assessment, memory) {
+  return {
+    automaticCalculation: assessment.automaticCalculation,
+    complete: assessment.complete,
+    context: assessment.fiscalContext,
+    missingFields: assessment.missingFields,
+    ncm: assessment.ncm,
+    ncmSource: assessment.ncmSource,
+    unresolvedTaxes: assessment.unresolvedTaxes,
+    memory: memory.map((item) => ({ ...item, value: item.valueCents / 100, base: item.baseCents === undefined ? undefined : item.baseCents / 100 })),
   };
 }
 
@@ -357,7 +528,7 @@ async function request(path, options = {}) {
   const payload = response.status === 204 ? null : await response.json().catch(() => null);
   if (response.ok) return payload;
 
-  const error = new ApiError(payload?.error || "Não foi possível concluir a operação.", response.status);
+  const error = new ApiError(payload?.error || "Não foi possível concluir a operação.", response.status, payload?.code || "");
   if (handleUnauthorized && response.status === 401) window.dispatchEvent(new CustomEvent("app:session-expired"));
   throw error;
 }
@@ -397,6 +568,9 @@ function readInputs(elements) {
     waste: clamp(numberValue(elements.waste), 0, 100) / 100,
     packagingCost: numberValue(elements.packagingCost),
     deliveryCost: numberValue(elements.deliveryCost),
+    insuranceCost: numberValue(elements.insuranceCost),
+    discountAmount: numberValue(elements.discountAmount),
+    otherExpenses: numberValue(elements.otherExpenses),
     totalPayroll: numberValue(elements.totalPayroll),
     workerCount: Math.max(numberValue(elements.workerCount, 1), 1),
     outputPerWorkerHour: Math.max(numberValue(elements.outputPerWorkerHour, 0.01), 0.01),
@@ -410,6 +584,16 @@ function readInputs(elements) {
     receiveDays: numberValue(elements.receiveDays),
     payDays: numberValue(elements.payDays),
     capitalRate: clamp(numberValue(elements.capitalRate), 0, 8) / 100,
+    fiscalContext: {
+      ncmCode: String(elements.ncmCode.value || "").replace(/\D/g, ""),
+      taxRegime: elements.taxRegime.value,
+      originState: elements.originState.value.trim().toUpperCase(),
+      destinationState: elements.destinationState.value.trim().toUpperCase(),
+      cfop: String(elements.cfop.value || "").replace(/\D/g, ""),
+      taxSituation: elements.taxSituation.value.trim().toUpperCase(),
+      customerType: elements.customerType.value,
+      operationPurpose: elements.operationPurpose.value,
+    },
   };
 }
 
@@ -432,6 +616,12 @@ function applySavedInputs(savedInputs, elements) {
     const displayValue = PERCENTAGE_FIELDS.has(field) ? value * 100 : value;
     elements[field].value = String(Number(displayValue.toFixed(4))).replace(".", ",");
   });
+
+  if (savedInputs.fiscalContext && typeof savedInputs.fiscalContext === "object") {
+    Object.entries(savedInputs.fiscalContext).forEach(([field, value]) => {
+      if (elements[field] && typeof value === "string") elements[field].value = value;
+    });
+  }
 
   return true;
 }
@@ -459,46 +649,40 @@ function marketComparisonText(inputs, result, marketStats, marketSource) {
   return `O preço calculado fica ${currency.format(difference)} (${percent(relativeGap)}) acima da ${source}.${confidenceNote}`;
 }
 
-function renderExplanation(document, inputs, result) {
+function renderExplanation(document, inputs, result, fiscalAssessment) {
   const { costs } = result;
   const items = [
     `Insumos e matéria-prima, já com ${percent(inputs.waste)} de perda: ${currency.format(costs.materialsWithWaste)}.`,
     `Mão de obra direta: ${currency.format(costs.directLabor)} por unidade, usando ${inputs.workerCount} trabalhador(es), folha total de ${currency.format(inputs.totalPayroll)} e ${inputs.outputPerWorkerHour.toLocaleString("pt-BR")} unidade(s) por trabalhador/hora.`,
     `Capacidade mensal de produção: ${costs.monthlyProductionCapacity.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} unidades, considerando ${PRODUCTIVE_HOURS_PER_WORKER_MONTH} horas produtivas por trabalhador no mês.`,
     `Rateio de custos fixos: ${currency.format(costs.fixedCostAllocation)} por venda, usando ${inputs.monthlyVolume.toLocaleString("pt-BR")} operações previstas no mês.`,
-    `Impostos, taxa de pagamento e comissão somam ${percent(costs.salesRate)} e incidem sobre o preço final.`,
+    `A carga tributária agregada informada, a taxa de pagamento e a comissão somam ${percent(costs.salesRate)} e incidem sobre o preço final.`,
     "Fórmula aplicada: custo-base ÷ (1 − despesas sobre a venda − margem líquida).",
+    "A Focus NFe é usada para validar o NCM, não para calcular impostos. A composição tributária precisa de regras fiscais externas.",
   ];
+
+  if (fiscalAssessment.missingFields.length > 0) {
+    items.push(`Contexto fiscal ainda incompleto: ${fiscalAssessment.missingFields.join(", ")}.`);
+  }
 
   document.querySelector("#explanationList").innerHTML = items.map((item) => `<li>${item}</li>`).join("");
 }
 
-function renderCostTable(document, inputs, result) {
-  const { costs } = result;
-  const price = result.minimumPrice || 0;
-  const rows = [
-    ["Insumos com perda", costs.materialsWithWaste],
-    ["Embalagem e entrega", inputs.packagingCost + inputs.deliveryCost],
-    ["Mão de obra direta", costs.directLabor],
-    ["Capital de giro", costs.workingCapitalCost],
-    ["Rateio de custos fixos", costs.fixedCostAllocation],
-    ["Impostos, taxas e comissão", result.salesExpenses],
-    ["Lucro líquido", result.profitPerSale],
-  ];
-
-  document.querySelector("#costRows").innerHTML = rows
+function renderCostTable(document, memory) {
+  document.querySelector("#costRows").innerHTML = memory
     .map(
-      ([label, value]) => `
+      (item) => `
         <tr>
-          <td>${label}</td>
-          <td>${currency.format(value)}</td>
-          <td>${price > 0 ? percent(value / price) : "-"}</td>
+          <td><small>${escapeHtml(item.group)}</small><br>${escapeHtml(item.label)}</td>
+          <td>${currency.format(item.valueCents / 100)}</td>
+          <td>${escapeHtml(item.basis)}</td>
+          <td>${escapeHtml(item.source)}</td>
         </tr>`,
     )
     .join("");
 }
 
-function renderAlerts(document, inputs, result) {
+function renderAlerts(document, inputs, result, fiscalAssessment) {
   const alerts = [];
   const { costs } = result;
 
@@ -506,9 +690,24 @@ function renderAlerts(document, inputs, result) {
   if (result.isValid && result.marketGap < 0) alerts.push(["risk", `Para caber na média do mercado mantendo as taxas e a margem, o custo-base precisa cair ${currency.format(result.requiredCostReduction)} por venda.`]);
   if (costs.cashGapDays > 0) alerts.push(["warning", `Você recebe ${costs.cashGapDays} dia(s) depois de pagar. O custo do capital acrescentou ${currency.format(costs.workingCapitalCost)} por venda.`]);
   if (costs.salesRate > 0.2) alerts.push(["warning", `Impostos, taxas e comissão consomem ${percent(costs.salesRate)} do preço final.`]);
+  if (fiscalAssessment.focusUnavailable) alerts.push(["warning", "A Focus NFe está indisponível. O cálculo financeiro foi preservado, mas o NCM não está validado."]);
+  alerts.push(["warning", "Estimativa fiscal pendente: a carga tributária agregada não substitui o cálculo de ICMS, ICMS-ST, DIFAL, FCP, IPI, PIS/COFINS ou IBS/CBS/IS."]);
   if (alerts.length === 0) alerts.push(["ok", "Preço sustentável: custos, despesas sobre a venda e margem foram cobertos sem ultrapassar a média informada."]);
 
   document.querySelector("#alerts").innerHTML = alerts.map(([type, text]) => `<div class="${type}">${text}</div>`).join("");
+}
+
+function renderFiscalSummary(document, assessment) {
+  const ncmDescription = assessment.ncm?.descricao_completa ? ` — ${assessment.ncm.descricao_completa}` : "";
+  const contextStatus = assessment.missingFields.length === 0
+    ? "Contexto básico preenchido; ainda requer regra tributária especializada."
+    : `Faltam: ${assessment.missingFields.join(", ")}.`;
+
+  document.querySelector("#fiscalSummary").innerHTML = `
+    <p><strong>NCM:</strong> ${escapeHtml(assessment.ncm?.codigo || "não informado")}${escapeHtml(ncmDescription)} <small>(${escapeHtml(assessment.ncmSource)})</small></p>
+    <p><strong>Status:</strong> ${escapeHtml(contextStatus)}</p>
+    <p><strong>Tributos não determinados pela Focus NFe:</strong> ${escapeHtml(assessment.unresolvedTaxes.join(", "))}.</p>
+    <p><strong>Resultado:</strong> estimativa financeira; não é uma validação fiscal da operação.</p>`;
 }
 
 function renderMeliPanel(document, result, meliState) {
@@ -596,7 +795,7 @@ function renderMeliPanel(document, result, meliState) {
     .join("");
 }
 
-function renderDashboard(document, inputs, result, meliState, marketSource) {
+function renderDashboard(document, inputs, result, meliState, marketSource, fiscalAssessment, memory) {
   const { costs } = result;
   const activeMarketStats = marketSource === "meli-median" ? meliState.stats : null;
 
@@ -618,11 +817,10 @@ function renderDashboard(document, inputs, result, meliState, marketSource) {
     suggestedPrice.textContent = currency.format(result.minimumPrice);
     profitPerSale.textContent = currency.format(result.profitPerSale);
     estimatedMargin.textContent = percent(result.actualMargin);
-    const [badgeType, badgeText] = marketBadgeForGap(result.marketGap);
-    priceStatus.textContent = badgeText;
-    priceStatus.classList.toggle("risk-badge", badgeType === "risk");
-    priceStatus.classList.toggle("warning-badge", badgeType === "warning");
-    recommendationText.textContent = "Preço mínimo calculado para pagar todos os custos, despesas de venda e atingir a margem líquida definida.";
+    priceStatus.textContent = "Estimativa fiscal pendente";
+    priceStatus.classList.remove("risk-badge");
+    priceStatus.classList.add("warning-badge");
+    recommendationText.textContent = "Preço mínimo financeiro para cobrir custos, despesas de venda e margem. Valide a composição tributária com seu contador antes de usar como preço fiscal.";
     marketStatus.textContent = marketComparisonText(inputs, result, activeMarketStats, marketSource);
     marketMeter.style.width = `${clamp((result.minimumPrice / inputs.competitorAverage) * 100, 0, 100)}%`;
     marketMeter.classList.toggle("over", result.marketGap < 0);
@@ -639,9 +837,10 @@ function renderDashboard(document, inputs, result, meliState, marketSource) {
     marketMeter.classList.add("over");
   }
 
-  renderExplanation(document, inputs, result);
-  renderCostTable(document, inputs, result);
-  renderAlerts(document, inputs, result);
+  renderExplanation(document, inputs, result, fiscalAssessment);
+  renderCostTable(document, memory);
+  renderAlerts(document, inputs, result, fiscalAssessment);
+  renderFiscalSummary(document, fiscalAssessment);
   renderMeliPanel(document, result, meliState);
 }
 
@@ -688,6 +887,13 @@ function renderProductsList(container, products) {
 
 function renderProductDetails(container, product) {
   const description = product.description || "Sem descrição informada.";
+  const fiscal = product.calculationData?.fiscal;
+  const fiscalDetails = fiscal
+    ? `
+      ${detail("NCM", `${fiscal.ncm?.codigo || "Não informado"} (${fiscal.ncmSource || "origem desconhecida"})`)}
+      ${detail("Status fiscal", fiscal.complete ? "Validado" : "Estimativa financeira pendente de validação fiscal")}
+      ${detail("Tributos ainda dependentes de regra externa", (fiscal.unresolvedTaxes || []).join(", ") || "Não registrado")}`
+    : detail("Status fiscal", "Consulta antiga: contexto fiscal não registrado");
   container.innerHTML = `
     <dl class="product-details">
       ${detail("Categoria", product.category)}
@@ -698,6 +904,7 @@ function renderProductDetails(container, product) {
       ${detail("Preço sugerido", currency.format(product.suggestedPrice))}
       ${detail("Data da consulta", formatDate(product.consultationDate))}
       ${detail("Última atualização", formatDate(product.updatedAt))}
+      ${fiscalDetails}
       ${detail("Descrição", description, "product-description")}
     </dl>
     <div class="dialog-detail-actions">
@@ -710,7 +917,8 @@ function renderProductDetails(container, product) {
 
 const sectionFields = Object.freeze({
   product: ["productType", "productName"],
-  direct: ["materialsCost", "waste", "packagingCost", "deliveryCost"],
+  fiscal: ["ncmCode", "taxRegime", "originState", "destinationState", "cfop", "taxSituation", "customerType", "operationPurpose"],
+  direct: ["materialsCost", "waste", "packagingCost", "deliveryCost", "insuranceCost", "discountAmount", "otherExpenses"],
   indirect: ["totalPayroll", "monthlyFixedCosts"],
   production: ["workerCount", "outputPerWorkerHour", "monthlyVolume"],
   sales: ["taxRate", "paymentFeeRate", "commissionRate"],
@@ -831,12 +1039,24 @@ function createPricingTabs(root) {
 const $ = (selector) => document.querySelector(selector);
 const themeStorageKey = "assistente-precificacao-theme";
 const mercadoLivre = new MercadoLivreService();
+const taxRuleEngine = new ConfiguredTaxRuleEngine();
 const formFieldIds = [
   "productType",
+  "ncmCode",
+  "taxRegime",
+  "originState",
+  "destinationState",
+  "cfop",
+  "taxSituation",
+  "customerType",
+  "operationPurpose",
   "materialsCost",
   "waste",
   "packagingCost",
   "deliveryCost",
+  "insuranceCost",
+  "discountAmount",
+  "otherExpenses",
   "totalPayroll",
   "workerCount",
   "outputPerWorkerHour",
@@ -860,6 +1080,13 @@ const state = {
 };
 
 let marketSource = "manual";
+let focusState = {
+  status: "idle",
+  ncm: null,
+  environment: "",
+  error: "",
+  unavailable: false,
+};
 let meliState = {
   status: "idle",
   query: "",
@@ -992,9 +1219,54 @@ function setSubmitState(button, isLoading, label) {
 
 function render() {
   const inputs = readInputs(elements);
-  renderDashboard(document, inputs, calculatePrice(inputs), meliState, marketSource);
+  const result = calculatePrice(inputs);
+  const fiscalAssessment = taxRuleEngine.assess(inputs, focusState);
+  const memory = buildCalculationMemory(inputs, result, fiscalAssessment);
+  renderDashboard(document, inputs, result, meliState, marketSource, fiscalAssessment, memory);
+  renderNcmState();
   $("#mobileSuggestedPrice").textContent = $("#suggestedPrice").textContent;
   pricingTabs.updateCompletion();
+}
+
+function renderNcmState() {
+  const status = $("#ncmLookupStatus");
+  const description = $("#ncmDescription");
+  const button = $("#ncmLookupButton");
+  button.disabled = focusState.status === "loading";
+
+  if (focusState.status === "loading") status.textContent = "Consultando o NCM na Focus NFe…";
+  else if (focusState.status === "success") status.textContent = `NCM confirmado pela Focus NFe em ${focusState.environment}. Isso não calcula a tributação.`;
+  else if (focusState.status === "error") status.textContent = focusState.error;
+  else status.textContent = "Consulte a classificação na Focus NFe. O NCM isolado não determina impostos.";
+
+  description.hidden = !focusState.ncm?.descricao_completa;
+  description.textContent = focusState.ncm?.descricao_completa || "";
+}
+
+async function lookupNcm() {
+  const code = String(elements.ncmCode.value || "").replace(/\D/g, "");
+  elements.ncmCode.value = code;
+  if (!/^\d{8}$/.test(code)) {
+    focusState = { status: "error", ncm: null, environment: "", error: "Informe um NCM com exatamente 8 dígitos.", unavailable: false };
+    render();
+    return;
+  }
+
+  focusState = { status: "loading", ncm: null, environment: "", error: "", unavailable: false };
+  render();
+  try {
+    const response = await api.get(`/fiscal/ncms/${encodeURIComponent(code)}`);
+    focusState = { status: "success", ncm: response.ncm, environment: response.environment, error: "", unavailable: false };
+  } catch (error) {
+    focusState = {
+      status: "error",
+      ncm: null,
+      environment: "",
+      error: `${messageFor(error)} O cálculo financeiro foi mantido, mas não está fiscalmente validado.`,
+      unavailable: true,
+    };
+  }
+  render();
 }
 
 function closeMobileMenus({ restoreFocus = false } = {}) {
@@ -1117,6 +1389,8 @@ function productPayloadFromCalculator() {
   const description = $("#productDescription").value.trim();
   const inputs = readInputs(elements);
   const result = calculatePrice(inputs);
+  const fiscalAssessment = taxRuleEngine.assess(inputs, focusState);
+  const memory = buildCalculationMemory(inputs, result, fiscalAssessment);
 
   if (!name) throw new ApiError("Informe o nome do produto antes de salvar.", 400);
   if (!result.isValid || result.minimumPrice === null) throw new ApiError("Revise os percentuais antes de salvar um cálculo inviável.", 400);
@@ -1133,9 +1407,10 @@ function productPayloadFromCalculator() {
     marketplace: marketSource.startsWith("meli") ? "Mercado Livre" : "Manual",
     consultationDate: new Date().toISOString(),
     calculationData: {
-      version: 1,
+      version: 2,
       inputs,
       result,
+      fiscal: fiscalDataForStorage(fiscalAssessment, memory),
       market: {
         source: marketSource,
         query: meliState.query,
@@ -1226,6 +1501,10 @@ function reuseProduct(product) {
 
   $("#productName").value = product.name;
   $("#productDescription").value = product.description || "";
+  const savedNcm = product.calculationData?.fiscal?.ncm;
+  focusState = savedNcm?.codigo
+    ? { status: "success", ncm: savedNcm, environment: "consulta salva", error: "", unavailable: false }
+    : { status: "idle", ncm: null, environment: "", error: "", unavailable: false };
   marketSource = product.calculationData?.market?.source || "manual";
   meliState = { ...meliState, status: "idle", query: product.calculationData?.market?.query || "", stats: product.calculationData?.market?.stats || null };
   $("#meliQuery").value = meliState.query;
@@ -1369,6 +1648,9 @@ async function submitRegistration(event) {
   elements.waste,
   elements.packagingCost,
   elements.deliveryCost,
+  elements.insuranceCost,
+  elements.discountAmount,
+  elements.otherExpenses,
   elements.totalPayroll,
   elements.workerCount,
   elements.outputPerWorkerHour,
@@ -1382,6 +1664,32 @@ async function submitRegistration(event) {
   elements.payDays,
   elements.capitalRate,
 ].forEach((field) => field.addEventListener("input", render));
+
+[
+  elements.taxRegime,
+  elements.originState,
+  elements.destinationState,
+  elements.cfop,
+  elements.taxSituation,
+  elements.customerType,
+  elements.operationPurpose,
+].forEach((field) => {
+  field.addEventListener("input", render);
+  field.addEventListener("change", render);
+});
+
+elements.ncmCode.addEventListener("input", () => {
+  const currentCode = String(elements.ncmCode.value || "").replace(/\D/g, "");
+  if (focusState.ncm?.codigo !== currentCode) focusState = { status: "idle", ncm: null, environment: "", error: "", unavailable: false };
+  render();
+});
+
+$("#ncmLookupButton").addEventListener("click", lookupNcm);
+elements.ncmCode.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  void lookupNcm();
+});
 
 elements.productType.addEventListener("change", () => {
   applyCategoryPreset(elements.productType.value, elements);

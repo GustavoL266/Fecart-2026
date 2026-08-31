@@ -19,46 +19,40 @@ function marketComparisonText(inputs, result, marketStats, marketSource) {
   return `O preço calculado fica ${currency.format(difference)} (${percent(relativeGap)}) acima da ${source}.${confidenceNote}`;
 }
 
-function renderExplanation(document, inputs, result) {
+function renderExplanation(document, inputs, result, fiscalAssessment) {
   const { costs } = result;
   const items = [
     `Insumos e matéria-prima, já com ${percent(inputs.waste)} de perda: ${currency.format(costs.materialsWithWaste)}.`,
     `Mão de obra direta: ${currency.format(costs.directLabor)} por unidade, usando ${inputs.workerCount} trabalhador(es), folha total de ${currency.format(inputs.totalPayroll)} e ${inputs.outputPerWorkerHour.toLocaleString("pt-BR")} unidade(s) por trabalhador/hora.`,
     `Capacidade mensal de produção: ${costs.monthlyProductionCapacity.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} unidades, considerando ${PRODUCTIVE_HOURS_PER_WORKER_MONTH} horas produtivas por trabalhador no mês.`,
     `Rateio de custos fixos: ${currency.format(costs.fixedCostAllocation)} por venda, usando ${inputs.monthlyVolume.toLocaleString("pt-BR")} operações previstas no mês.`,
-    `Impostos, taxa de pagamento e comissão somam ${percent(costs.salesRate)} e incidem sobre o preço final.`,
+    `A carga tributária agregada informada, a taxa de pagamento e a comissão somam ${percent(costs.salesRate)} e incidem sobre o preço final.`,
     "Fórmula aplicada: custo-base ÷ (1 − despesas sobre a venda − margem líquida).",
+    "A Focus NFe é usada para validar o NCM, não para calcular impostos. A composição tributária precisa de regras fiscais externas.",
   ];
+
+  if (fiscalAssessment.missingFields.length > 0) {
+    items.push(`Contexto fiscal ainda incompleto: ${fiscalAssessment.missingFields.join(", ")}.`);
+  }
 
   document.querySelector("#explanationList").innerHTML = items.map((item) => `<li>${item}</li>`).join("");
 }
 
-function renderCostTable(document, inputs, result) {
-  const { costs } = result;
-  const price = result.minimumPrice || 0;
-  const rows = [
-    ["Insumos com perda", costs.materialsWithWaste],
-    ["Embalagem e entrega", inputs.packagingCost + inputs.deliveryCost],
-    ["Mão de obra direta", costs.directLabor],
-    ["Capital de giro", costs.workingCapitalCost],
-    ["Rateio de custos fixos", costs.fixedCostAllocation],
-    ["Impostos, taxas e comissão", result.salesExpenses],
-    ["Lucro líquido", result.profitPerSale],
-  ];
-
-  document.querySelector("#costRows").innerHTML = rows
+function renderCostTable(document, memory) {
+  document.querySelector("#costRows").innerHTML = memory
     .map(
-      ([label, value]) => `
+      (item) => `
         <tr>
-          <td>${label}</td>
-          <td>${currency.format(value)}</td>
-          <td>${price > 0 ? percent(value / price) : "-"}</td>
+          <td><small>${escapeHtml(item.group)}</small><br>${escapeHtml(item.label)}</td>
+          <td>${currency.format(item.valueCents / 100)}</td>
+          <td>${escapeHtml(item.basis)}</td>
+          <td>${escapeHtml(item.source)}</td>
         </tr>`,
     )
     .join("");
 }
 
-function renderAlerts(document, inputs, result) {
+function renderAlerts(document, inputs, result, fiscalAssessment) {
   const alerts = [];
   const { costs } = result;
 
@@ -66,9 +60,24 @@ function renderAlerts(document, inputs, result) {
   if (result.isValid && result.marketGap < 0) alerts.push(["risk", `Para caber na média do mercado mantendo as taxas e a margem, o custo-base precisa cair ${currency.format(result.requiredCostReduction)} por venda.`]);
   if (costs.cashGapDays > 0) alerts.push(["warning", `Você recebe ${costs.cashGapDays} dia(s) depois de pagar. O custo do capital acrescentou ${currency.format(costs.workingCapitalCost)} por venda.`]);
   if (costs.salesRate > 0.2) alerts.push(["warning", `Impostos, taxas e comissão consomem ${percent(costs.salesRate)} do preço final.`]);
+  if (fiscalAssessment.focusUnavailable) alerts.push(["warning", "A Focus NFe está indisponível. O cálculo financeiro foi preservado, mas o NCM não está validado."]);
+  alerts.push(["warning", "Estimativa fiscal pendente: a carga tributária agregada não substitui o cálculo de ICMS, ICMS-ST, DIFAL, FCP, IPI, PIS/COFINS ou IBS/CBS/IS."]);
   if (alerts.length === 0) alerts.push(["ok", "Preço sustentável: custos, despesas sobre a venda e margem foram cobertos sem ultrapassar a média informada."]);
 
   document.querySelector("#alerts").innerHTML = alerts.map(([type, text]) => `<div class="${type}">${text}</div>`).join("");
+}
+
+function renderFiscalSummary(document, assessment) {
+  const ncmDescription = assessment.ncm?.descricao_completa ? ` — ${assessment.ncm.descricao_completa}` : "";
+  const contextStatus = assessment.missingFields.length === 0
+    ? "Contexto básico preenchido; ainda requer regra tributária especializada."
+    : `Faltam: ${assessment.missingFields.join(", ")}.`;
+
+  document.querySelector("#fiscalSummary").innerHTML = `
+    <p><strong>NCM:</strong> ${escapeHtml(assessment.ncm?.codigo || "não informado")}${escapeHtml(ncmDescription)} <small>(${escapeHtml(assessment.ncmSource)})</small></p>
+    <p><strong>Status:</strong> ${escapeHtml(contextStatus)}</p>
+    <p><strong>Tributos não determinados pela Focus NFe:</strong> ${escapeHtml(assessment.unresolvedTaxes.join(", "))}.</p>
+    <p><strong>Resultado:</strong> estimativa financeira; não é uma validação fiscal da operação.</p>`;
 }
 
 function renderMeliPanel(document, result, meliState) {
@@ -156,7 +165,7 @@ function renderMeliPanel(document, result, meliState) {
     .join("");
 }
 
-export function renderDashboard(document, inputs, result, meliState, marketSource) {
+export function renderDashboard(document, inputs, result, meliState, marketSource, fiscalAssessment, memory) {
   const { costs } = result;
   const activeMarketStats = marketSource === "meli-median" ? meliState.stats : null;
 
@@ -178,11 +187,10 @@ export function renderDashboard(document, inputs, result, meliState, marketSourc
     suggestedPrice.textContent = currency.format(result.minimumPrice);
     profitPerSale.textContent = currency.format(result.profitPerSale);
     estimatedMargin.textContent = percent(result.actualMargin);
-    const [badgeType, badgeText] = marketBadgeForGap(result.marketGap);
-    priceStatus.textContent = badgeText;
-    priceStatus.classList.toggle("risk-badge", badgeType === "risk");
-    priceStatus.classList.toggle("warning-badge", badgeType === "warning");
-    recommendationText.textContent = "Preço mínimo calculado para pagar todos os custos, despesas de venda e atingir a margem líquida definida.";
+    priceStatus.textContent = "Estimativa fiscal pendente";
+    priceStatus.classList.remove("risk-badge");
+    priceStatus.classList.add("warning-badge");
+    recommendationText.textContent = "Preço mínimo financeiro para cobrir custos, despesas de venda e margem. Valide a composição tributária com seu contador antes de usar como preço fiscal.";
     marketStatus.textContent = marketComparisonText(inputs, result, activeMarketStats, marketSource);
     marketMeter.style.width = `${clamp((result.minimumPrice / inputs.competitorAverage) * 100, 0, 100)}%`;
     marketMeter.classList.toggle("over", result.marketGap < 0);
@@ -199,8 +207,9 @@ export function renderDashboard(document, inputs, result, meliState, marketSourc
     marketMeter.classList.add("over");
   }
 
-  renderExplanation(document, inputs, result);
-  renderCostTable(document, inputs, result);
-  renderAlerts(document, inputs, result);
+  renderExplanation(document, inputs, result, fiscalAssessment);
+  renderCostTable(document, memory);
+  renderAlerts(document, inputs, result, fiscalAssessment);
+  renderFiscalSummary(document, fiscalAssessment);
   renderMeliPanel(document, result, meliState);
 }

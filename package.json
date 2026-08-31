@@ -9,6 +9,7 @@
     "migrate": "node scripts/migrate.mjs",
     "build": "node scripts/build.mjs",
     "lint": "node scripts/lint.mjs",
+    "focus:check": "node scripts/check-focus-nfe.mjs",
     "test": "node --test"
   },
   "dependencies": {

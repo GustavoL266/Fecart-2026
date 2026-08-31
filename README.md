@@ -16,6 +16,8 @@ Aplicação web para calcular preço de venda sustentável, comparar referência
 - Todos os acessos a produto verificam `user_id` junto ao ID do produto. Um produto de outra conta retorna `404` e nunca é exposto.
 - Histórico com busca por nome, ordenação por data, visualização, edição, exclusão e reutilização de uma precificação anterior.
 - Salvamento de todos os campos relevantes da consulta (entradas, memória do cálculo e referência de mercado) em `calculation_data`.
+- Consulta de NCM pela Focus NFe exclusivamente no backend, com memória de cálculo, origem dos dados e aviso explícito de pendências fiscais.
+- Cálculos monetários internos em centavos, incluindo frete, seguro, desconto e despesas adicionais.
 - Validação no navegador e no servidor, limitação de tentativas de autenticação, cabeçalhos de segurança e respostas sem hashes/senhas.
 
 ## Pré-requisitos
@@ -39,6 +41,12 @@ pnpm start
 Abra [http://localhost:3000](http://localhost:3000). O `docker-compose.yml` inicia um PostgreSQL local em `localhost:5432`; os dados ficam em `.postgres-data/`, que é ignorado pelo Git. Ele lê as credenciais do `.env`, sem gravar senha de banco no repositório.
 
 Antes de publicar, troque obrigatoriamente `SESSION_SECRET`, a senha de banco e configure `SESSION_COOKIE_SECURE=true` atrás de HTTPS.
+
+### Focus NFe
+
+Defina `FOCUS_NFE_TOKEN` somente no ambiente do processo. Mantenha `FOCUS_NFE_BASE_URL=https://homologacao.focusnfe.com.br` durante o desenvolvimento e use `FOCUS_NFE_TIMEOUT_MS=5000`. O token é enviado pelo backend como usuário do HTTP Basic com senha vazia; nunca é exposto ao navegador, salvo no banco ou incluído em logs.
+
+O assistente usa a Focus NFe apenas para consultar e validar a descrição de um NCM exato. A documentação não oferece um endpoint de cálculo tributário automático: a carga tributária continua sendo um dado informado/regra configurada e o resultado aparece como estimativa fiscal pendente. Consulte [docs/focus-nfe.md](docs/focus-nfe.md) para limites, dados exigidos do contador e avaliação de NF-e recebidas.
 
 ## Publicação a partir do GitHub
 
@@ -90,6 +98,7 @@ pnpm dev         # reinicia o servidor ao alterar arquivos
 pnpm migrate     # aplica migrations/*.sql pendentes
 pnpm build       # gera app.js a partir dos módulos em js/
 pnpm test        # executa os testes
+pnpm focus:check # consulta não destrutiva de NCM somente em homologação
 ```
 
 `app.js` é gerado. Edite os módulos de `js/` e rode `pnpm build` antes de publicar alterações do frontend.
@@ -114,6 +123,7 @@ O relacionamento `products.user_id → users.id` usa chave estrangeira com `ON D
 | GET | `/auth/me` | Sessão atual |
 | GET | `/products` | Obrigatória |
 | GET | `/products/:id` | Obrigatória + dono |
+| GET | `/fiscal/ncms/:codigo` | Obrigatória; proxy backend para Focus NFe |
 | POST | `/products` | Obrigatória |
 | PATCH | `/products/:id` | Obrigatória + dono |
 | DELETE | `/products/:id` | Obrigatória + dono |
