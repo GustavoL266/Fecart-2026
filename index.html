@@ -504,8 +504,8 @@
       <section class="workspace" aria-label="Resultado da precificação">
         <header class="topbar">
           <div>
-            <p class="eyebrow">Preço mínimo sustentável</p>
-            <h2>O preço nasce do custo real da sua operação</h2>
+            <p class="eyebrow">Visão geral</p>
+            <h2>Resumo da sua precificação</h2>
           </div>
           <div class="user-menu" aria-label="Menu da conta">
             <span id="currentUserName" class="user-name"></span>
@@ -516,128 +516,161 @@
           </div>
         </header>
 
-        <section class="decision-grid">
-          <article class="recommendation-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Preço calculado</p>
-                <h3 id="suggestedPrice">R$ 0,00</h3>
-              </div>
-              <span id="priceStatus" class="confidence">Cálculo financeiro</span>
-            </div>
-            <div class="save-product-row">
-              <button id="saveProductButton" type="button">Salvar produto</button>
-              <p id="saveProductStatus" class="helper-text" role="status"></p>
-            </div>
-            <p id="recommendationText" class="recommendation-text"></p>
-
-            <div class="metric-grid">
-              <div>
-                <span>Custo-base por venda</span>
-                <strong id="baseCost">R$ 0,00</strong>
-              </div>
-              <div>
-                <span>Despesas sobre a venda</span>
-                <strong id="salesRate">0%</strong>
-              </div>
-              <div>
-                <span>Lucro líquido por venda</span>
-                <strong id="profitPerSale">R$ 0,00</strong>
-              </div>
-              <div>
-                <span>Margem líquida estimada</span>
-                <strong id="estimatedMargin">0%</strong>
-              </div>
-            </div>
-          </article>
-
-          <article class="market-panel">
-            <div class="panel-heading compact">
-              <div>
-                <p class="eyebrow">Validação de mercado</p>
-                <h3 id="marketTitle">Comestíveis</h3>
-              </div>
-            </div>
-            <div class="market-price">
-              <span>Média dos concorrentes</span>
-              <strong id="marketPrice">R$ 0,00</strong>
-            </div>
-            <div class="market-meter" aria-hidden="true"><span id="marketMeter"></span></div>
-            <p id="marketStatus" class="market-status"></p>
-            <div class="market-limit">
-              <span>Custo-base máximo para caber no mercado</span>
-              <strong id="marketCostLimit">R$ 0,00</strong>
-            </div>
-            <div id="meliSummary" class="meli-summary" hidden></div>
-          </article>
-        </section>
-
-        <section id="meliPanel" class="meli-panel" aria-labelledby="meli-title" hidden>
-          <div class="panel-heading compact">
+        <section id="dashboardView" class="dashboard-view" aria-labelledby="dashboardTitle">
+          <div class="dashboard-heading">
             <div>
-              <p class="eyebrow">Mercado Livre</p>
-              <h3 id="meli-title">Anúncios comparáveis</h3>
+              <p class="eyebrow">Dashboard</p>
+              <h1 id="dashboardTitle">O essencial para decidir</h1>
+              <p>Veja os principais indicadores e abra os detalhes somente quando precisar entender a composição.</p>
             </div>
-            <button id="applyMeliMarket" type="button" class="secondary-button" disabled>Usar mediana</button>
           </div>
-          <div id="meliStats" class="meli-stats"></div>
-          <div id="meliResults" class="meli-results"></div>
+
+          <div class="dashboard-summary-grid">
+            <article class="summary-card summary-card-primary">
+              <div class="summary-card-heading">
+                <div><p class="eyebrow">Preço calculado</p><h3>Preço mínimo sustentável</h3></div>
+                <span id="priceStatus" class="confidence">Cálculo financeiro</span>
+              </div>
+              <strong id="suggestedPrice" class="summary-value">R$ 0,00</strong>
+              <p class="summary-context">Margem líquida estimada: <strong id="estimatedMargin">0%</strong></p>
+              <p id="recommendationText" class="summary-description"></p>
+              <div class="summary-primary-actions">
+                <div class="save-product-row">
+                  <button id="saveProductButton" type="button">Salvar produto</button>
+                  <p id="saveProductStatus" class="helper-text" role="status"></p>
+                </div>
+                <button type="button" class="detail-link" data-detail-view="price" data-detail-target="overview">Ver detalhes <span aria-hidden="true">→</span></button>
+              </div>
+            </article>
+
+            <article class="summary-card">
+              <div class="summary-card-heading">
+                <div><p class="eyebrow">Mercado</p><h3 id="marketTitle">Comestíveis</h3></div>
+              </div>
+              <span class="summary-label">Preço médio dos concorrentes</span>
+              <strong id="marketPrice" class="summary-value compact">R$ 0,00</strong>
+              <div class="market-meter compact-meter" aria-hidden="true"><span id="marketMeter"></span></div>
+              <p id="marketStatus" class="summary-description"></p>
+              <div id="meliSummary" class="meli-summary" hidden></div>
+              <button type="button" class="detail-link" data-detail-view="price" data-detail-target="market-comparison">Ver detalhes <span aria-hidden="true">→</span></button>
+            </article>
+
+            <article class="summary-card">
+              <p class="eyebrow">Custos</p>
+              <h3>Custo-base por venda</h3>
+              <strong id="baseCost" class="summary-value compact">R$ 0,00</strong>
+              <p class="summary-description">Reúne custos diretos, capital de giro e rateio da estrutura mensal.</p>
+              <button type="button" class="detail-link" data-detail-view="price" data-detail-target="financial-breakdown">Ver detalhes <span aria-hidden="true">→</span></button>
+            </article>
+
+            <article class="summary-card">
+              <p class="eyebrow">Margem</p>
+              <h3>Lucro líquido por unidade</h3>
+              <strong id="profitPerSale" class="summary-value compact">R$ 0,00</strong>
+              <p class="summary-description">Valor líquido estimado após custos e despesas sobre a venda.</p>
+              <button type="button" class="detail-link" data-detail-view="price" data-detail-target="overview">Ver detalhes <span aria-hidden="true">→</span></button>
+            </article>
+
+            <article class="summary-card summary-card-alerts">
+              <p class="eyebrow">Alertas</p>
+              <h3 id="alertCount">0 alertas importantes</h3>
+              <p id="alertSummary" class="summary-description"></p>
+              <button type="button" class="detail-link" data-detail-view="price" data-detail-target="detail-alerts">Ver detalhes <span aria-hidden="true">→</span></button>
+            </article>
+          </div>
         </section>
 
-        <section class="lower-grid">
-          <article class="fiscal-panel">
-            <div class="panel-heading compact">
-              <div>
-                <p class="eyebrow">Contexto fiscal</p>
-                <h3>Limites da estimativa</h3>
-              </div>
+        <section id="priceDetailsView" class="detail-page" aria-labelledby="priceDetailsTitle" hidden>
+          <button id="backToDashboardButton" type="button" class="back-navigation"><span aria-hidden="true">←</span> Voltar ao dashboard</button>
+
+          <header class="detail-header">
+            <p class="eyebrow">Análise detalhada</p>
+            <h1 id="priceDetailsTitle">Preço calculado</h1>
+            <p>Entenda como chegamos ao preço mínimo sustentável do seu produto.</p>
+          </header>
+
+          <article id="detail-overview" class="detail-hero" data-detail-anchor="overview" tabindex="-1">
+            <div>
+              <p class="eyebrow">Preço mínimo sustentável</p>
+              <strong id="detailSuggestedPrice">R$ 0,00</strong>
+              <p>Valor mínimo financeiro para cobrir a operação e alcançar a margem configurada.</p>
             </div>
+            <div class="detail-hero-margin">
+              <span>Margem líquida estimada</span>
+              <strong id="detailMargin">0%</strong>
+            </div>
+          </article>
+
+          <section class="detail-section" aria-labelledby="financial-summary-title">
+            <div class="detail-section-heading"><p class="eyebrow">Resumo financeiro</p><h2 id="financial-summary-title">Os números por trás do preço</h2></div>
+            <div class="detail-metric-grid">
+              <article class="metric-card"><span>Custo-base</span><strong id="detailBaseCost">R$ 0,00</strong><small>Custos necessários por venda</small></article>
+              <article class="metric-card"><span>Despesas sobre a venda</span><strong id="detailSalesRate">0%</strong><small>Tributos, taxa e comissão</small></article>
+              <article class="metric-card"><span>Lucro líquido</span><strong id="detailProfit">R$ 0,00</strong><small>Resultado estimado por unidade</small></article>
+              <article class="metric-card"><span>Pontos de atenção</span><strong id="detailAlertCount">0</strong><small>Revise antes de aplicar o preço</small></article>
+            </div>
+          </section>
+
+          <section class="detail-visual-grid">
+            <article class="chart-card">
+              <div class="detail-section-heading compact"><p class="eyebrow">Composição do preço</p><h2>Distribuição do valor final</h2><p>Os grupos abaixo usam os mesmos resultados do cálculo principal.</p></div>
+              <div class="donut-layout">
+                <div id="priceDonut" class="price-donut" role="img">
+                  <div><span>Preço final</span><strong id="detailDonutPrice">R$ 0,00</strong></div>
+                </div>
+                <ul id="priceCompositionLegend" class="chart-legend"></ul>
+              </div>
+            </article>
+
+            <article id="detail-market-comparison" class="chart-card" data-detail-anchor="market-comparison" tabindex="-1">
+              <div class="detail-section-heading compact"><p class="eyebrow">Comparação</p><h2>Preço e mercado</h2><p id="detailMarketNarrative"></p></div>
+              <ul id="priceComparisonBars" class="comparison-bars"></ul>
+              <div class="comparison-footer">
+                <span>Média de mercado <strong id="detailMarketPrice">R$ 0,00</strong></span>
+                <span>Custo-base limite <strong id="detailMarketCostLimit">R$ 0,00</strong></span>
+              </div>
+            </article>
+          </section>
+
+          <article id="detail-financial-breakdown" class="detail-panel table-panel" data-detail-anchor="financial-breakdown" tabindex="-1">
+            <div class="detail-section-heading"><p class="eyebrow">Como o preço é formado</p><h2>Composição financeira completa</h2><p>Cada linha mantém a base, a origem e o valor usados pelo cálculo atual.</p></div>
+            <div class="detail-table-scroll">
+              <table>
+                <thead><tr><th>Componente</th><th>Valor</th><th>Base/alíquota</th><th>Origem</th></tr></thead>
+                <tbody id="costRows"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <section class="detail-information-grid">
+            <article class="detail-panel">
+              <div class="detail-section-heading compact"><p class="eyebrow">Memória de cálculo</p><h2>Como chegamos ao resultado</h2></div>
+              <ul id="explanationList" class="explanation-list"></ul>
+            </article>
+
+            <article id="detail-alerts" class="detail-panel" data-detail-anchor="detail-alerts" tabindex="-1">
+              <div class="detail-section-heading compact"><p class="eyebrow">Pontos de atenção</p><h2>Alertas do cenário</h2></div>
+              <div id="alerts" class="alerts"></div>
+            </article>
+          </section>
+
+          <article class="detail-panel">
+            <div class="detail-section-heading compact"><p class="eyebrow">Contexto fiscal</p><h2>Limites da estimativa</h2></div>
             <div id="fiscalSummary" class="fiscal-summary"></div>
           </article>
 
-          <article class="insight-panel">
+          <section id="meliPanel" class="meli-panel" aria-labelledby="meli-title" hidden>
             <div class="panel-heading compact">
-              <div>
-                <p class="eyebrow">Memória de cálculo</p>
-                <h3>Como o preço foi formado</h3>
-              </div>
+              <div><p class="eyebrow">Mercado Livre</p><h3 id="meli-title">Anúncios comparáveis</h3></div>
+              <button id="applyMeliMarket" type="button" class="secondary-button" disabled>Usar mediana</button>
             </div>
-            <ul id="explanationList" class="explanation-list"></ul>
-          </article>
-
-          <article class="table-panel">
-            <div class="panel-heading compact">
-              <div>
-                <p class="eyebrow">Composição financeira</p>
-                <h3>Impacto por venda</h3>
-              </div>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Componente</th>
-                  <th>Valor</th>
-                  <th>Base/alíquota</th>
-                  <th>Origem</th>
-                </tr>
-              </thead>
-              <tbody id="costRows"></tbody>
-            </table>
-          </article>
-
-          <article class="alerts-panel">
-            <div class="panel-heading compact">
-              <div>
-                <p class="eyebrow">Pontos de atenção</p>
-                <h3>Alertas</h3>
-              </div>
-            </div>
-            <div id="alerts" class="alerts"></div>
-          </article>
+            <div id="meliStats" class="meli-stats"></div>
+            <div id="meliResults" class="meli-results"></div>
+          </section>
         </section>
       </section>
 
-      <aside class="mobile-price-summary" aria-label="Resumo do preço calculado">
+      <aside id="mobilePriceSummary" class="mobile-price-summary" aria-label="Resumo do preço calculado">
         <div><span>Preço sugerido</span><strong id="mobileSuggestedPrice">R$ 0,00</strong></div>
         <button id="showMobileResultButton" type="button">Ver resultado</button>
       </aside>

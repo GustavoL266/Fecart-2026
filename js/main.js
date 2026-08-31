@@ -9,6 +9,7 @@ import { createPricingTabs } from "./ui/pricing-tabs.js";
 
 const $ = (selector) => document.querySelector(selector);
 const themeStorageKey = "assistente-precificacao-theme";
+const detailRouteHashes = Object.freeze({ price: "#preco-calculado" });
 const mercadoLivre = new MercadoLivreService();
 const taxRuleEngine = new ConfiguredTaxRuleEngine();
 const formFieldIds = [
@@ -69,6 +70,7 @@ let meliState = {
   error: "",
 };
 let productSearchTimer;
+let pendingDetailTarget = "";
 
 function applyTheme(theme, persist = true) {
   const normalizedTheme = theme === "dark" ? "dark" : "light";
@@ -279,12 +281,28 @@ function showAuth(mode = "login", message = "") {
   setMessage($("#authMessage"), message);
 }
 
-function showAssistant() {
+function showAssistant(view = "dashboard") {
   closeMobileMenus();
   $("#bootScreen").hidden = true;
   $("#authView").hidden = true;
   $("#assistantView").hidden = false;
   $("#productsView").hidden = true;
+  const isPriceDetails = view === "price-details";
+  $("#dashboardView").hidden = isPriceDetails;
+  $("#priceDetailsView").hidden = !isPriceDetails;
+  $("#mobilePriceSummary").hidden = isPriceDetails;
+
+  if (isPriceDetails) {
+    const target = pendingDetailTarget || "overview";
+    pendingDetailTarget = "";
+    window.requestAnimationFrame(() => {
+      const detailSection = document.querySelector(`[data-detail-anchor="${target}"]`);
+      detailSection?.scrollIntoView({ block: "start" });
+      detailSection?.focus({ preventScroll: true });
+    });
+  } else {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }
 }
 
 async function showProducts() {
@@ -299,12 +317,14 @@ async function showProducts() {
 async function syncRoute() {
   if (!state.user) return;
   if (window.location.hash === "#produtos") await showProducts();
-  else showAssistant();
+  else if (window.location.hash === detailRouteHashes.price) showAssistant("price-details");
+  else showAssistant("dashboard");
 }
 
-function navigate(view) {
+function navigate(view, detailTarget = "") {
   closeMobileMenus();
-  const hash = view === "products" ? "#produtos" : "#assistente";
+  if (detailTarget) pendingDetailTarget = detailTarget;
+  const hash = view === "products" ? "#produtos" : detailRouteHashes[view] || "#assistente";
   if (window.location.hash === hash) {
     void syncRoute();
   } else {
@@ -756,6 +776,10 @@ document.querySelectorAll("[data-app-action]").forEach((button) => {
   });
 });
 
+document.querySelectorAll("[data-detail-view]").forEach((button) => {
+  button.addEventListener("click", () => navigate(button.dataset.detailView, button.dataset.detailTarget || "overview"));
+});
+
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".mobile-app-header")) closeMobileMenus();
 });
@@ -765,15 +789,13 @@ document.addEventListener("keydown", (event) => {
 });
 
 $("#showMobileResultButton").addEventListener("click", () => {
-  $(".recommendation-panel").scrollIntoView({
-    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-    block: "start",
-  });
+  navigate("price", "overview");
 });
 
 $("#logoutButton").addEventListener("click", logout);
 $("#showProfileButton").addEventListener("click", showProfile);
 $("#showProductsButton").addEventListener("click", () => navigate("products"));
+$("#backToDashboardButton").addEventListener("click", () => navigate("assistant"));
 $("#backToAssistantButton").addEventListener("click", () => navigate("assistant"));
 $("#saveProductButton").addEventListener("click", saveProduct);
 $("#productEditorForm").addEventListener("submit", editCurrentProduct);

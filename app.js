@@ -632,6 +632,118 @@ function isAboveCompetitorLimit(elements) {
 
 
 
+const chartColors = [
+  "var(--chart-green)",
+  "var(--chart-teal)",
+  "var(--chart-blue)",
+  "var(--chart-amber)",
+  "var(--chart-violet)",
+];
+
+function priceCompositionFrom(result) {
+  if (!result.isValid || !result.minimumPriceCents) return [];
+
+  const components = [
+    { label: "Custos diretos líquidos", valueCents: result.costs.directCashCostCents },
+    { label: "Capital de giro", valueCents: result.costs.workingCapitalCostCents },
+    { label: "Rateio de custos fixos", valueCents: result.costs.fixedCostAllocationCents },
+    { label: "Impostos, taxas e comissão", valueCents: result.salesExpensesCents },
+    { label: "Lucro líquido", valueCents: result.profitPerSaleCents },
+  ].filter((item) => item.valueCents > 0);
+
+  const representedTotalCents = components.reduce((total, item) => total + item.valueCents, 0);
+  return components.map((item, index) => ({
+    ...item,
+    color: chartColors[index % chartColors.length],
+    share: representedTotalCents > 0 ? item.valueCents / representedTotalCents : 0,
+  }));
+}
+
+function priceComparisonFrom(inputs, result) {
+  const values = [
+    { label: "Custo-base", value: result.costs.baseCost },
+    { label: "Preço recomendado", value: result.minimumPrice || 0 },
+    { label: "Média do mercado", value: inputs.competitorAverage },
+  ];
+  const maximum = Math.max(...values.map((item) => item.value), 1);
+
+  return values.map((item) => ({
+    ...item,
+    width: clamp((item.value / maximum) * 100, 0, 100),
+  }));
+}
+
+function renderComposition(document, result) {
+  const donut = document.querySelector("#priceDonut");
+  const legend = document.querySelector("#priceCompositionLegend");
+  const components = priceCompositionFrom(result);
+
+  if (components.length === 0) {
+    donut.style.setProperty("--donut-gradient", "conic-gradient(var(--meter-track) 0 100%)");
+    donut.setAttribute("aria-label", "Composição indisponível enquanto o cálculo estiver inválido.");
+    legend.innerHTML = '<li class="chart-empty">Revise os percentuais para visualizar a composição.</li>';
+    return;
+  }
+
+  let cursor = 0;
+  const stops = components.map((item) => {
+    const start = cursor;
+    cursor += item.share * 100;
+    return `${item.color} ${start.toFixed(2)}% ${cursor.toFixed(2)}%`;
+  });
+
+  donut.style.setProperty("--donut-gradient", `conic-gradient(${stops.join(", ")})`);
+  donut.setAttribute(
+    "aria-label",
+    components.map((item) => `${item.label}: ${percent(item.share)}`).join(". "),
+  );
+  legend.innerHTML = components
+    .map(
+      (item) => `
+        <li>
+          <span class="chart-legend-color" style="--legend-color: ${item.color}" aria-hidden="true"></span>
+          <span>${escapeHtml(item.label)}</span>
+          <strong>${currency.format(item.valueCents / 100)}</strong>
+          <small>${percent(item.share)}</small>
+        </li>`,
+    )
+    .join("");
+}
+
+function renderComparison(document, inputs, result, marketText) {
+  const comparison = priceComparisonFrom(inputs, result);
+  document.querySelector("#priceComparisonBars").innerHTML = comparison
+    .map(
+      (item, index) => `
+        <li>
+          <div><span>${escapeHtml(item.label)}</span><strong>${currency.format(item.value)}</strong></div>
+          <span class="comparison-track" aria-hidden="true"><span class="comparison-fill comparison-fill-${index + 1}" style="width: ${item.width.toFixed(2)}%"></span></span>
+        </li>`,
+    )
+    .join("");
+  document.querySelector("#detailMarketNarrative").textContent = marketText;
+}
+
+function renderPriceDetails(document, inputs, result, marketText, alertCount) {
+  const validPrice = result.isValid ? currency.format(result.minimumPrice) : "Revise percentuais";
+  const validMargin = result.isValid ? percent(result.actualMargin) : "-";
+
+  document.querySelector("#detailSuggestedPrice").textContent = validPrice;
+  document.querySelector("#detailDonutPrice").textContent = result.isValid ? currency.format(result.minimumPrice) : "-";
+  document.querySelector("#detailBaseCost").textContent = currency.format(result.costs.baseCost);
+  document.querySelector("#detailSalesRate").textContent = percent(result.costs.salesRate);
+  document.querySelector("#detailProfit").textContent = result.isValid ? currency.format(result.profitPerSale) : "-";
+  document.querySelector("#detailMargin").textContent = validMargin;
+  document.querySelector("#detailMarketPrice").textContent = currency.format(inputs.competitorAverage);
+  document.querySelector("#detailMarketCostLimit").textContent = currency.format(result.marketCostLimit);
+  document.querySelector("#detailAlertCount").textContent = `${alertCount} ${alertCount === 1 ? "ponto de atenção" : "pontos de atenção"}`;
+
+  renderComposition(document, result);
+  renderComparison(document, inputs, result, marketText);
+}
+
+
+
 function marketComparisonText(inputs, result, marketStats, marketSource) {
   const difference = Math.abs(inputs.competitorAverage - result.minimumPrice);
   const source =
@@ -682,7 +794,7 @@ function renderCostTable(document, memory) {
     .join("");
 }
 
-function renderAlerts(document, inputs, result, fiscalAssessment) {
+function dashboardAlerts(inputs, result, fiscalAssessment) {
   const alerts = [];
   const { costs } = result;
 
@@ -694,6 +806,10 @@ function renderAlerts(document, inputs, result, fiscalAssessment) {
   alerts.push(["warning", "Estimativa fiscal pendente: a carga tributária agregada não substitui o cálculo de ICMS, ICMS-ST, DIFAL, FCP, IPI, PIS/COFINS ou IBS/CBS/IS."]);
   if (alerts.length === 0) alerts.push(["ok", "Preço sustentável: custos, despesas sobre a venda e margem foram cobertos sem ultrapassar a média informada."]);
 
+  return alerts;
+}
+
+function renderAlerts(document, alerts) {
   document.querySelector("#alerts").innerHTML = alerts.map(([type, text]) => `<div class="${type}">${text}</div>`).join("");
 }
 
@@ -798,11 +914,10 @@ function renderMeliPanel(document, result, meliState) {
 function renderDashboard(document, inputs, result, meliState, marketSource, fiscalAssessment, memory) {
   const { costs } = result;
   const activeMarketStats = marketSource === "meli-median" ? meliState.stats : null;
+  const alerts = dashboardAlerts(inputs, result, fiscalAssessment);
 
   document.querySelector("#baseCost").textContent = currency.format(costs.baseCost);
-  document.querySelector("#salesRate").textContent = percent(costs.salesRate);
   document.querySelector("#marketPrice").textContent = currency.format(inputs.competitorAverage);
-  document.querySelector("#marketCostLimit").textContent = currency.format(result.marketCostLimit);
   document.querySelector("#marketTitle").textContent = inputs.productType;
 
   const suggestedPrice = document.querySelector("#suggestedPrice");
@@ -812,6 +927,7 @@ function renderDashboard(document, inputs, result, meliState, marketSource, fisc
   const recommendationText = document.querySelector("#recommendationText");
   const marketStatus = document.querySelector("#marketStatus");
   const marketMeter = document.querySelector("#marketMeter");
+  let marketText;
 
   if (result.isValid) {
     suggestedPrice.textContent = currency.format(result.minimumPrice);
@@ -821,7 +937,8 @@ function renderDashboard(document, inputs, result, meliState, marketSource, fisc
     priceStatus.classList.remove("risk-badge");
     priceStatus.classList.add("warning-badge");
     recommendationText.textContent = "Preço mínimo financeiro para cobrir custos, despesas de venda e margem. Valide a composição tributária com seu contador antes de usar como preço fiscal.";
-    marketStatus.textContent = marketComparisonText(inputs, result, activeMarketStats, marketSource);
+    marketText = marketComparisonText(inputs, result, activeMarketStats, marketSource);
+    marketStatus.textContent = marketText;
     marketMeter.style.width = `${clamp((result.minimumPrice / inputs.competitorAverage) * 100, 0, 100)}%`;
     marketMeter.classList.toggle("over", result.marketGap < 0);
   } else {
@@ -832,16 +949,21 @@ function renderDashboard(document, inputs, result, meliState, marketSource, fisc
     priceStatus.classList.add("risk-badge");
     priceStatus.classList.remove("warning-badge");
     recommendationText.textContent = "Impostos, taxas, comissão e margem somam 100% ou mais do preço. Reduza algum percentual para calcular.";
-    marketStatus.textContent = "Não é possível validar o mercado enquanto os percentuais consumirem todo o preço.";
+    marketText = "Não é possível validar o mercado enquanto os percentuais consumirem todo o preço.";
+    marketStatus.textContent = marketText;
     marketMeter.style.width = "100%";
     marketMeter.classList.add("over");
   }
 
+  document.querySelector("#alertCount").textContent = `${alerts.length} ${alerts.length === 1 ? "alerta importante" : "alertas importantes"}`;
+  document.querySelector("#alertSummary").textContent = alerts[0][1];
+
   renderExplanation(document, inputs, result, fiscalAssessment);
   renderCostTable(document, memory);
-  renderAlerts(document, inputs, result, fiscalAssessment);
+  renderAlerts(document, alerts);
   renderFiscalSummary(document, fiscalAssessment);
   renderMeliPanel(document, result, meliState);
+  renderPriceDetails(document, inputs, result, marketText, alerts.length);
 }
 
 
@@ -1038,6 +1160,7 @@ function createPricingTabs(root) {
 
 const $ = (selector) => document.querySelector(selector);
 const themeStorageKey = "assistente-precificacao-theme";
+const detailRouteHashes = Object.freeze({ price: "#preco-calculado" });
 const mercadoLivre = new MercadoLivreService();
 const taxRuleEngine = new ConfiguredTaxRuleEngine();
 const formFieldIds = [
@@ -1098,6 +1221,7 @@ let meliState = {
   error: "",
 };
 let productSearchTimer;
+let pendingDetailTarget = "";
 
 function applyTheme(theme, persist = true) {
   const normalizedTheme = theme === "dark" ? "dark" : "light";
@@ -1308,12 +1432,28 @@ function showAuth(mode = "login", message = "") {
   setMessage($("#authMessage"), message);
 }
 
-function showAssistant() {
+function showAssistant(view = "dashboard") {
   closeMobileMenus();
   $("#bootScreen").hidden = true;
   $("#authView").hidden = true;
   $("#assistantView").hidden = false;
   $("#productsView").hidden = true;
+  const isPriceDetails = view === "price-details";
+  $("#dashboardView").hidden = isPriceDetails;
+  $("#priceDetailsView").hidden = !isPriceDetails;
+  $("#mobilePriceSummary").hidden = isPriceDetails;
+
+  if (isPriceDetails) {
+    const target = pendingDetailTarget || "overview";
+    pendingDetailTarget = "";
+    window.requestAnimationFrame(() => {
+      const detailSection = document.querySelector(`[data-detail-anchor="${target}"]`);
+      detailSection?.scrollIntoView({ block: "start" });
+      detailSection?.focus({ preventScroll: true });
+    });
+  } else {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }
 }
 
 async function showProducts() {
@@ -1328,12 +1468,14 @@ async function showProducts() {
 async function syncRoute() {
   if (!state.user) return;
   if (window.location.hash === "#produtos") await showProducts();
-  else showAssistant();
+  else if (window.location.hash === detailRouteHashes.price) showAssistant("price-details");
+  else showAssistant("dashboard");
 }
 
-function navigate(view) {
+function navigate(view, detailTarget = "") {
   closeMobileMenus();
-  const hash = view === "products" ? "#produtos" : "#assistente";
+  if (detailTarget) pendingDetailTarget = detailTarget;
+  const hash = view === "products" ? "#produtos" : detailRouteHashes[view] || "#assistente";
   if (window.location.hash === hash) {
     void syncRoute();
   } else {
@@ -1785,6 +1927,10 @@ document.querySelectorAll("[data-app-action]").forEach((button) => {
   });
 });
 
+document.querySelectorAll("[data-detail-view]").forEach((button) => {
+  button.addEventListener("click", () => navigate(button.dataset.detailView, button.dataset.detailTarget || "overview"));
+});
+
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".mobile-app-header")) closeMobileMenus();
 });
@@ -1794,15 +1940,13 @@ document.addEventListener("keydown", (event) => {
 });
 
 $("#showMobileResultButton").addEventListener("click", () => {
-  $(".recommendation-panel").scrollIntoView({
-    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-    block: "start",
-  });
+  navigate("price", "overview");
 });
 
 $("#logoutButton").addEventListener("click", logout);
 $("#showProfileButton").addEventListener("click", showProfile);
 $("#showProductsButton").addEventListener("click", () => navigate("products"));
+$("#backToDashboardButton").addEventListener("click", () => navigate("assistant"));
 $("#backToAssistantButton").addEventListener("click", () => navigate("assistant"));
 $("#saveProductButton").addEventListener("click", saveProduct);
 $("#productEditorForm").addEventListener("submit", editCurrentProduct);

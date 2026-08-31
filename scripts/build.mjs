@@ -12,6 +12,7 @@ const sourceFiles = [
   "js/services/mercado-livre-service.js",
   "js/services/api-client.js",
   "js/ui/form.js",
+  "js/ui/detail-pages.js",
   "js/ui/dashboard.js",
   "js/ui/history.js",
   "js/ui/pricing-tabs.js",

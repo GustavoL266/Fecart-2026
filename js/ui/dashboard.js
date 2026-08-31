@@ -1,6 +1,7 @@
 import { MELI_CONFIG, PRODUCTIVE_HOURS_PER_WORKER_MONTH } from "../config/pricing.js";
 import { marketBadgeForGap } from "../domain/market-analysis.js";
 import { clamp, currency, escapeHtml, percent } from "../utils/formatters.js";
+import { renderPriceDetails } from "./detail-pages.js";
 
 function marketComparisonText(inputs, result, marketStats, marketSource) {
   const difference = Math.abs(inputs.competitorAverage - result.minimumPrice);
@@ -52,7 +53,7 @@ function renderCostTable(document, memory) {
     .join("");
 }
 
-function renderAlerts(document, inputs, result, fiscalAssessment) {
+function dashboardAlerts(inputs, result, fiscalAssessment) {
   const alerts = [];
   const { costs } = result;
 
@@ -64,6 +65,10 @@ function renderAlerts(document, inputs, result, fiscalAssessment) {
   alerts.push(["warning", "Estimativa fiscal pendente: a carga tributária agregada não substitui o cálculo de ICMS, ICMS-ST, DIFAL, FCP, IPI, PIS/COFINS ou IBS/CBS/IS."]);
   if (alerts.length === 0) alerts.push(["ok", "Preço sustentável: custos, despesas sobre a venda e margem foram cobertos sem ultrapassar a média informada."]);
 
+  return alerts;
+}
+
+function renderAlerts(document, alerts) {
   document.querySelector("#alerts").innerHTML = alerts.map(([type, text]) => `<div class="${type}">${text}</div>`).join("");
 }
 
@@ -168,11 +173,10 @@ function renderMeliPanel(document, result, meliState) {
 export function renderDashboard(document, inputs, result, meliState, marketSource, fiscalAssessment, memory) {
   const { costs } = result;
   const activeMarketStats = marketSource === "meli-median" ? meliState.stats : null;
+  const alerts = dashboardAlerts(inputs, result, fiscalAssessment);
 
   document.querySelector("#baseCost").textContent = currency.format(costs.baseCost);
-  document.querySelector("#salesRate").textContent = percent(costs.salesRate);
   document.querySelector("#marketPrice").textContent = currency.format(inputs.competitorAverage);
-  document.querySelector("#marketCostLimit").textContent = currency.format(result.marketCostLimit);
   document.querySelector("#marketTitle").textContent = inputs.productType;
 
   const suggestedPrice = document.querySelector("#suggestedPrice");
@@ -182,6 +186,7 @@ export function renderDashboard(document, inputs, result, meliState, marketSourc
   const recommendationText = document.querySelector("#recommendationText");
   const marketStatus = document.querySelector("#marketStatus");
   const marketMeter = document.querySelector("#marketMeter");
+  let marketText;
 
   if (result.isValid) {
     suggestedPrice.textContent = currency.format(result.minimumPrice);
@@ -191,7 +196,8 @@ export function renderDashboard(document, inputs, result, meliState, marketSourc
     priceStatus.classList.remove("risk-badge");
     priceStatus.classList.add("warning-badge");
     recommendationText.textContent = "Preço mínimo financeiro para cobrir custos, despesas de venda e margem. Valide a composição tributária com seu contador antes de usar como preço fiscal.";
-    marketStatus.textContent = marketComparisonText(inputs, result, activeMarketStats, marketSource);
+    marketText = marketComparisonText(inputs, result, activeMarketStats, marketSource);
+    marketStatus.textContent = marketText;
     marketMeter.style.width = `${clamp((result.minimumPrice / inputs.competitorAverage) * 100, 0, 100)}%`;
     marketMeter.classList.toggle("over", result.marketGap < 0);
   } else {
@@ -202,14 +208,19 @@ export function renderDashboard(document, inputs, result, meliState, marketSourc
     priceStatus.classList.add("risk-badge");
     priceStatus.classList.remove("warning-badge");
     recommendationText.textContent = "Impostos, taxas, comissão e margem somam 100% ou mais do preço. Reduza algum percentual para calcular.";
-    marketStatus.textContent = "Não é possível validar o mercado enquanto os percentuais consumirem todo o preço.";
+    marketText = "Não é possível validar o mercado enquanto os percentuais consumirem todo o preço.";
+    marketStatus.textContent = marketText;
     marketMeter.style.width = "100%";
     marketMeter.classList.add("over");
   }
 
+  document.querySelector("#alertCount").textContent = `${alerts.length} ${alerts.length === 1 ? "alerta importante" : "alertas importantes"}`;
+  document.querySelector("#alertSummary").textContent = alerts[0][1];
+
   renderExplanation(document, inputs, result, fiscalAssessment);
   renderCostTable(document, memory);
-  renderAlerts(document, inputs, result, fiscalAssessment);
+  renderAlerts(document, alerts);
   renderFiscalSummary(document, fiscalAssessment);
   renderMeliPanel(document, result, meliState);
+  renderPriceDetails(document, inputs, result, marketText, alerts.length);
 }
