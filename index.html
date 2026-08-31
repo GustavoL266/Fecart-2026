@@ -113,6 +113,22 @@
     </section>
 
     <main id="assistantView" class="app-shell" hidden>
+      <header class="mobile-app-header" aria-label="Navegação principal">
+        <a class="mobile-brand" href="#assistente" aria-label="Ir para o simulador">
+          <span class="brand-mark">PC</span>
+          <span>Assistente de<br />Precificação</span>
+        </a>
+        <button type="button" class="mobile-menu-toggle" data-mobile-menu-toggle aria-label="Abrir menu" aria-expanded="false">
+          <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
+        </button>
+        <div class="mobile-menu" data-mobile-menu hidden>
+          <button type="button" data-app-action="assistant">Simulador</button>
+          <button type="button" data-app-action="products">Meus Produtos</button>
+          <button type="button" data-app-action="profile">Meu Perfil</button>
+          <button type="button" class="mobile-menu-logout" data-app-action="logout">Sair</button>
+        </div>
+      </header>
+
       <aside class="sidebar pricing-sidebar" aria-label="Dados financeiros da precificação">
         <div class="sidebar-sticky-top">
           <header class="sidebar-header">
@@ -193,7 +209,7 @@
               <label for="materialsCost">Insumos e matéria-prima</label>
               <div class="sidebar-input-wrap has-prefix">
                 <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                <input id="materialsCost" type="number" min="0" step="0.01" value="12" />
+                <input id="materialsCost" type="number" inputmode="decimal" min="0" step="0.01" value="12" />
               </div>
             </div>
             <div class="sidebar-field">
@@ -207,14 +223,14 @@
               <label for="packagingCost">Embalagem e rotulagem</label>
               <div class="sidebar-input-wrap has-prefix">
                 <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                <input id="packagingCost" type="number" min="0" step="0.01" value="2" />
+                <input id="packagingCost" type="number" inputmode="decimal" min="0" step="0.01" value="2" />
               </div>
             </div>
             <div class="sidebar-field">
               <label for="deliveryCost">Frete ou entrega por venda</label>
               <div class="sidebar-input-wrap has-prefix">
                 <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                <input id="deliveryCost" type="number" min="0" step="0.01" value="1.5" />
+                <input id="deliveryCost" type="number" inputmode="decimal" min="0" step="0.01" value="1.5" />
               </div>
             </div>
           </div>
@@ -234,14 +250,14 @@
               <label for="totalPayroll">Folha salarial mensal</label>
               <div class="sidebar-input-wrap has-prefix">
                 <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                <input id="totalPayroll" type="number" min="0" step="0.01" value="12600" />
+                <input id="totalPayroll" type="number" inputmode="decimal" min="0" step="0.01" value="12600" />
               </div>
             </div>
             <div class="sidebar-field">
               <label for="monthlyFixedCosts">Custos fixos mensais</label>
               <div class="sidebar-input-wrap has-prefix">
                 <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                <input id="monthlyFixedCosts" type="number" min="0" step="0.01" value="16000" />
+                <input id="monthlyFixedCosts" type="number" inputmode="decimal" min="0" step="0.01" value="16000" />
               </div>
             </div>
           </div>
@@ -260,16 +276,16 @@
             <div class="sidebar-grid sidebar-grid--two">
               <div class="sidebar-field">
                 <label for="workerCount">Número de trabalhadores</label>
-                <input id="workerCount" type="number" min="1" step="1" value="6" />
+                <input id="workerCount" type="number" inputmode="numeric" min="1" step="1" value="6" />
               </div>
               <div class="sidebar-field">
                 <label for="outputPerWorkerHour">Produção por trabalhador/hora</label>
-                <input id="outputPerWorkerHour" type="number" min="0.01" step="0.01" value="12" />
+                <input id="outputPerWorkerHour" type="number" inputmode="decimal" min="0.01" step="0.01" value="12" />
               </div>
             </div>
             <div class="sidebar-field">
               <label for="monthlyVolume">Operações previstas/mês</label>
-              <input id="monthlyVolume" type="number" min="1" step="1" value="4000" />
+              <input id="monthlyVolume" type="number" inputmode="numeric" min="1" step="1" value="4000" />
             </div>
           </div>
           <footer class="pricing-step-actions">
@@ -329,7 +345,7 @@
               <label for="competitorAverage">Preço médio local dos concorrentes</label>
               <div class="sidebar-input-wrap has-prefix">
                 <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                <input id="competitorAverage" type="number" min="0.01" max="1000000" step="0.01" value="32" />
+                <input id="competitorAverage" type="number" inputmode="decimal" min="0.01" max="1000000" step="0.01" value="32" />
               </div>
             </div>
             <div class="market-search">
@@ -357,14 +373,14 @@
               <div class="sidebar-field">
                 <label for="receiveDays">Recebimento</label>
                 <div class="sidebar-input-wrap has-suffix">
-                  <input id="receiveDays" type="number" min="0" step="1" value="7" />
+                  <input id="receiveDays" type="number" inputmode="numeric" min="0" step="1" value="7" />
                   <span class="input-affix input-suffix" aria-hidden="true">dias</span>
                 </div>
               </div>
               <div class="sidebar-field">
                 <label for="payDays">Pagamento</label>
                 <div class="sidebar-input-wrap has-suffix">
-                  <input id="payDays" type="number" min="0" step="1" value="14" />
+                  <input id="payDays" type="number" inputmode="numeric" min="0" step="1" value="14" />
                   <span class="input-affix input-suffix" aria-hidden="true">dias</span>
                 </div>
               </div>
@@ -508,9 +524,30 @@
           </article>
         </section>
       </section>
+
+      <aside class="mobile-price-summary" aria-label="Resumo do preço calculado">
+        <div><span>Preço sugerido</span><strong id="mobileSuggestedPrice">R$ 0,00</strong></div>
+        <button id="showMobileResultButton" type="button">Ver resultado</button>
+      </aside>
     </main>
 
     <section id="productsView" class="history-view" aria-labelledby="products-title" hidden>
+      <header class="mobile-app-header history-mobile-header" aria-label="Navegação principal">
+        <a class="mobile-brand" href="#assistente" aria-label="Ir para o simulador">
+          <span class="brand-mark">PC</span>
+          <span>Assistente de<br />Precificação</span>
+        </a>
+        <button type="button" class="mobile-menu-toggle" data-mobile-menu-toggle aria-label="Abrir menu" aria-expanded="false">
+          <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
+        </button>
+        <div class="mobile-menu" data-mobile-menu hidden>
+          <button type="button" data-app-action="assistant">Simulador</button>
+          <button type="button" data-app-action="products">Meus Produtos</button>
+          <button type="button" data-app-action="profile">Meu Perfil</button>
+          <button type="button" class="mobile-menu-logout" data-app-action="logout">Sair</button>
+        </div>
+      </header>
+
       <header class="history-topbar">
         <div>
           <p class="eyebrow">Histórico privado</p>
@@ -550,12 +587,12 @@
         <label for="editProductCategory">Categoria</label>
         <input id="editProductCategory" name="category" type="text" maxlength="100" required />
         <div class="two-columns">
-          <div><label for="editCostPrice">Preço de custo (R$)</label><input id="editCostPrice" name="costPrice" type="number" min="0" step="0.01" required /></div>
-          <div><label for="editAdditionalCosts">Custos adicionais (R$)</label><input id="editAdditionalCosts" name="additionalCosts" type="number" min="0" step="0.01" required /></div>
+          <div><label for="editCostPrice">Preço de custo (R$)</label><input id="editCostPrice" name="costPrice" type="number" inputmode="decimal" min="0" step="0.01" required /></div>
+          <div><label for="editAdditionalCosts">Custos adicionais (R$)</label><input id="editAdditionalCosts" name="additionalCosts" type="number" inputmode="decimal" min="0" step="0.01" required /></div>
         </div>
         <div class="two-columns">
-          <div><label for="editProfitMargin">Margem (%)</label><input id="editProfitMargin" name="profitMargin" type="number" min="0" max="100" step="0.01" required /></div>
-          <div><label for="editSuggestedPrice">Preço sugerido (R$)</label><input id="editSuggestedPrice" name="suggestedPrice" type="number" min="0" step="0.01" required /></div>
+          <div><label for="editProfitMargin">Margem (%)</label><input id="editProfitMargin" name="profitMargin" type="number" inputmode="decimal" min="0" max="100" step="0.01" required /></div>
+          <div><label for="editSuggestedPrice">Preço sugerido (R$)</label><input id="editSuggestedPrice" name="suggestedPrice" type="number" inputmode="decimal" min="0" step="0.01" required /></div>
         </div>
         <label for="editMarketplace">Marketplace/plataforma</label>
         <input id="editMarketplace" name="marketplace" type="text" maxlength="120" required />

@@ -672,11 +672,11 @@ function renderProductsList(container, products) {
               <span>Custo: <strong>${currency.format(product.costPrice)}</strong></span>
               <span>Margem: <strong>${Number(product.profitMargin).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%</strong></span>
               <span>Preço sugerido: <strong>${currency.format(product.suggestedPrice)}</strong></span>
-              <span>${escapeHtml(formatDate(product.consultationDate))}</span>
+              <span>Criado em: <strong>${escapeHtml(formatDate(product.consultationDate))}</strong></span>
             </div>
           </div>
           <div class="product-actions">
-            <button type="button" class="secondary-button" data-product-action="view" data-product-id="${escapeHtml(product.id)}">Visualizar</button>
+            <button type="button" class="secondary-button" data-product-action="view" data-product-id="${escapeHtml(product.id)}">Ver detalhes</button>
             <button type="button" class="secondary-button" data-product-action="reuse" data-product-id="${escapeHtml(product.id)}">Reutilizar</button>
             <button type="button" class="secondary-button" data-product-action="edit" data-product-id="${escapeHtml(product.id)}">Editar</button>
             <button type="button" class="danger-button" data-product-action="delete" data-product-id="${escapeHtml(product.id)}">Excluir</button>
@@ -993,10 +993,34 @@ function setSubmitState(button, isLoading, label) {
 function render() {
   const inputs = readInputs(elements);
   renderDashboard(document, inputs, calculatePrice(inputs), meliState, marketSource);
+  $("#mobileSuggestedPrice").textContent = $("#suggestedPrice").textContent;
   pricingTabs.updateCompletion();
 }
 
+function closeMobileMenus({ restoreFocus = false } = {}) {
+  document.querySelectorAll("[data-mobile-menu-toggle]").forEach((button) => {
+    const wasOpen = button.getAttribute("aria-expanded") === "true";
+    button.setAttribute("aria-expanded", "false");
+    button.setAttribute("aria-label", "Abrir menu");
+    const menu = button.closest(".mobile-app-header")?.querySelector("[data-mobile-menu]");
+    if (menu) menu.hidden = true;
+    if (restoreFocus && wasOpen) button.focus();
+  });
+}
+
+function toggleMobileMenu(button) {
+  const menu = button.closest(".mobile-app-header")?.querySelector("[data-mobile-menu]");
+  if (!menu) return;
+  const willOpen = button.getAttribute("aria-expanded") !== "true";
+  closeMobileMenus();
+  button.setAttribute("aria-expanded", String(willOpen));
+  button.setAttribute("aria-label", willOpen ? "Fechar menu" : "Abrir menu");
+  menu.hidden = !willOpen;
+  if (willOpen) menu.querySelector("button")?.focus();
+}
+
 function showAuth(mode = "login", message = "") {
+  closeMobileMenus();
   $("#bootScreen").hidden = true;
   $("#authView").hidden = false;
   $("#assistantView").hidden = true;
@@ -1013,6 +1037,7 @@ function showAuth(mode = "login", message = "") {
 }
 
 function showAssistant() {
+  closeMobileMenus();
   $("#bootScreen").hidden = true;
   $("#authView").hidden = true;
   $("#assistantView").hidden = false;
@@ -1020,6 +1045,7 @@ function showAssistant() {
 }
 
 async function showProducts() {
+  closeMobileMenus();
   $("#bootScreen").hidden = true;
   $("#authView").hidden = true;
   $("#assistantView").hidden = true;
@@ -1034,6 +1060,7 @@ async function syncRoute() {
 }
 
 function navigate(view) {
+  closeMobileMenus();
   const hash = view === "products" ? "#produtos" : "#assistente";
   if (window.location.hash === hash) {
     void syncRoute();
@@ -1432,6 +1459,36 @@ document.querySelectorAll("[data-password-toggle]").forEach((button) => {
     button.textContent = isPassword ? "Ocultar" : "Mostrar";
     button.setAttribute("aria-label", isPassword ? "Ocultar senha" : "Mostrar senha");
     button.setAttribute("aria-pressed", String(isPassword));
+  });
+});
+
+document.querySelectorAll("[data-mobile-menu-toggle]").forEach((button) => {
+  button.addEventListener("click", () => toggleMobileMenu(button));
+});
+
+document.querySelectorAll("[data-app-action]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const action = button.dataset.appAction;
+    closeMobileMenus();
+    if (action === "assistant") navigate("assistant");
+    if (action === "products") navigate("products");
+    if (action === "profile") showProfile();
+    if (action === "logout") void logout();
+  });
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".mobile-app-header")) closeMobileMenus();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeMobileMenus({ restoreFocus: true });
+});
+
+$("#showMobileResultButton").addEventListener("click", () => {
+  $(".recommendation-panel").scrollIntoView({
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    block: "start",
   });
 });
 

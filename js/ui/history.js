@@ -25,11 +25,11 @@ export function renderProductsList(container, products) {
               <span>Custo: <strong>${currency.format(product.costPrice)}</strong></span>
               <span>Margem: <strong>${Number(product.profitMargin).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%</strong></span>
               <span>Preço sugerido: <strong>${currency.format(product.suggestedPrice)}</strong></span>
-              <span>${escapeHtml(formatDate(product.consultationDate))}</span>
+              <span>Criado em: <strong>${escapeHtml(formatDate(product.consultationDate))}</strong></span>
             </div>
           </div>
           <div class="product-actions">
-            <button type="button" class="secondary-button" data-product-action="view" data-product-id="${escapeHtml(product.id)}">Visualizar</button>
+            <button type="button" class="secondary-button" data-product-action="view" data-product-id="${escapeHtml(product.id)}">Ver detalhes</button>
             <button type="button" class="secondary-button" data-product-action="reuse" data-product-id="${escapeHtml(product.id)}">Reutilizar</button>
             <button type="button" class="secondary-button" data-product-action="edit" data-product-id="${escapeHtml(product.id)}">Editar</button>
             <button type="button" class="danger-button" data-product-action="delete" data-product-id="${escapeHtml(product.id)}">Excluir</button>

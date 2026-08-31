@@ -8,6 +8,7 @@
     "dev": "node --watch server.js",
     "migrate": "node scripts/migrate.mjs",
     "build": "node scripts/build.mjs",
+    "lint": "node scripts/lint.mjs",
     "test": "node --test"
   },
   "dependencies": {
