@@ -198,7 +198,8 @@ export function renderDashboard(document, inputs, result, meliState, marketSourc
     recommendationText.textContent = "Preço mínimo financeiro para cobrir custos, despesas de venda e margem. Valide a composição tributária com seu contador antes de usar como preço fiscal.";
     marketText = marketComparisonText(inputs, result, activeMarketStats, marketSource);
     marketStatus.textContent = marketText;
-    marketMeter.style.width = `${clamp((result.minimumPrice / inputs.competitorAverage) * 100, 0, 100)}%`;
+    marketMeter.value = clamp((result.minimumPrice / inputs.competitorAverage) * 100, 0, 100);
+    marketMeter.setAttribute("aria-valuetext", `${percent(marketMeter.value / 100)} do preço médio de mercado`);
     marketMeter.classList.toggle("over", result.marketGap < 0);
   } else {
     suggestedPrice.textContent = "Revise percentuais";
@@ -210,7 +211,8 @@ export function renderDashboard(document, inputs, result, meliState, marketSourc
     recommendationText.textContent = "Impostos, taxas, comissão e margem somam 100% ou mais do preço. Reduza algum percentual para calcular.";
     marketText = "Não é possível validar o mercado enquanto os percentuais consumirem todo o preço.";
     marketStatus.textContent = marketText;
-    marketMeter.style.width = "100%";
+    marketMeter.value = 100;
+    marketMeter.setAttribute("aria-valuetext", "Cálculo inviável");
     marketMeter.classList.add("over");
   }
 

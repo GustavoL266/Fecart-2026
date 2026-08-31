@@ -1,13 +1,5 @@
 import { clamp, currency, escapeHtml, percent } from "../utils/formatters.js";
 
-const chartColors = [
-  "var(--chart-green)",
-  "var(--chart-teal)",
-  "var(--chart-blue)",
-  "var(--chart-amber)",
-  "var(--chart-violet)",
-];
-
 export function priceCompositionFrom(result) {
   if (!result.isValid || !result.minimumPriceCents) return [];
 
@@ -20,9 +12,8 @@ export function priceCompositionFrom(result) {
   ].filter((item) => item.valueCents > 0);
 
   const representedTotalCents = components.reduce((total, item) => total + item.valueCents, 0);
-  return components.map((item, index) => ({
+  return components.map((item) => ({
     ...item,
-    color: chartColors[index % chartColors.length],
     share: representedTotalCents > 0 ? item.valueCents / representedTotalCents : 0,
   }));
 }
@@ -43,33 +34,35 @@ export function priceComparisonFrom(inputs, result) {
 
 function renderComposition(document, result) {
   const donut = document.querySelector("#priceDonut");
+  const segments = document.querySelector("#priceDonutSegments");
   const legend = document.querySelector("#priceCompositionLegend");
   const components = priceCompositionFrom(result);
 
   if (components.length === 0) {
-    donut.style.setProperty("--donut-gradient", "conic-gradient(var(--meter-track) 0 100%)");
+    segments.innerHTML = "";
     donut.setAttribute("aria-label", "Composição indisponível enquanto o cálculo estiver inválido.");
     legend.innerHTML = '<li class="chart-empty">Revise os percentuais para visualizar a composição.</li>';
     return;
   }
 
   let cursor = 0;
-  const stops = components.map((item) => {
-    const start = cursor;
-    cursor += item.share * 100;
-    return `${item.color} ${start.toFixed(2)}% ${cursor.toFixed(2)}%`;
-  });
-
-  donut.style.setProperty("--donut-gradient", `conic-gradient(${stops.join(", ")})`);
+  segments.innerHTML = components
+    .map((item, index) => {
+      const segmentSize = item.share * 100;
+      const offset = -cursor;
+      cursor += segmentSize;
+      return `<circle class="donut-segment donut-segment-${index + 1}" cx="60" cy="60" r="48" pathLength="100" stroke-dasharray="${segmentSize.toFixed(4)} ${(100 - segmentSize).toFixed(4)}" stroke-dashoffset="${offset.toFixed(4)}"></circle>`;
+    })
+    .join("");
   donut.setAttribute(
     "aria-label",
     components.map((item) => `${item.label}: ${percent(item.share)}`).join(". "),
   );
   legend.innerHTML = components
     .map(
-      (item) => `
+      (item, index) => `
         <li>
-          <span class="chart-legend-color" style="--legend-color: ${item.color}" aria-hidden="true"></span>
+          <span class="chart-legend-color chart-legend-color-${index + 1}" aria-hidden="true"></span>
           <span>${escapeHtml(item.label)}</span>
           <strong>${currency.format(item.valueCents / 100)}</strong>
           <small>${percent(item.share)}</small>
@@ -85,7 +78,7 @@ function renderComparison(document, inputs, result, marketText) {
       (item, index) => `
         <li>
           <div><span>${escapeHtml(item.label)}</span><strong>${currency.format(item.value)}</strong></div>
-          <span class="comparison-track" aria-hidden="true"><span class="comparison-fill comparison-fill-${index + 1}" style="width: ${item.width.toFixed(2)}%"></span></span>
+          <progress class="comparison-track comparison-fill-${index + 1}" max="100" value="${item.width.toFixed(2)}" aria-label="${escapeHtml(item.label)}: ${percent(item.width / 100)} da maior referência"></progress>
         </li>`,
     )
     .join("");

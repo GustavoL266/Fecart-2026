@@ -76,7 +76,6 @@ function applyTheme(theme, persist = true) {
   const normalizedTheme = theme === "dark" ? "dark" : "light";
   const isDark = normalizedTheme === "dark";
   document.documentElement.dataset.theme = normalizedTheme;
-  document.documentElement.style.colorScheme = normalizedTheme;
   if (persist) {
     try {
       localStorage.setItem(themeStorageKey, normalizedTheme);

@@ -549,7 +549,7 @@
               </div>
               <span class="summary-label">Preço médio dos concorrentes</span>
               <strong id="marketPrice" class="summary-value compact">R$ 0,00</strong>
-              <div class="market-meter compact-meter" aria-hidden="true"><span id="marketMeter"></span></div>
+              <progress id="marketMeter" class="market-meter compact-meter" max="100" value="0" aria-label="Relação entre o preço calculado e o preço médio de mercado"></progress>
               <p id="marketStatus" class="summary-description"></p>
               <div id="meliSummary" class="meli-summary" hidden></div>
               <button type="button" class="detail-link" data-detail-view="price" data-detail-target="market-comparison">Ver detalhes <span aria-hidden="true">→</span></button>
@@ -616,6 +616,10 @@
               <div class="detail-section-heading compact"><p class="eyebrow">Composição do preço</p><h2>Distribuição do valor final</h2><p>Os grupos abaixo usam os mesmos resultados do cálculo principal.</p></div>
               <div class="donut-layout">
                 <div id="priceDonut" class="price-donut" role="img">
+                  <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false">
+                    <circle class="donut-track" cx="60" cy="60" r="48"></circle>
+                    <g id="priceDonutSegments" transform="rotate(-90 60 60)"></g>
+                  </svg>
                   <div><span>Preço final</span><strong id="detailDonutPrice">R$ 0,00</strong></div>
                 </div>
                 <ul id="priceCompositionLegend" class="chart-legend"></ul>

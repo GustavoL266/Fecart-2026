@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { calculatePrice } from "../js/domain/pricing-calculator.js";
-import { priceComparisonFrom, priceCompositionFrom } from "../js/ui/detail-pages.js";
+import { priceComparisonFrom, priceCompositionFrom, renderPriceDetails } from "../js/ui/detail-pages.js";
 
 const inputs = {
   materialsCost: 12,
@@ -48,4 +48,33 @@ test("um cenário inválido não fabrica composição gráfica", () => {
 
   assert.equal(result.isValid, false);
   assert.deepEqual(priceCompositionFrom(result), []);
+});
+
+test("a renderização dinâmica de gráficos não produz atributos style", () => {
+  const nodes = new Map();
+  const document = {
+    querySelector(selector) {
+      if (!nodes.has(selector)) {
+        nodes.set(selector, {
+          attributes: new Map(),
+          innerHTML: "",
+          textContent: "",
+          setAttribute(name, value) {
+            this.attributes.set(name, String(value));
+          },
+        });
+      }
+      return nodes.get(selector);
+    },
+  };
+  const result = calculatePrice(inputs);
+
+  renderPriceDetails(document, inputs, result, "Preço próximo da média.", 1);
+
+  const segments = nodes.get("#priceDonutSegments").innerHTML;
+  const legend = nodes.get("#priceCompositionLegend").innerHTML;
+  const comparison = nodes.get("#priceComparisonBars").innerHTML;
+  assert.match(segments, /<circle class="donut-segment/);
+  assert.match(comparison, /<progress class="comparison-track/);
+  assert.doesNotMatch(`${segments}${legend}${comparison}`, /\bstyle\s*=/i);
 });
