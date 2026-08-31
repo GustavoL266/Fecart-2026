@@ -206,6 +206,7 @@ function renderNcmState() {
   const description = $("#ncmDescription");
   const button = $("#ncmLookupButton");
   button.disabled = focusState.status === "loading";
+  button.textContent = focusState.status === "loading" ? "Consultando..." : "Consultar";
 
   if (focusState.status === "loading") status.textContent = "Consultando o NCM na Focus NFe…";
   else if (focusState.status === "success") status.textContent = `NCM confirmado pela Focus NFe em ${focusState.environment}. Isso não calcula a tributação.`;
@@ -228,7 +229,7 @@ async function lookupNcm() {
   focusState = { status: "loading", ncm: null, environment: "", error: "", unavailable: false };
   render();
   try {
-    const response = await api.get(`/fiscal/ncms/${encodeURIComponent(code)}`);
+    const response = await api.get(`/fiscal/ncms/${encodeURIComponent(code)}`, { handleUnauthorized: false });
     focusState = { status: "success", ncm: response.ncm, environment: response.environment, error: "", unavailable: false };
   } catch (error) {
     focusState = {

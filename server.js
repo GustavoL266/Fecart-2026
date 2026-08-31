@@ -21,6 +21,10 @@ const projectRoot = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PgSession = connectPgSimple(session);
 
+console.info(
+  `[Fiscal] Provider: FocusNFe | configured=${focusNfeConfig.isConfigured} | environment=${focusNfeConfig.environment}`,
+);
+
 app.disable("x-powered-by");
 if (config.secureCookie) app.set("trust proxy", 1);
 
@@ -175,7 +179,15 @@ app.get("/auth/me", async (req, res, next) => {
 app.get("/health", async (req, res, next) => {
   try {
     await pool.query("SELECT 1");
-    return res.json({ status: "ok", database: "connected" });
+    return res.json({
+      status: "ok",
+      database: "connected",
+      fiscal: {
+        configured: focusNfeConfig.isConfigured,
+        environment: focusNfeConfig.environment,
+        provider: "FocusNFe",
+      },
+    });
   } catch (error) {
     return next(error);
   }
@@ -183,6 +195,11 @@ app.get("/health", async (req, res, next) => {
 
 app.get("/fiscal/ncms/:codigo", requireAuth, fiscalLookupLimiter, async (req, res, next) => {
   try {
+    const normalizedCode = String(req.params.codigo || "").replace(/\D/g, "");
+    console.info(`[Fiscal] Consultando NCM ${normalizedCode || "inválido"}`, {
+      environment: focusNfeConfig.environment,
+      provider: "FocusNFe",
+    });
     if (!focusNfeClient) {
       throw new FocusNFeError("A consulta fiscal ainda não foi configurada neste ambiente.", {
         code: "FOCUS_NFE_NOT_CONFIGURED",
@@ -190,7 +207,8 @@ app.get("/fiscal/ncms/:codigo", requireAuth, fiscalLookupLimiter, async (req, re
       });
     }
 
-    const ncm = await focusNfeClient.getNcm(req.params.codigo);
+    const ncm = await focusNfeClient.getNcm(normalizedCode);
+    console.info(`[Fiscal] Consulta concluída para NCM ${ncm.codigo}`, { provider: "FocusNFe" });
     return res.json({
       ncm,
       source: "Focus NFe",

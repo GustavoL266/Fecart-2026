@@ -12,7 +12,7 @@ FOCUS_NFE_BASE_URL=https://homologacao.focusnfe.com.br
 FOCUS_NFE_TIMEOUT_MS=5000
 ```
 
-Use homologação no desenvolvimento e nos testes. Para produção, altere explicitamente a URL para `https://api.focusnfe.com.br` e use o token correspondente. O código aceita somente essas duas origens e acrescenta o prefixo `/v2` internamente.
+Use homologação no desenvolvimento e nos testes. Quando `NODE_ENV=production`, a URL padrão passa a ser `https://api.focusnfe.com.br`; em outros ambientes, o padrão é homologação. `FOCUS_NFE_BASE_URL` é opcional e serve apenas para substituir essa escolha explicitamente. O token precisa pertencer ao mesmo ambiente da URL. O código aceita somente essas duas origens e acrescenta o prefixo `/v2` internamente.
 
 O token é usado como usuário do HTTP Basic, com senha vazia. Ele não é persistido no banco, retornado em respostas ou incluído em logs. `.env`, variantes de ambiente, chaves e a pasta `secrets/` são ignorados pelo Git; `.env.example` contém apenas valor fictício.
 
@@ -42,9 +42,11 @@ Antes de uso operacional, contador ou especialista fiscal precisa definir e mant
 
 ## Comportamento em falhas
 
-Erros 401, 404, 429, respostas inválidas, timeouts e falhas temporárias são convertidos em mensagens públicas sem credenciais. 429 e falhas temporárias têm tentativas limitadas. Quando a Focus NFe está indisponível, o cálculo financeiro existente continua disponível, mas a interface informa que o NCM e a tributação não foram validados.
+Erros 401, 403, 404, 429, respostas inválidas, timeouts e falhas temporárias preservam status HTTP distintos e são convertidos em mensagens públicas sem credenciais. 429 e falhas temporárias têm tentativas limitadas. Consultas concluídas ficam em cache de memória por 24 horas, até 250 NCMs por processo. Quando a Focus NFe está indisponível, o cálculo financeiro existente continua disponível, mas a interface informa que o NCM e a tributação não foram validados.
 
-Os testes usam mocks e não chamam a API externa. Se `FOCUS_NFE_TOKEN` de homologação estiver configurado, rode `pnpm focus:check` para uma consulta não destrutiva de NCM. O script recusa execução quando a URL selecionada é a de produção.
+O endpoint `/health` informa apenas se o provedor está configurado e qual ambiente foi selecionado; nunca retorna o token. Na inicialização e nas consultas, os logs registram provedor, ambiente, NCM e status HTTP, sem `Authorization` ou credenciais.
+
+Os testes usam mocks e não chamam a API externa. Se `FOCUS_NFE_TOKEN` de homologação estiver configurado, rode `pnpm focus:check -- 09012100` para uma consulta não destrutiva de NCM. O script recusa execução quando a URL selecionada é a de produção.
 
 ## Fontes oficiais consultadas
 

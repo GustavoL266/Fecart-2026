@@ -44,7 +44,7 @@ Antes de publicar, troque obrigatoriamente `SESSION_SECRET`, a senha de banco e 
 
 ### Focus NFe
 
-Defina `FOCUS_NFE_TOKEN` somente no ambiente do processo. Mantenha `FOCUS_NFE_BASE_URL=https://homologacao.focusnfe.com.br` durante o desenvolvimento e use `FOCUS_NFE_TIMEOUT_MS=5000`. O token é enviado pelo backend como usuário do HTTP Basic com senha vazia; nunca é exposto ao navegador, salvo no banco ou incluído em logs.
+Defina `FOCUS_NFE_TOKEN` somente no ambiente do processo. Em desenvolvimento, a aplicação usa homologação; com `NODE_ENV=production`, usa `https://api.focusnfe.com.br` por padrão. `FOCUS_NFE_BASE_URL` é opcional e deve ser configurada apenas quando você quiser forçar um dos ambientes oficiais. O token precisa corresponder ao ambiente escolhido. Use `FOCUS_NFE_TIMEOUT_MS=5000`. O token é enviado pelo backend como usuário do HTTP Basic com senha vazia; nunca é exposto ao navegador, salvo no banco ou incluído em logs.
 
 O assistente usa a Focus NFe apenas para consultar e validar a descrição de um NCM exato. A documentação não oferece um endpoint de cálculo tributário automático: a carga tributária continua sendo um dado informado/regra configurada e o resultado aparece como estimativa fiscal pendente. Consulte [docs/focus-nfe.md](docs/focus-nfe.md) para limites, dados exigidos do contador e avaliação de NF-e recebidas.
 
@@ -57,7 +57,8 @@ O repositório contém [`render.yaml`](render.yaml), que publica a aplicação c
 1. Envie todos os arquivos para um repositório GitHub, incluindo `render.yaml`, mas excluindo `.env`.
 2. No Render, escolha **New → Blueprint**, conecte o repositório e confirme os recursos propostos.
 3. O serviço cria o PostgreSQL, injeta `DATABASE_URL`, gera `SESSION_SECRET`, executa `npm run migrate` antes de cada publicação e inicia `npm start`.
-4. Abra a URL `https://…onrender.com` fornecida pelo Render. Essa é a URL que deve ser compartilhada e usada para criar contas.
+4. Configure no Web Service um `FOCUS_NFE_TOKEN` de produção. O Blueprint já seleciona `https://api.focusnfe.com.br` e o backend registra apenas `configured=true/false`, nunca o token.
+5. Abra a URL `https://…onrender.com` fornecida pelo Render. Essa é a URL que deve ser compartilhada e usada para criar contas.
 
 Não é preciso (nem correto) colocar credenciais no GitHub, no código ou no GitHub Pages. Se o Pages já estiver ativo no repositório, desative-o em **Settings → Pages** para evitar que usuários cheguem à cópia estática sem API.
 
