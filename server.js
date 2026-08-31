@@ -634,10 +634,13 @@ function isDatabaseError(error) {
 app.use((error, req, res, next) => {
   console.error(`[api] ${req.method} ${req.path} falhou (${error.code || "UNKNOWN"}):`, error.message);
   if (res.headersSent) return next(error);
-  const status = isDatabaseError(error) ? 503 : error.status || 500;
+  const databaseError = isDatabaseError(error);
+  const status = databaseError ? 503 : error.status || 500;
   const message =
-    status === 503
+    databaseError
       ? "Não foi possível conectar ao banco de dados. Tente novamente mais tarde."
+      : error.code === "LOGIN_CODE_DELIVERY_FAILED"
+        ? "Não foi possível enviar o código de acesso. Verifique o serviço de e-mail e tente novamente."
       : status >= 500 && req.path === "/auth/register"
         ? "Não foi possível criar sua conta. Tente novamente."
         : status >= 500
