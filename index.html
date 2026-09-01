@@ -124,6 +124,7 @@
         <div class="mobile-menu" data-mobile-menu hidden>
           <button type="button" data-app-action="assistant">Simulador</button>
           <button type="button" data-app-action="products">Meus Produtos</button>
+          <button type="button" data-app-action="about">Sobre</button>
           <button type="button" data-app-action="profile">Meu Perfil</button>
           <button type="button" class="mobile-menu-logout" data-app-action="logout">Sair</button>
         </div>
@@ -145,6 +146,9 @@
           <nav class="pricing-tabs" role="tablist" aria-label="Seções do formulário de precificação">
             <button id="pricing-tab-product" class="pricing-tab is-active" type="button" role="tab" aria-controls="pricing-panel-product" aria-selected="true" data-pricing-tab="product" data-pricing-label="Produto">
               <span class="pricing-tab-status" aria-hidden="true">○</span><span>Produto</span>
+            </button>
+            <button id="pricing-tab-fiscal" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-fiscal" aria-selected="false" tabindex="-1" data-pricing-tab="fiscal" data-pricing-label="Fiscal">
+              <span class="pricing-tab-status" aria-hidden="true">○</span><span>Fiscal</span>
             </button>
             <button id="pricing-tab-direct" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-direct" aria-selected="false" tabindex="-1" data-pricing-tab="direct" data-pricing-label="Custos diretos">
               <span class="pricing-tab-status" aria-hidden="true">○</span><span>Diretos</span>
@@ -195,8 +199,20 @@
             </div>
           </div>
           <footer class="pricing-step-actions is-first">
-            <button class="pricing-step-button" type="button" data-pricing-go="direct">Próximo <span aria-hidden="true">→</span></button>
+            <button class="pricing-step-button" type="button" data-pricing-go="fiscal">Próximo <span aria-hidden="true">→</span></button>
           </footer>
+        </section>
+
+        <section id="pricing-panel-fiscal" class="control-section pricing-tab-panel" role="tabpanel" aria-labelledby="pricing-tab-fiscal" data-pricing-panel="fiscal" hidden>
+          <div class="tab-panel-heading"><p class="section-title">Contexto fiscal</p><p class="section-description">Reúna as informações fiscais que contextualizam a operação. Confirme os dados com um profissional quando necessário.</p></div>
+          <div class="field-grid">
+            <div class="sidebar-field"><label for="ncmCode">NCM (8 dígitos, quando conhecido)</label><div class="search-row fiscal-search-row"><input id="ncmCode" type="text" inputmode="numeric" maxlength="8" pattern="[0-9]{8}" placeholder="Confirme com seu contador" autocomplete="off" /><button id="ncmLookupButton" class="market-search-button" type="button">Validar NCM</button></div><p id="ncmLookupStatus" class="helper-text" role="status">A classificação fiscal precisa ser confirmada; o nome do produto não determina um NCM confiável.</p><p id="ncmDescription" class="fiscal-description" hidden></p></div>
+            <div class="sidebar-field"><label for="taxRegime">Regime tributário</label><select id="taxRegime"><option value="">Selecione</option><option value="simples-nacional">Simples Nacional</option><option value="lucro-presumido">Lucro Presumido</option><option value="lucro-real">Lucro Real</option><option value="mei">MEI</option><option value="outro">Outro / confirmar</option></select></div>
+            <div class="sidebar-grid sidebar-grid--two"><div class="sidebar-field"><label for="originState">UF de origem</label><input id="originState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="SP" autocomplete="off" /></div><div class="sidebar-field"><label for="destinationState">UF de destino</label><input id="destinationState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="SP" autocomplete="off" /></div></div>
+            <div class="sidebar-field"><label for="customerType">Tipo de cliente</label><select id="customerType"><option value="">Selecione</option><option value="contribuinte">Contribuinte de ICMS</option><option value="nao-contribuinte">Não contribuinte</option><option value="consumidor-final">Consumidor final</option></select></div>
+            <details class="fiscal-advanced-fields"><summary>Dados fiscais adicionais</summary><p class="helper-text">Preencha somente quando sua regra fiscal ou contador exigir.</p><div class="sidebar-grid sidebar-grid--two"><div class="sidebar-field"><label for="cfop">CFOP</label><input id="cfop" type="text" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="5102" autocomplete="off" /></div><div class="sidebar-field"><label for="taxSituation">CST/CSOSN</label><input id="taxSituation" type="text" maxlength="4" placeholder="Ex.: 00 ou 102" autocomplete="off" /></div></div><div class="sidebar-field"><label for="operationPurpose">Finalidade da operação</label><select id="operationPurpose"><option value="">Selecione</option><option value="venda">Venda normal</option><option value="revenda">Revenda</option><option value="industrializacao">Industrialização</option><option value="consumo">Uso/consumo</option><option value="ativo">Ativo imobilizado</option><option value="outra">Outra / confirmar</option></select></div></details>
+          </div>
+          <footer class="pricing-step-actions"><button class="pricing-step-button secondary-button" type="button" data-pricing-go="product"><span aria-hidden="true">←</span> Anterior</button><button class="pricing-step-button" type="button" data-pricing-go="direct">Próximo <span aria-hidden="true">→</span></button></footer>
         </section>
 
         <section id="pricing-panel-direct" class="control-section pricing-tab-panel" role="tabpanel" aria-labelledby="pricing-tab-direct" data-pricing-panel="direct" hidden>
@@ -258,7 +274,7 @@
             </div>
           </div>
           <footer class="pricing-step-actions">
-            <button class="pricing-step-button secondary-button" type="button" data-pricing-go="product"><span aria-hidden="true">←</span> Anterior</button>
+            <button class="pricing-step-button secondary-button" type="button" data-pricing-go="fiscal"><span aria-hidden="true">←</span> Anterior</button>
             <button class="pricing-step-button" type="button" data-pricing-go="indirect">Próximo <span aria-hidden="true">→</span></button>
           </footer>
         </section>
@@ -410,52 +426,6 @@
               <p id="manualMarketStatus" class="helper-text">Fallback ativo. O valor é preservado quando você escolhe um produto da Amazon.</p>
             </section>
 
-            <section class="market-tax-context" aria-labelledby="market-tax-title">
-              <div class="tab-panel-heading compact">
-                <p class="section-title" id="market-tax-title">Dados para análise fiscal</p>
-                <p class="section-description">A Focus NFe apenas valida um NCM informado. Ela não classifica o produto automaticamente nem calcula tributos.</p>
-              </div>
-              <div class="sidebar-field">
-                <label for="ncmCode">NCM (8 dígitos, quando conhecido)</label>
-                <div class="search-row fiscal-search-row">
-                  <input id="ncmCode" type="text" inputmode="numeric" maxlength="8" pattern="[0-9]{8}" placeholder="Confirme com seu contador" autocomplete="off" />
-                  <button id="ncmLookupButton" class="market-search-button" type="button">Validar NCM</button>
-                </div>
-                <p id="ncmLookupStatus" class="helper-text" role="status">A classificação fiscal precisa ser confirmada; o nome do produto não determina um NCM confiável.</p>
-                <p id="ncmDescription" class="fiscal-description" hidden></p>
-              </div>
-              <div class="sidebar-field">
-                <label for="taxRegime">Regime tributário</label>
-                <select id="taxRegime">
-                  <option value="">Selecione</option>
-                  <option value="simples-nacional">Simples Nacional</option>
-                  <option value="lucro-presumido">Lucro Presumido</option>
-                  <option value="lucro-real">Lucro Real</option>
-                  <option value="mei">MEI</option>
-                  <option value="outro">Outro / confirmar</option>
-                </select>
-              </div>
-              <div class="sidebar-grid sidebar-grid--two">
-                <div class="sidebar-field"><label for="originState">UF de origem</label><input id="originState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="SP" autocomplete="off" /></div>
-                <div class="sidebar-field"><label for="destinationState">UF de destino</label><input id="destinationState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="SP" autocomplete="off" /></div>
-              </div>
-              <div class="sidebar-field">
-                <label for="customerType">Tipo de cliente</label>
-                <select id="customerType"><option value="">Selecione</option><option value="contribuinte">Contribuinte de ICMS</option><option value="nao-contribuinte">Não contribuinte</option><option value="consumidor-final">Consumidor final</option></select>
-              </div>
-              <details class="fiscal-advanced-fields">
-                <summary>Dados fiscais adicionais</summary>
-                <p class="helper-text">Preencha somente quando sua regra fiscal ou contador exigir.</p>
-                <div class="sidebar-grid sidebar-grid--two">
-                  <div class="sidebar-field"><label for="cfop">CFOP</label><input id="cfop" type="text" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="5102" autocomplete="off" /></div>
-                  <div class="sidebar-field"><label for="taxSituation">CST/CSOSN</label><input id="taxSituation" type="text" maxlength="4" placeholder="Ex.: 00 ou 102" autocomplete="off" /></div>
-                </div>
-                <div class="sidebar-field">
-                  <label for="operationPurpose">Finalidade da operação</label>
-                  <select id="operationPurpose"><option value="">Selecione</option><option value="venda">Venda normal</option><option value="revenda">Revenda</option><option value="industrializacao">Industrialização</option><option value="consumo">Uso/consumo</option><option value="ativo">Ativo imobilizado</option><option value="outra">Outra / confirmar</option></select>
-                </div>
-              </details>
-            </section>
           </div>
           <footer class="pricing-step-actions">
             <button class="pricing-step-button secondary-button" type="button" data-pricing-go="sales"><span aria-hidden="true">←</span> Anterior</button>
@@ -500,6 +470,8 @@
         </div>
       </aside>
 
+      <div class="pricing-panel-resizer" data-panel-resizer role="separator" aria-label="Redimensionar área do simulador" aria-orientation="vertical" aria-valuemin="320" aria-valuemax="620" aria-valuenow="390" tabindex="0"><span aria-hidden="true"></span><span class="resizer-hint">Arraste para ajustar</span></div>
+
       <section class="workspace" aria-label="Resultado da precificação">
         <header class="topbar">
           <div>
@@ -511,6 +483,7 @@
             <button type="button" class="theme-toggle" data-theme-toggle aria-label="Ativar modo escuro" aria-pressed="false"><span class="theme-symbol" aria-hidden="true">☼</span><span data-theme-label>Modo escuro</span></button>
             <button id="showProfileButton" type="button" class="secondary-button">Meu perfil</button>
             <button id="showProductsButton" type="button" class="secondary-button">Meus produtos</button>
+            <button id="showAboutButton" type="button" class="secondary-button">Sobre</button>
             <button id="logoutButton" type="button" class="logout-button">Sair</button>
           </div>
         </header>
@@ -699,6 +672,7 @@
         <div class="mobile-menu" data-mobile-menu hidden>
           <button type="button" data-app-action="assistant">Simulador</button>
           <button type="button" data-app-action="products">Meus Produtos</button>
+          <button type="button" data-app-action="about">Sobre</button>
           <button type="button" data-app-action="profile">Meu Perfil</button>
           <button type="button" class="mobile-menu-logout" data-app-action="logout">Sair</button>
         </div>
@@ -724,6 +698,25 @@
       </div>
       <p id="historyMessage" class="form-message" role="status" hidden></p>
       <div id="productsList" class="products-list" aria-live="polite"></div>
+    </section>
+
+    <section id="aboutView" class="about-view" aria-labelledby="about-title" hidden>
+      <header class="mobile-app-header about-mobile-header" aria-label="Navegação principal">
+        <a class="mobile-brand" href="#assistente" aria-label="Ir para o simulador"><span class="brand-mark">PC</span><span>Assistente de<br />Precificação</span></a>
+        <button type="button" class="mobile-menu-toggle" data-mobile-menu-toggle aria-label="Abrir menu" aria-expanded="false"><span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span></button>
+        <div class="mobile-menu" data-mobile-menu hidden><button type="button" data-app-action="assistant">Simulador</button><button type="button" data-app-action="products">Meus Produtos</button><button type="button" data-app-action="about">Sobre</button><button type="button" data-app-action="profile">Meu Perfil</button><button type="button" class="mobile-menu-logout" data-app-action="logout">Sair</button></div>
+      </header>
+      <header class="about-topbar"><a class="brand about-brand" href="#assistente" aria-label="Voltar ao simulador"><span class="brand-mark">PC</span><span>Assistente de Precificação</span></a><button id="aboutBackButton" type="button" class="secondary-button"><span aria-hidden="true">←</span> Voltar ao simulador</button></header>
+      <main class="about-content">
+        <section class="about-hero"><div><p class="eyebrow">Conheça o assistente</p><h1 id="about-title" tabindex="-1">Preço sustentável começa com contexto.</h1><p>O Assistente de Precificação transforma custos e informações financeiras de um produto em uma estimativa organizada para apoiar sua decisão de venda.</p></div><div class="about-hero-note"><span aria-hidden="true">↗</span><strong>Decida com mais clareza</strong><p>Custos, despesas, impostos, margem, mercado e prazos reunidos em uma única análise.</p></div></section>
+        <section class="about-section" aria-labelledby="about-flow-title"><div class="about-section-heading"><p class="eyebrow">Como funciona</p><h2 id="about-flow-title">Da informação ao preço sustentável</h2><p>Cada etapa acrescenta contexto ao cálculo sem esconder os dados que formam o resultado.</p></div><ol class="about-flow"><li><span>01</span><div><strong>Produto</strong><small>Identifica o item.</small></div></li><li><span>02</span><div><strong>Fiscal</strong><small>Contextualiza a operação.</small></div></li><li><span>03</span><div><strong>Custos diretos</strong><small>Reúne custos por unidade.</small></div></li><li><span>04</span><div><strong>Custos indiretos</strong><small>Distribui a estrutura.</small></div></li><li><span>05</span><div><strong>Produção</strong><small>Considera a capacidade.</small></div></li><li><span>06</span><div><strong>Despesas</strong><small>Aplica taxas da venda.</small></div></li><li><span>07</span><div><strong>Mercado e margem</strong><small>Compara e define objetivo.</small></div></li><li><span>08</span><div><strong>Prazos financeiros</strong><small>Estima o custo de capital.</small></div></li><li class="is-result"><span>✓</span><div><strong>Preço sustentável</strong><small>Referência para sua decisão.</small></div></li></ol></section>
+        <section class="about-section" aria-labelledby="about-stages-title"><div class="about-section-heading"><p class="eyebrow">Entenda as etapas</p><h2 id="about-stages-title">O que cada etapa considera?</h2><p>Abra apenas o tema que quiser consultar.</p></div><div class="about-accordions">
+          <details><summary><span aria-hidden="true">▣</span><strong>Produto</strong><span class="accordion-sign"></span></summary><p>Identifica o produto que será precificado.</p></details><details><summary><span aria-hidden="true">◎</span><strong>Fiscal</strong><span class="accordion-sign"></span></summary><p>Reúne NCM, regime tributário, UF, CFOP e CST/CSOSN para contextualizar a operação.</p></details><details><summary><span aria-hidden="true">↘</span><strong>Custos diretos</strong><span class="accordion-sign"></span></summary><p>Considera matéria-prima, embalagem, frete, seguro, perdas e outros custos diretamente relacionados ao produto ou à venda.</p></details><details><summary><span aria-hidden="true">⌂</span><strong>Custos indiretos</strong><span class="accordion-sign"></span></summary><p>Considera custos estruturais da empresa que precisam ser distribuídos entre as vendas.</p></details><details><summary><span aria-hidden="true">⚙</span><strong>Produção</strong><span class="accordion-sign"></span></summary><p>Considera capacidade produtiva, trabalhadores, produção por hora e operações mensais.</p></details><details><summary><span aria-hidden="true">%</span><strong>Despesas sobre a venda</strong><span class="accordion-sign"></span></summary><p>Considera impostos, taxas de pagamento e comissão que incidem sobre cada venda.</p></details><details><summary><span aria-hidden="true">⌁</span><strong>Mercado e margem</strong><span class="accordion-sign"></span></summary><p>Permite definir a margem desejada e comparar o preço calculado com referências de mercado.</p></details><details><summary><span aria-hidden="true">◷</span><strong>Prazos financeiros</strong><span class="accordion-sign"></span></summary><p>Considera prazos de recebimento e pagamento, além do custo de capital.</p></details>
+        </div></section>
+        <section class="about-section" aria-labelledby="about-results-title"><div class="about-section-heading"><p class="eyebrow">Resultados</p><h2 id="about-results-title">O que o sistema entrega?</h2></div><div class="about-results-grid"><article><span>R$</span><strong>Preço mínimo sustentável</strong></article><article><span>%</span><strong>Margem líquida estimada</strong></article><article><span>▤</span><strong>Custo-base por venda</strong></article><article><span>↗</span><strong>Lucro líquido por unidade</strong></article><article><span>⇄</span><strong>Comparação com o mercado</strong></article><article><span>!</span><strong>Alertas de atenção</strong></article><article><span>∑</span><strong>Memória de cálculo</strong></article><article><span>⌕</span><strong>Análise detalhada</strong></article><article><span>◴</span><strong>Histórico de produtos</strong></article></div></section>
+        <section class="about-feature-grid"><article><span class="about-feature-icon" aria-hidden="true">⌕</span><div><p class="eyebrow">Mercado Livre</p><h2>Referências comparáveis</h2><p>Pesquisas de produtos e anúncios comparáveis em marketplaces, como o Mercado Livre, podem servir como referência para apoiar a análise de mercado, conforme as integrações disponíveis.</p></div></article><article><span class="about-feature-icon" aria-hidden="true">↻</span><div><p class="eyebrow">Histórico e reutilização</p><h2>Menos retrabalho</h2><p>Salve produtos e reutilize informações posteriormente para facilitar novas precificações e comparações.</p></div></article></section>
+        <aside class="about-disclaimer"><span aria-hidden="true">i</span><div><strong>Aviso importante</strong><p>O sistema auxilia, estima e apoia a decisão — não garante um preço ideal. Informações fiscais devem ser conferidas conforme a situação da empresa e, quando necessário, com contador ou profissional especializado.</p></div></aside>
+      </main>
     </section>
 
     <dialog id="productDialog" class="modal-dialog" aria-labelledby="productDialogTitle">

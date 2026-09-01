@@ -14,7 +14,8 @@ test("Consulta de Mercado tem identidade própria, fallback manual e cards selec
   assert.match(html, /Produto para pesquisar/);
   assert.match(html, /Resultados encontrados/);
   assert.match(html, /Preço médio local dos concorrentes/);
-  assert.doesNotMatch(html, /data-pricing-tab="fiscal"/);
+  assert.match(html, /data-pricing-tab="fiscal"/);
+  assert.match(html, /data-pricing-panel="fiscal"/);
   assert.match(dashboard, /Usar como referência/);
   assert.match(dashboard, /Referência selecionada/);
   assert.match(dashboard, /data-amazon-retry/);

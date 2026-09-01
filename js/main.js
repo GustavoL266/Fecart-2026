@@ -7,6 +7,7 @@ import { applyCategoryPreset, applySavedInputs, isAboveCompetitorLimit, readInpu
 import { renderDashboard } from "./ui/dashboard.js";
 import { renderProductDetails, renderProductsList } from "./ui/history.js";
 import { createPricingTabs } from "./ui/pricing-tabs.js";
+import { createPricingPanel } from "./ui/pricing-panel.js";
 
 const $ = (selector) => document.querySelector(selector);
 const themeStorageKey = "assistente-precificacao-theme";
@@ -46,6 +47,7 @@ const formFieldIds = [
 ];
 const elements = Object.fromEntries(formFieldIds.map((id) => [id, $(`#${id}`)]));
 const pricingTabs = createPricingTabs($(".pricing-sidebar"));
+createPricingPanel($(".app-shell"));
 const state = {
   user: null,
   products: [],
@@ -270,6 +272,7 @@ function showAuth(mode = "login", message = "") {
   $("#authView").hidden = false;
   $("#assistantView").hidden = true;
   $("#productsView").hidden = true;
+  $("#aboutView").hidden = true;
   $("#loginForm").hidden = mode !== "login";
   $("#registerForm").hidden = mode !== "register";
   $("#showLoginButton").classList.toggle("active", mode === "login");
@@ -287,6 +290,7 @@ function showAssistant(view = "dashboard") {
   $("#authView").hidden = true;
   $("#assistantView").hidden = false;
   $("#productsView").hidden = true;
+  $("#aboutView").hidden = true;
   const isPriceDetails = view === "price-details";
   $("#dashboardView").hidden = isPriceDetails;
   $("#priceDetailsView").hidden = !isPriceDetails;
@@ -311,12 +315,25 @@ async function showProducts() {
   $("#authView").hidden = true;
   $("#assistantView").hidden = true;
   $("#productsView").hidden = false;
+  $("#aboutView").hidden = true;
   await loadProducts();
+}
+
+function showAbout() {
+  closeMobileMenus();
+  $("#bootScreen").hidden = true;
+  $("#authView").hidden = true;
+  $("#assistantView").hidden = true;
+  $("#productsView").hidden = true;
+  $("#aboutView").hidden = false;
+  window.scrollTo({ top: 0, behavior: "auto" });
+  $("#about-title")?.focus({ preventScroll: true });
 }
 
 async function syncRoute() {
   if (!state.user) return;
   if (window.location.hash === "#produtos") await showProducts();
+  else if (window.location.hash === "#sobre") showAbout();
   else if (window.location.hash === detailRouteHashes.price) showAssistant("price-details");
   else showAssistant("dashboard");
 }
@@ -324,7 +341,7 @@ async function syncRoute() {
 function navigate(view, detailTarget = "") {
   closeMobileMenus();
   if (detailTarget) pendingDetailTarget = detailTarget;
-  const hash = view === "products" ? "#produtos" : detailRouteHashes[view] || "#assistente";
+  const hash = view === "products" ? "#produtos" : view === "about" ? "#sobre" : detailRouteHashes[view] || "#assistente";
   if (window.location.hash === hash) {
     void syncRoute();
   } else {
@@ -835,6 +852,7 @@ document.querySelectorAll("[data-app-action]").forEach((button) => {
     closeMobileMenus();
     if (action === "assistant") navigate("assistant");
     if (action === "products") navigate("products");
+    if (action === "about") navigate("about");
     if (action === "profile") showProfile();
     if (action === "logout") void logout();
   });
@@ -859,8 +877,10 @@ $("#showMobileResultButton").addEventListener("click", () => {
 $("#logoutButton").addEventListener("click", logout);
 $("#showProfileButton").addEventListener("click", showProfile);
 $("#showProductsButton").addEventListener("click", () => navigate("products"));
+$("#showAboutButton").addEventListener("click", () => navigate("about"));
 $("#backToDashboardButton").addEventListener("click", () => navigate("assistant"));
 $("#backToAssistantButton").addEventListener("click", () => navigate("assistant"));
+$("#aboutBackButton").addEventListener("click", () => navigate("assistant"));
 $("#saveProductButton").addEventListener("click", saveProduct);
 $("#productEditorForm").addEventListener("submit", editCurrentProduct);
 

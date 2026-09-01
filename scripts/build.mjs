@@ -17,6 +17,7 @@ const sourceFiles = [
   "js/ui/dashboard.js",
   "js/ui/history.js",
   "js/ui/pricing-tabs.js",
+  "js/ui/pricing-panel.js",
   "js/main.js",
 ];
 

@@ -1,5 +1,6 @@
 const sectionFields = Object.freeze({
   product: ["productType", "productName"],
+  fiscal: ["taxRegime", "originState", "destinationState", "customerType"],
   direct: ["materialsCost", "waste", "packagingCost", "deliveryCost", "insuranceCost", "discountAmount", "otherExpenses"],
   indirect: ["totalPayroll", "monthlyFixedCosts"],
   production: ["workerCount", "outputPerWorkerHour", "monthlyVolume"],
@@ -21,17 +22,25 @@ export function createPricingTabs(root) {
   const panels = Array.from(root.querySelectorAll("[data-pricing-panel]"));
   const order = tabs.map((tab) => tab.dataset.pricingTab);
   let activeSection = order[0];
+  const visitedSections = new Set();
+  let pointerStartX = 0;
+  let scrollStart = 0;
+  let dragging = false;
+  let moved = false;
 
   function updateCompletion() {
     for (const tab of tabs) {
       const section = tab.dataset.pricingTab;
-      const complete = (sectionFields[section] || []).every((fieldId) => fieldHasValidValue(root.querySelector(`#${fieldId}`)));
+      const valid = (sectionFields[section] || []).every((fieldId) => fieldHasValidValue(root.querySelector(`#${fieldId}`)));
+      const complete = section !== activeSection && visitedSections.has(section) && valid;
+      const active = section === activeSection;
       const label = tab.dataset.pricingLabel || tab.textContent.trim();
       const status = tab.querySelector(".pricing-tab-status");
 
       tab.classList.toggle("is-complete", complete);
-      tab.setAttribute("aria-label", `${label}, ${complete ? "preenchida" : "incompleta"}`);
-      if (status) status.textContent = complete ? "✓" : "○";
+      tab.classList.toggle("is-future", !active && !complete);
+      tab.setAttribute("aria-label", `${label}, ${active ? "etapa atual" : complete ? "concluída" : "futura"}`);
+      if (status) status.textContent = complete ? "✓" : active ? "●" : "○";
     }
   }
 
@@ -52,6 +61,7 @@ export function createPricingTabs(root) {
 
   function activate(section, { focusTab = false, resetScroll = true } = {}) {
     if (!order.includes(section)) return;
+    if (section !== activeSection) visitedSections.add(activeSection);
     activeSection = section;
 
     for (const tab of tabs) {
@@ -73,6 +83,7 @@ export function createPricingTabs(root) {
       if (focusTab) activeTab.focus({ preventScroll: true });
     }
     if (resetScroll) resetInternalScroll();
+    updateCompletion();
   }
 
   function activateByOffset(currentTab, offset) {
@@ -82,7 +93,13 @@ export function createPricingTabs(root) {
   }
 
   for (const tab of tabs) {
-    tab.addEventListener("click", () => activate(tab.dataset.pricingTab));
+    tab.addEventListener("click", (event) => {
+      if (moved) {
+        event.preventDefault();
+        return;
+      }
+      activate(tab.dataset.pricingTab);
+    });
     tab.addEventListener("keydown", (event) => {
       if (event.key === "ArrowRight" || event.key === "ArrowDown") {
         event.preventDefault();
@@ -98,6 +115,35 @@ export function createPricingTabs(root) {
         activate(order.at(-1), { focusTab: true });
       }
     });
+  }
+
+  if (tabList && typeof tabList.addEventListener === "function") {
+    tabList.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 && event.pointerType === "mouse") return;
+      pointerStartX = event.clientX;
+      scrollStart = tabList.scrollLeft;
+      dragging = true;
+      moved = false;
+      tabList.setPointerCapture(event.pointerId);
+    });
+    tabList.addEventListener("pointermove", (event) => {
+      if (!dragging) return;
+      const distance = event.clientX - pointerStartX;
+      if (Math.abs(distance) > 5) moved = true;
+      if (!moved) return;
+      tabList.scrollLeft = scrollStart - distance;
+      tabList.classList.add("is-dragging");
+      event.preventDefault();
+    });
+    const stopDrag = (event) => {
+      if (!dragging) return;
+      dragging = false;
+      tabList.classList.remove("is-dragging");
+      if (tabList.hasPointerCapture(event.pointerId)) tabList.releasePointerCapture(event.pointerId);
+      window.setTimeout(() => { moved = false; }, 0);
+    };
+    tabList.addEventListener("pointerup", stopDrag);
+    tabList.addEventListener("pointercancel", stopDrag);
   }
 
   root.querySelectorAll("[data-pricing-go]").forEach((button) => {
