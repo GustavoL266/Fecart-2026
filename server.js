@@ -7,22 +7,28 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
-import { getConfig, getFocusNfeConfig } from "./lib/config.js";
+import { getAmazonCreatorsConfig, getConfig, getFocusNfeConfig } from "./lib/config.js";
 import { pool, verifyDatabase } from "./lib/database.js";
+import { amazonErrorForClient, AmazonCreatorsError, createAmazonCreatorsClient, redactAmazonSensitiveData } from "./lib/amazon-creators-client.js";
 import { createFocusNFeClient, focusNFeErrorForClient, FocusNFeError, redactFocusNFeSensitiveData } from "./lib/focus-nfe-client.js";
 import { productForClient, userForClient } from "./lib/models.js";
 import { hashPassword, verifyPassword } from "./lib/passwords.js";
-import { loginSchema, productIdSchema, productListSchema, productSchema, registerSchema, validate } from "./lib/validation.js";
+import { amazonSearchSchema, loginSchema, productIdSchema, productListSchema, productSchema, registerSchema, validate } from "./lib/validation.js";
 
 const config = getConfig();
 const focusNfeConfig = getFocusNfeConfig();
 const focusNfeClient = focusNfeConfig.isConfigured ? createFocusNFeClient(focusNfeConfig) : null;
+const amazonConfig = getAmazonCreatorsConfig();
+const amazonClient = amazonConfig.isConfigured ? createAmazonCreatorsClient(amazonConfig) : null;
 const projectRoot = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PgSession = connectPgSimple(session);
 
 console.info(
   `[Fiscal] Provider: FocusNFe | configured=${focusNfeConfig.isConfigured} | environment=${focusNfeConfig.environment}`,
+);
+console.info(
+  `[Amazon] Provider: Creators API | configured=${amazonConfig.isConfigured} | marketplace=${amazonConfig.marketplace}`,
 );
 
 app.disable("x-powered-by");
@@ -34,7 +40,7 @@ app.use(
       directives: {
         defaultSrc: ["'self'"],
         baseUri: ["'self'"],
-        connectSrc: ["'self'", "https://api.mercadolibre.com"],
+        connectSrc: ["'self'"],
         fontSrc: ["'self'", "data:"],
         formAction: ["'self'"],
         frameAncestors: ["'none'"],
@@ -51,7 +57,7 @@ app.use(
 );
 app.use(express.json({ limit: "100kb" }));
 app.use((req, res, next) => {
-  if (req.path.startsWith("/auth") || req.path.startsWith("/products") || req.path.startsWith("/fiscal")) {
+  if (req.path.startsWith("/auth") || req.path.startsWith("/products") || req.path.startsWith("/fiscal") || req.path.startsWith("/amazon")) {
     res.set("Cache-Control", "no-store");
   }
   next();
@@ -86,6 +92,14 @@ const fiscalLookupLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: { error: "Muitas consultas fiscais. Aguarde um minuto e tente novamente." },
+});
+
+const amazonSearchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Muitas consultas à Amazon. Aguarde um minuto e tente novamente.", code: "AMAZON_RATE_LIMITED" },
 });
 
 function sessionRegenerate(req) {
@@ -189,7 +203,28 @@ app.get("/health", async (req, res, next) => {
         environment: focusNfeConfig.environment,
         provider: "FocusNFe",
       },
+      amazon: {
+        configured: amazonConfig.isConfigured,
+        marketplace: amazonConfig.marketplace,
+        provider: "Amazon Creators API",
+      },
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/amazon/search", requireAuth, amazonSearchLimiter, async (req, res, next) => {
+  try {
+    const { q } = validate(amazonSearchSchema, req.query);
+    if (!amazonClient) {
+      throw new AmazonCreatorsError(
+        "A consulta da Amazon ainda não foi configurada. Informe o preço médio dos concorrentes manualmente.",
+        { code: "AMAZON_NOT_CONFIGURED", status: 503 },
+      );
+    }
+    const result = await amazonClient.search(q);
+    return res.json(result);
   } catch (error) {
     return next(error);
   }
@@ -320,7 +355,9 @@ function isDatabaseError(error) {
 app.use((error, req, res, next) => {
   const safeLogMessage = error instanceof FocusNFeError
     ? redactFocusNFeSensitiveData(error.message, [focusNfeConfig.token])
-    : error.message;
+    : error instanceof AmazonCreatorsError
+      ? redactAmazonSensitiveData(error.message, [amazonConfig.credentialId, amazonConfig.credentialSecret])
+      : error.message;
   console.error(`[api] ${req.method} ${req.path} falhou (${error.code || "UNKNOWN"}):`, safeLogMessage);
   if (res.headersSent) return next(error);
   const status = isDatabaseError(error) ? 503 : error.status || 500;
@@ -332,7 +369,11 @@ app.use((error, req, res, next) => {
         : status >= 500
           ? "Não foi possível concluir a operação. Tente novamente em instantes."
           : error.message;
-  const payload = error instanceof FocusNFeError ? focusNFeErrorForClient(error, [focusNfeConfig.token]) : { error: message };
+  const payload = error instanceof FocusNFeError
+    ? focusNFeErrorForClient(error, [focusNfeConfig.token])
+    : error instanceof AmazonCreatorsError
+      ? amazonErrorForClient(error, [amazonConfig.credentialId, amazonConfig.credentialSecret])
+      : { error: message };
   return res.status(status).json(payload);
 });
 

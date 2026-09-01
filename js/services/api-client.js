@@ -13,7 +13,7 @@ function isGitHubPages() {
 
 async function request(path, options = {}) {
   const { method = "GET", body, handleUnauthorized = true } = options;
-  if (isGitHubPages() && (path.startsWith("/auth") || path.startsWith("/products"))) {
+  if (isGitHubPages() && (path.startsWith("/auth") || path.startsWith("/products") || path.startsWith("/amazon"))) {
     throw new ApiError(
       "Este endereço do GitHub Pages exibe apenas a interface. Abra a URL da aplicação no Render para criar ou acessar sua conta.",
       503,

@@ -1,10 +1,7 @@
 export const PRODUCTIVE_HOURS_PER_WORKER_MONTH = 176;
 
-export const MELI_CONFIG = {
-  siteId: "MLB",
-  searchLimit: 30,
+export const AMAZON_MARKET_CONFIG = {
   minComparableResults: 3,
-  cacheTtlMs: 5 * 60 * 1000,
 };
 
 export const MARKET_RULES = {

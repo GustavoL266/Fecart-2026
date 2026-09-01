@@ -337,7 +337,7 @@ input[type="range"] {
 
 .recommendation-panel,
 .market-panel,
-.meli-panel,
+.amazon-panel,
 .fiscal-panel,
 .insight-panel,
 .table-panel,
@@ -454,7 +454,7 @@ input[type="range"] {
   font-size: 1.2rem;
 }
 
-.meli-summary {
+.amazon-summary {
   display: grid;
   gap: 5px;
   margin-top: 16px;
@@ -462,14 +462,14 @@ input[type="range"] {
   border-top: 1px solid var(--line);
 }
 
-.meli-summary span,
-.meli-summary small,
+.amazon-summary span,
+.amazon-summary small,
 .helper-text {
   color: var(--muted);
   font-size: 0.86rem;
 }
 
-.meli-summary strong {
+.amazon-summary strong {
   font-size: 1.3rem;
 }
 
@@ -651,7 +651,7 @@ input[type="range"] {
   font-weight: 750;
 }
 
-.meli-fallback {
+.amazon-fallback {
   display: grid;
   gap: 10px;
   max-width: 560px;
@@ -670,49 +670,49 @@ input[type="range"] {
   padding: 0 12px;
 }
 
-.meli-stats {
+.amazon-stats {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 16px;
 }
 
-.meli-stats div {
+.amazon-stats div {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px;
   min-height: 78px;
 }
 
-.meli-stats span {
+.amazon-stats span {
   display: block;
   color: var(--muted);
   font-size: 0.78rem;
   margin-bottom: 8px;
 }
 
-.meli-stats strong {
+.amazon-stats strong {
   font-size: 1rem;
 }
 
-.meli-stats strong.ok {
+.amazon-stats strong.ok {
   color: var(--green);
 }
 
-.meli-stats strong.warning {
+.amazon-stats strong.warning {
   color: var(--amber);
 }
 
-.meli-stats strong.risk {
+.amazon-stats strong.risk {
   color: var(--red);
 }
 
-.meli-results {
+.amazon-results {
   display: grid;
   gap: 10px;
 }
 
-.meli-result {
+.amazon-result {
   display: grid;
   grid-template-columns: 82px minmax(0, 1fr) auto;
   gap: 14px;
@@ -722,13 +722,8 @@ input[type="range"] {
   padding: 12px;
 }
 
-.meli-result.selected {
-  border-color: var(--green);
-  background: var(--selected-surface);
-}
-
-.meli-result img,
-.meli-image-placeholder {
+.amazon-result img,
+.amazon-image-placeholder {
   width: 82px;
   height: 82px;
   border-radius: 8px;
@@ -737,30 +732,30 @@ input[type="range"] {
   background: var(--input);
 }
 
-.meli-result h4 {
+.amazon-result h4 {
   margin: 0 0 7px;
   font-size: 0.98rem;
   line-height: 1.25;
 }
 
-.meli-result p {
+.amazon-result p {
   margin: 0 0 8px;
   color: var(--muted);
   font-size: 0.85rem;
   line-height: 1.35;
 }
 
-.meli-result strong {
+.amazon-result strong {
   font-size: 1.1rem;
 }
 
-.meli-actions {
+.amazon-actions {
   display: grid;
   gap: 8px;
   justify-items: stretch;
 }
 
-.meli-actions a {
+.amazon-actions a {
   display: grid;
   min-height: 38px;
   place-items: center;
@@ -819,7 +814,7 @@ tr:last-child td {
     grid-template-columns: 1fr;
   }
 
-  .meli-stats {
+  .amazon-stats {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
@@ -856,12 +851,12 @@ tr:last-child td {
   }
 
   .search-row,
-  .meli-stats,
-  .meli-result {
+  .amazon-stats,
+  .amazon-result {
     grid-template-columns: 1fr;
   }
 
-  .meli-actions {
+  .amazon-actions {
     justify-items: stretch;
   }
 }
@@ -2860,7 +2855,7 @@ tr:last-child td {
 
   .recommendation-panel,
   .market-panel,
-  .meli-panel,
+  .amazon-panel,
   .fiscal-panel,
   .insight-panel,
   .table-panel,
@@ -2913,23 +2908,23 @@ tr:last-child td {
     font-size: 1.42rem;
   }
 
-  .meli-stats {
+  .amazon-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .meli-result {
+  .amazon-result {
     grid-template-columns: 72px minmax(0, 1fr);
   }
 
-  .meli-result img,
-  .meli-image-placeholder {
+  .amazon-result img,
+  .amazon-image-placeholder {
     width: 72px;
     height: 72px;
   }
 
-  .meli-actions {
+  .amazon-actions {
     grid-column: 1 / -1;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 
   .table-panel table,
@@ -3239,8 +3234,8 @@ tr:last-child td {
     font-size: 0.82rem;
   }
 
-  .meli-stats,
-  .meli-actions {
+  .amazon-stats,
+  .amazon-actions {
     grid-template-columns: 1fr;
   }
 }

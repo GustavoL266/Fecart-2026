@@ -17,6 +17,7 @@ Aplicação web para calcular preço de venda sustentável, comparar referência
 - Histórico com busca por nome, ordenação por data, visualização, edição, exclusão e reutilização de uma precificação anterior.
 - Salvamento de todos os campos relevantes da consulta (entradas, memória do cálculo e referência de mercado) em `calculation_data`.
 - Consulta de NCM pela Focus NFe exclusivamente no backend, com memória de cálculo, origem dos dados e aviso explícito de pendências fiscais.
+- Consulta opcional de produtos e preços na Amazon Brasil pela Amazon Creators API, sempre através do backend.
 - Cálculos monetários internos em centavos, incluindo frete, seguro, desconto e despesas adicionais.
 - Validação no navegador e no servidor, limitação de tentativas de autenticação, cabeçalhos de segurança e respostas sem hashes/senhas.
 
@@ -48,6 +49,23 @@ Defina `FOCUS_NFE_TOKEN` somente no ambiente do processo. Em desenvolvimento, a 
 
 O assistente usa a Focus NFe apenas para consultar e validar a descrição de um NCM exato. A documentação não oferece um endpoint de cálculo tributário automático: a carga tributária continua sendo um dado informado/regra configurada e o resultado aparece como estimativa fiscal pendente. Consulte [docs/focus-nfe.md](docs/focus-nfe.md) para limites, dados exigidos do contador e avaliação de NF-e recebidas.
 
+### Amazon Creators API
+
+A busca auxiliar de concorrentes usa a operação `SearchItems` da Amazon Creators API no marketplace `www.amazon.com.br`. O navegador chama apenas `GET /amazon/search`; OAuth 2.0, cache do access token, retry limitado e normalização de `Images`, `ItemInfo.Title` e `OffersV2.Listings.Price` ficam no backend.
+
+Configure somente no ambiente do servidor:
+
+```text
+AMAZON_CREATORS_CREDENTIAL_ID
+AMAZON_CREATORS_CREDENTIAL_SECRET
+AMAZON_CREATORS_CREDENTIAL_VERSION=3.1
+AMAZON_PARTNER_TAG
+AMAZON_MARKETPLACE=www.amazon.com.br
+AMAZON_CREATORS_TIMEOUT_MS=5000
+```
+
+As três credenciais (`CREDENTIAL_ID`, `CREDENTIAL_SECRET` e `PARTNER_TAG`) devem ser obtidas nas contas Amazon Associates/Creators API autorizadas para o Brasil. Nunca coloque esses valores no frontend. Sem essas variáveis, ou se a Amazon estiver indisponível, o simulador continua funcionando normalmente com o campo manual **Preço médio local dos concorrentes (R$)**.
+
 ## Publicação a partir do GitHub
 
 **Não publique este projeto no GitHub Pages.** Ele serve apenas HTML, CSS e JavaScript estáticos: não executa `server.js`, não mantém sessões nem conecta ao PostgreSQL. Por isso as chamadas `GET /auth/me` retornam `404` e os `POST /auth/login` e `POST /auth/register` retornam `405` no Pages. Além disso, o GitHub não recomenda o Pages para sites que recebem senhas.
@@ -58,7 +76,8 @@ O repositório contém [`render.yaml`](render.yaml), que publica a aplicação c
 2. No Render, escolha **New → Blueprint**, conecte o repositório e confirme os recursos propostos.
 3. O serviço cria o PostgreSQL, injeta `DATABASE_URL`, gera `SESSION_SECRET`, executa `npm run migrate` antes de cada publicação e inicia `npm start`.
 4. Configure no Web Service um `FOCUS_NFE_TOKEN` de produção. O Blueprint já seleciona `https://api.focusnfe.com.br` e o backend registra apenas `configured=true/false`, nunca o token.
-5. Abra a URL `https://…onrender.com` fornecida pelo Render. Essa é a URL que deve ser compartilhada e usada para criar contas.
+5. Para habilitar a pesquisa Amazon, configure `AMAZON_CREATORS_CREDENTIAL_ID`, `AMAZON_CREATORS_CREDENTIAL_SECRET` e `AMAZON_PARTNER_TAG`. O Blueprint já define a versão 3.1, o marketplace brasileiro e o timeout.
+6. Abra a URL `https://…onrender.com` fornecida pelo Render. Essa é a URL que deve ser compartilhada e usada para criar contas.
 
 Não é preciso (nem correto) colocar credenciais no GitHub, no código ou no GitHub Pages. Se o Pages já estiver ativo no repositório, desative-o em **Settings → Pages** para evitar que usuários cheguem à cópia estática sem API.
 
@@ -125,6 +144,7 @@ O relacionamento `products.user_id → users.id` usa chave estrangeira com `ON D
 | GET | `/products` | Obrigatória |
 | GET | `/products/:id` | Obrigatória + dono |
 | GET | `/fiscal/ncms/:codigo` | Obrigatória; proxy backend para Focus NFe |
+| GET | `/amazon/search?q=termos` | Obrigatória; proxy backend para Amazon Creators API |
 | POST | `/products` | Obrigatória |
 | PATCH | `/products/:id` | Obrigatória + dono |
 | DELETE | `/products/:id` | Obrigatória + dono |
@@ -135,10 +155,12 @@ O frontend sempre envia cookies com `credentials: "same-origin"`. A API nunca re
 
 1. Inicie banco, migrações e servidor.
 2. Acesse `http://localhost:3000` e crie uma conta.
-3. Informe o nome de um produto, gere a precificação e clique em **Salvar produto**.
-4. Abra **Meus produtos**, pesquise, visualize, edite, reutilize e exclua um registro.
-5. Faça logout e login novamente: os produtos permanecem no banco.
-6. Para validar isolamento, crie outra conta e tente abrir o ID de um produto da primeira: a API responderá `Produto não encontrado`.
+3. Informe o preço médio local dos concorrentes manualmente, gere a precificação e confirme que o fluxo funciona sem pesquisar na Amazon.
+4. Opcionalmente, pesquise um produto na Amazon, confira os comparáveis e clique em **Usar mediana**; o campo manual deve continuar editável.
+5. Clique em **Salvar produto**.
+6. Abra **Meus produtos**, pesquise, visualize, edite, reutilize e exclua um registro.
+7. Faça logout e login novamente: os produtos permanecem no banco.
+8. Para validar isolamento, crie outra conta e tente abrir o ID de um produto da primeira: a API responderá `Produto não encontrado`.
 
 Para confirmar o usuário diretamente no banco sem revelar dados sensíveis, use uma consulta como:
 

@@ -2,11 +2,8 @@
 
 const PRODUCTIVE_HOURS_PER_WORKER_MONTH = 176;
 
-const MELI_CONFIG = {
-  siteId: "MLB",
-  searchLimit: 30,
+const AMAZON_MARKET_CONFIG = {
   minComparableResults: 3,
-  cacheTtlMs: 5 * 60 * 1000,
 };
 
 const MARKET_RULES = {
@@ -388,59 +385,29 @@ function normalizeText(value) {
 }
 
 function extractTokens(value) {
-  return (
-    normalizeText(value)
-      .match(/[a-z0-9]+/g)
-      ?.filter((token) => token.length >= 3 || /^\d+$/.test(token)) || []
-  );
+  return normalizeText(value)
+    .match(/[a-z0-9]+/g)
+    ?.filter((token) => token.length >= 3 || /^\d+$/.test(token)) || [];
 }
 
-function normalizeItem(item) {
-  const image = item.thumbnail ? item.thumbnail.replace(/^http:/, "https:") : "";
-  const category = item.domain_id || item.category_id || item.attributes?.find((attribute) => attribute.id === "BRAND")?.value_name || "";
-
-  return {
-    id: item.id,
-    title: item.title,
-    price: Number(item.price),
-    image,
-    link: item.permalink,
-    category,
-    condition: item.condition,
-    attributes: Array.isArray(item.attributes) ? item.attributes : [],
-  };
-}
-
-function isComparable(listing, queryTokens) {
-  const title = normalizeText(listing.title);
-  const compactTitle = title.replace(/\s+/g, "");
-  const titleTokens = extractTokens(listing.title);
-
-  return queryTokens.every((token) => (/^\d+$/.test(token) ? titleTokens.includes(token) : titleTokens.includes(token) || compactTitle.includes(token)));
-}
-
-function filterComparableListings(listings, query) {
+function isComparable(item, query) {
   const queryTokens = extractTokens(query);
-  const seenIds = new Set();
-
-  return listings.filter((listing) => {
-    const isValid = Number.isFinite(listing.price) && listing.price > 0 && listing.title && listing.link;
-    if (!isValid || seenIds.has(listing.id)) return false;
-
-    seenIds.add(listing.id);
-    return queryTokens.length === 0 || isComparable(listing, queryTokens);
-  });
+  const titleTokens = extractTokens(item.title);
+  const compactTitle = normalizeText(item.title).replace(/\s+/g, "");
+  return queryTokens.every((token) => titleTokens.includes(token) || compactTitle.includes(token));
 }
 
 function calculateMedian(values) {
   const sorted = [...values].sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
-
   return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
 }
 
-function calculateStats(listings) {
-  const prices = listings.map((listing) => listing.price).filter((price) => Number.isFinite(price) && price > 0);
+function calculateAmazonStats(items) {
+  const prices = items
+    .filter((item) => item.currency === "BRL")
+    .map((item) => Number(item.price))
+    .filter((price) => Number.isFinite(price) && price > 0);
   if (prices.length === 0) return null;
 
   return {
@@ -452,40 +419,51 @@ function calculateStats(listings) {
   };
 }
 
-function buildSearchUrl(query) {
-  return `https://lista.mercadolivre.com.br/${encodeURIComponent(query.trim().replace(/\s+/g, "-"))}`;
+function normalizeItem(item) {
+  const price = Number(item?.price);
+  if (
+    !item?.asin
+    || !item?.title
+    || !item?.url
+    || item.currency !== "BRL"
+    || !Number.isFinite(price)
+    || price <= 0
+  ) return null;
+
+  return {
+    asin: String(item.asin),
+    title: String(item.title),
+    price,
+    currency: "BRL",
+    image: String(item.image || ""),
+    url: String(item.url),
+  };
 }
 
-class MercadoLivreService {
-  #cache = new Map();
+class AmazonService {
+  #api;
+
+  constructor(apiClient = api) {
+    this.#api = apiClient;
+  }
 
   async search(query) {
-    const cacheKey = normalizeText(query);
-    const cached = this.#cache.get(cacheKey);
-    if (cached && Date.now() - cached.createdAt < MELI_CONFIG.cacheTtlMs) return cached.data;
-
-    const params = new URLSearchParams({ q: query, limit: String(MELI_CONFIG.searchLimit) });
-    const response = await fetch(`https://api.mercadolibre.com/sites/${MELI_CONFIG.siteId}/search?${params.toString()}`);
-
-    if (!response.ok) {
-      const error = new Error("api-error");
-      error.status = response.status;
-      throw error;
-    }
-
-    const payload = await response.json();
-    const listings = Array.isArray(payload.results) ? payload.results.map(normalizeItem) : [];
-    const comparableListings = filterComparableListings(listings, query);
-    const data = {
-      query,
-      searchUrl: buildSearchUrl(query),
-      listings,
-      comparableListings,
-      stats: calculateStats(comparableListings),
+    const normalizedQuery = String(query || "").trim().replace(/\s+/g, " ");
+    const response = await this.#api.get(`/amazon/search?q=${encodeURIComponent(normalizedQuery)}`);
+    const seenAsins = new Set();
+    const items = (Array.isArray(response?.items) ? response.items : [])
+      .map(normalizeItem)
+      .filter((item) => {
+        if (!item || seenAsins.has(item.asin) || !isComparable(item, normalizedQuery)) return false;
+        seenAsins.add(item.asin);
+        return true;
+      });
+    return {
+      query: normalizedQuery,
+      marketplace: response?.marketplace || "www.amazon.com.br",
+      items,
+      stats: calculateAmazonStats(items),
     };
-
-    this.#cache.set(cacheKey, { createdAt: Date.now(), data });
-    return data;
   }
 }
 
@@ -505,7 +483,7 @@ function isGitHubPages() {
 
 async function request(path, options = {}) {
   const { method = "GET", body, handleUnauthorized = true } = options;
-  if (isGitHubPages() && (path.startsWith("/auth") || path.startsWith("/products"))) {
+  if (isGitHubPages() && (path.startsWith("/auth") || path.startsWith("/products") || path.startsWith("/amazon"))) {
     throw new ApiError(
       "Este endereço do GitHub Pages exibe apenas a interface. Abra a URL da aplicação no Render para criar ou acessar sua conta.",
       503,
@@ -740,13 +718,11 @@ function renderPriceDetails(document, inputs, result, marketText, alertCount) {
 function marketComparisonText(inputs, result, marketStats, marketSource) {
   const difference = Math.abs(inputs.competitorAverage - result.minimumPrice);
   const source =
-    marketSource === "meli-median"
-      ? "mediana dos anúncios comparáveis do Mercado Livre"
-      : marketSource === "meli-listing"
-        ? "anúncio selecionado no Mercado Livre"
-        : "média informada";
+    marketSource === "amazon-median"
+      ? "mediana dos produtos comparáveis da Amazon"
+      : "média informada";
   const relativeGap = Math.abs(result.marketGap);
-  const confidenceNote = marketStats && marketStats.count < MELI_CONFIG.minComparableResults ? " A amostra é pequena, então use como sinal preliminar." : "";
+  const confidenceNote = marketStats && marketStats.count < AMAZON_MARKET_CONFIG.minComparableResults ? " A amostra é pequena, então use como sinal preliminar." : "";
 
   if (relativeGap <= 0.08) return `O preço calculado está próximo da ${source}, com diferença de ${percent(relativeGap)}.${confidenceNote}`;
   if (result.marketGap >= 0) return `O preço calculado fica ${currency.format(difference)} (${percent(relativeGap)}) abaixo da ${source}.${confidenceNote}`;
@@ -819,58 +795,60 @@ function renderFiscalSummary(document, assessment) {
     <p><strong>Resultado:</strong> estimativa financeira; não é uma validação fiscal da operação.</p>`;
 }
 
-function renderMeliPanel(document, result, meliState) {
-  const panel = document.querySelector("#meliPanel");
-  const summary = document.querySelector("#meliSummary");
-  const statsContainer = document.querySelector("#meliStats");
-  const resultsContainer = document.querySelector("#meliResults");
-  const applyButton = document.querySelector("#applyMeliMarket");
-  const searchStatus = document.querySelector("#meliSearchStatus");
+function renderAmazonPanel(document, result, amazonState) {
+  const panel = document.querySelector("#amazonPanel");
+  const summary = document.querySelector("#amazonSummary");
+  const statsContainer = document.querySelector("#amazonStats");
+  const resultsContainer = document.querySelector("#amazonResults");
+  const applyButton = document.querySelector("#applyAmazonMarket");
+  const searchButton = document.querySelector("#amazonSearchButton");
+  const searchStatus = document.querySelector("#amazonSearchStatus");
 
-  panel.hidden = meliState.status === "idle";
-  summary.hidden = !meliState.stats;
-  applyButton.disabled = !meliState.stats;
+  panel.hidden = amazonState.status === "idle";
+  summary.hidden = !amazonState.stats;
+  applyButton.disabled = !amazonState.stats || amazonState.status === "loading";
+  searchButton.disabled = amazonState.status === "loading";
+  searchButton.textContent = amazonState.status === "loading" ? "Pesquisando..." : "Pesquisar";
 
-  if (meliState.status === "loading") {
-    searchStatus.textContent = "Consultando anúncios reais no Mercado Livre...";
-    statsContainer.innerHTML = '<p class="helper-text">Buscando produtos ativos no Mercado Livre.</p>';
+  if (amazonState.status === "loading") {
+    searchStatus.textContent = "Consultando produtos na Amazon Brasil...";
+    statsContainer.innerHTML = '<p class="helper-text">Buscando ofertas pela Amazon Creators API.</p>';
     resultsContainer.innerHTML = "";
     return;
   }
 
-  if (meliState.status === "error") {
-    searchStatus.textContent = meliState.error;
+  if (amazonState.status === "error") {
+    searchStatus.textContent = amazonState.error;
     statsContainer.innerHTML = `
-      <div class="meli-fallback">
-        <p class="error-text">${escapeHtml(meliState.error)}</p>
-        <p class="helper-text">Você ainda pode abrir a busca, comparar alguns anúncios e preencher a média manualmente no campo de concorrentes.</p>
-        ${meliState.searchUrl ? `<a class="secondary-link" href="${escapeHtml(meliState.searchUrl)}" target="_blank" rel="noopener">Abrir busca no Mercado Livre</a>` : ""}
+      <div class="amazon-fallback">
+        <p class="error-text">${escapeHtml(amazonState.error)}</p>
+        <p class="helper-text">A pesquisa é opcional e não bloqueia o cálculo, a edição nem o salvamento.</p>
       </div>`;
     resultsContainer.innerHTML = "";
     return;
   }
 
-  if (meliState.status === "empty") {
-    searchStatus.textContent = "Nenhum anúncio comparável foi encontrado para essa busca.";
+  if (amazonState.status === "empty") {
+    searchStatus.textContent = "Nenhum produto com preço disponível foi encontrado.";
     statsContainer.innerHTML = '<p class="helper-text">Tente informar marca, modelo, capacidade, tamanho ou voltagem com mais precisão.</p>';
     resultsContainer.innerHTML = "";
     return;
   }
 
-  if (!meliState.stats) {
-    searchStatus.textContent = "Use a consulta para substituir a média manual por dados reais quando desejar.";
+  if (!amazonState.stats) {
+    searchStatus.textContent = "A pesquisa é opcional. A média manual só muda quando você escolher usar a mediana.";
     statsContainer.innerHTML = "";
     resultsContainer.innerHTML = "";
     return;
   }
 
-  const { stats } = meliState;
-  const reliabilityText = stats.count < MELI_CONFIG.minComparableResults ? "Amostra pequena: referência preliminar." : "Amostra suficiente para referência inicial.";
+  const { stats } = amazonState;
+  const reliabilityText = stats.count < AMAZON_MARKET_CONFIG.minComparableResults ? "Amostra pequena: referência preliminar." : "Amostra suficiente para referência inicial.";
   const marketGap = result.isValid ? (stats.median - result.minimumPrice) / stats.median : 0;
   const [badgeType, badgeText] = result.isValid ? marketBadgeForGap(marketGap) : ["risk", "Revise percentuais"];
 
-  searchStatus.textContent = `${stats.count} anúncio(s) comparável(is) analisado(s).`;
-  summary.innerHTML = `<span>Referência Mercado Livre</span><strong>${currency.format(stats.median)}</strong><small>Mediana de ${stats.count} anúncio(s)</small>`;
+  searchStatus.textContent = `${stats.count} produto(s) com preço em BRL analisado(s).`;
+  summary.innerHTML = `<span>Referência Amazon</span><strong>${currency.format(stats.median)}</strong><small>Mediana de ${stats.count} produto(s) exibido(s)</small>`;
   statsContainer.innerHTML = `
     <div><span>Menor preço</span><strong>${currency.format(stats.min)}</strong></div>
     <div><span>Preço médio</span><strong>${currency.format(stats.average)}</strong></div>
@@ -878,35 +856,25 @@ function renderMeliPanel(document, result, meliState) {
     <div><span>Maior preço</span><strong>${currency.format(stats.max)}</strong></div>
     <div><span>Análise</span><strong class="${badgeType}">${badgeText}</strong></div>
     <div><span>Confiança</span><strong>${reliabilityText}</strong></div>`;
-  resultsContainer.innerHTML = meliState.comparableListings
-    .map((listing) => {
-      const isSelected = listing.id === meliState.selectedId;
-      const attributes = listing.attributes
-        .filter((attribute) => ["BRAND", "MODEL", "LINE", "VOLTAGE", "CAPACITY"].includes(attribute.id) && attribute.value_name)
-        .slice(0, 3)
-        .map((attribute) => attribute.value_name)
-        .join(" | ");
-
-      return `
-        <article class="meli-result ${isSelected ? "selected" : ""}">
-          ${listing.image ? `<img src="${escapeHtml(listing.image)}" alt="">` : '<div class="meli-image-placeholder"></div>'}
+  resultsContainer.innerHTML = amazonState.items
+    .map((item) => `
+        <article class="amazon-result">
+          ${item.image ? `<img src="${escapeHtml(item.image)}" alt="">` : '<div class="amazon-image-placeholder"></div>'}
           <div>
-            <h4>${escapeHtml(listing.title)}</h4>
-            <p>${[listing.condition, listing.category, attributes].filter(Boolean).map(escapeHtml).join(" | ")}</p>
-            <strong>${currency.format(listing.price)}</strong>
+            <h4>${escapeHtml(item.title)}</h4>
+            <p>ASIN: ${escapeHtml(item.asin)}</p>
+            <strong>${currency.format(item.price)}</strong>
           </div>
-          <div class="meli-actions">
-            <button type="button" data-meli-select="${escapeHtml(listing.id)}">${isSelected ? "Selecionado" : "Selecionar"}</button>
-            <a href="${escapeHtml(listing.link)}" target="_blank" rel="noopener">Abrir anúncio</a>
+          <div class="amazon-actions">
+            <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver na Amazon</a>
           </div>
-        </article>`;
-    })
+        </article>`)
     .join("");
 }
 
-function renderDashboard(document, inputs, result, meliState, marketSource, fiscalAssessment, memory) {
+function renderDashboard(document, inputs, result, amazonState, marketSource, fiscalAssessment, memory) {
   const { costs } = result;
-  const activeMarketStats = marketSource === "meli-median" ? meliState.stats : null;
+  const activeMarketStats = marketSource === "amazon-median" ? amazonState.stats : null;
   const alerts = dashboardAlerts(inputs, result, fiscalAssessment);
 
   document.querySelector("#baseCost").textContent = currency.format(costs.baseCost);
@@ -957,7 +925,7 @@ function renderDashboard(document, inputs, result, meliState, marketSource, fisc
   renderCostTable(document, memory);
   renderAlerts(document, alerts);
   renderFiscalSummary(document, fiscalAssessment);
-  renderMeliPanel(document, result, meliState);
+  renderAmazonPanel(document, result, amazonState);
   renderPriceDetails(document, inputs, result, marketText, alerts.length);
 }
 
@@ -1156,7 +1124,7 @@ function createPricingTabs(root) {
 const $ = (selector) => document.querySelector(selector);
 const themeStorageKey = "assistente-precificacao-theme";
 const detailRouteHashes = Object.freeze({ price: "#preco-calculado" });
-const mercadoLivre = new MercadoLivreService();
+const amazon = new AmazonService();
 const taxRuleEngine = new ConfiguredTaxRuleEngine();
 const formFieldIds = [
   "productType",
@@ -1205,14 +1173,11 @@ let focusState = {
   error: "",
   unavailable: false,
 };
-let meliState = {
+let amazonState = {
   status: "idle",
   query: "",
-  searchUrl: "",
-  listings: [],
-  comparableListings: [],
+  items: [],
   stats: null,
-  selectedId: null,
   error: "",
 };
 let productSearchTimer;
@@ -1340,7 +1305,7 @@ function render() {
   const result = calculatePrice(inputs);
   const fiscalAssessment = taxRuleEngine.assess(inputs, focusState);
   const memory = buildCalculationMemory(inputs, result, fiscalAssessment);
-  renderDashboard(document, inputs, result, meliState, marketSource, fiscalAssessment, memory);
+  renderDashboard(document, inputs, result, amazonState, marketSource, fiscalAssessment, memory);
   renderNcmState();
   $("#mobileSuggestedPrice").textContent = $("#suggestedPrice").textContent;
   pricingTabs.updateCompletion();
@@ -1484,38 +1449,43 @@ function setAuthenticatedUser(user) {
   void syncRoute();
 }
 
-function setMeliError(query, status) {
-  const error =
-    status === 429
-      ? "O Mercado Livre limitou as consultas no momento. Aguarde um pouco e tente novamente."
-      : status === 403
-        ? "O Mercado Livre bloqueou a consulta automática de anúncios para este acesso."
-        : "Não foi possível consultar o Mercado Livre agora. Verifique sua conexão ou tente novamente mais tarde.";
+function setAmazonError(query, caughtError) {
+  const error = caughtError instanceof ApiError && caughtError.status === 429
+    ? "A Amazon limitou temporariamente as consultas. Aguarde um pouco e tente novamente."
+    : caughtError instanceof ApiError && caughtError.code === "AMAZON_NOT_CONFIGURED"
+      ? "A consulta da Amazon ainda não foi configurada neste ambiente."
+      : "Não foi possível consultar a Amazon no momento.";
 
-  meliState = { ...meliState, status: "error", query, searchUrl: buildSearchUrl(query), listings: [], comparableListings: [], stats: null, selectedId: null, error };
+  amazonState = {
+    status: "error",
+    query,
+    items: [],
+    stats: null,
+    error: `${error} Você ainda pode informar o preço médio dos concorrentes manualmente.`,
+  };
 }
 
-async function searchMercadoLivre() {
-  const query = $("#meliQuery").value.trim();
+async function searchAmazon() {
+  if (amazonState.status === "loading") return;
+  const query = $("#amazonQuery").value.trim();
   if (query.length < 3) {
-    meliState = { ...meliState, status: "error", error: "Informe pelo menos 3 caracteres para pesquisar." };
+    amazonState = { ...amazonState, status: "error", error: "Informe pelo menos 3 caracteres para pesquisar." };
     render();
     return;
   }
 
-  meliState = { status: "loading", query, searchUrl: buildSearchUrl(query), listings: [], comparableListings: [], stats: null, selectedId: null, error: "" };
+  amazonState = { status: "loading", query, items: [], stats: null, error: "" };
   render();
 
   try {
-    const data = await mercadoLivre.search(query);
-    meliState = {
+    const data = await amazon.search(query);
+    amazonState = {
       status: data.stats ? "success" : "empty",
       ...data,
-      selectedId: data.comparableListings[0]?.id || null,
       error: "",
     };
   } catch (error) {
-    setMeliError(query, error.status);
+    setAmazonError(query, error);
   }
 
   render();
@@ -1532,7 +1502,6 @@ function productPayloadFromCalculator() {
   if (!name) throw new ApiError("Informe o nome do produto antes de salvar.", 400);
   if (!result.isValid || result.minimumPrice === null) throw new ApiError("Revise os percentuais antes de salvar um cálculo inviável.", 400);
 
-  const selectedListing = meliState.comparableListings.find((listing) => listing.id === meliState.selectedId);
   return {
     name,
     description,
@@ -1541,20 +1510,17 @@ function productPayloadFromCalculator() {
     additionalCosts: Math.max(0, result.costs.baseCost - inputs.materialsCost),
     profitMargin: inputs.margin * 100,
     suggestedPrice: result.minimumPrice,
-    marketplace: marketSource.startsWith("meli") ? "Mercado Livre" : "Manual",
+    marketplace: marketSource === "amazon-median" ? "Amazon" : "Manual",
     consultationDate: new Date().toISOString(),
     calculationData: {
-      version: 2,
+      version: 3,
       inputs,
       result,
       fiscal: fiscalDataForStorage(fiscalAssessment, memory),
       market: {
         source: marketSource,
-        query: meliState.query,
-        stats: meliState.stats,
-        selectedListing: selectedListing
-          ? { id: selectedListing.id, title: selectedListing.title, price: selectedListing.price, link: selectedListing.link }
-          : null,
+        query: amazonState.query,
+        stats: amazonState.stats,
       },
     },
   };
@@ -1642,9 +1608,17 @@ function reuseProduct(product) {
   focusState = savedNcm?.codigo
     ? { status: "success", ncm: savedNcm, environment: "consulta salva", error: "", unavailable: false }
     : { status: "idle", ncm: null, environment: "", error: "", unavailable: false };
-  marketSource = product.calculationData?.market?.source || "manual";
-  meliState = { ...meliState, status: "idle", query: product.calculationData?.market?.query || "", stats: product.calculationData?.market?.stats || null };
-  $("#meliQuery").value = meliState.query;
+  const savedMarket = product.calculationData?.market;
+  marketSource = savedMarket?.source === "amazon-median" ? "amazon-median" : "manual";
+  amazonState = {
+    ...amazonState,
+    status: "idle",
+    query: marketSource === "amazon-median" ? savedMarket?.query || "" : "",
+    items: [],
+    stats: marketSource === "amazon-median" ? savedMarket?.stats || null : null,
+    error: "",
+  };
+  $("#amazonQuery").value = amazonState.query;
   $("#productDialog").close();
   render();
   navigate("assistant");
@@ -1840,27 +1814,16 @@ elements.competitorAverage.addEventListener("input", () => {
   render();
 });
 
-$("#meliSearchButton").addEventListener("click", searchMercadoLivre);
-$("#meliQuery").addEventListener("keydown", (event) => {
+$("#amazonSearchButton").addEventListener("click", searchAmazon);
+$("#amazonQuery").addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
   event.preventDefault();
-  searchMercadoLivre();
+  void searchAmazon();
 });
-$("#applyMeliMarket").addEventListener("click", () => {
-  if (!meliState.stats) return;
-  elements.competitorAverage.value = meliState.stats.median.toFixed(2);
-  marketSource = "meli-median";
-  render();
-});
-$("#meliResults").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-meli-select]");
-  if (!button) return;
-  const selectedListing = meliState.comparableListings.find((listing) => listing.id === button.dataset.meliSelect);
-  meliState = { ...meliState, selectedId: button.dataset.meliSelect };
-  if (selectedListing) {
-    elements.competitorAverage.value = selectedListing.price.toFixed(2);
-    marketSource = "meli-listing";
-  }
+$("#applyAmazonMarket").addEventListener("click", () => {
+  if (!amazonState.stats) return;
+  elements.competitorAverage.value = amazonState.stats.median.toFixed(2);
+  marketSource = "amazon-median";
   render();
 });
 

@@ -1,6 +1,6 @@
 import { calculatePrice } from "./domain/pricing-calculator.js";
 import { buildCalculationMemory, ConfiguredTaxRuleEngine, fiscalDataForStorage } from "./domain/tax-rule-engine.js";
-import { buildSearchUrl, MercadoLivreService } from "./services/mercado-livre-service.js";
+import { AmazonService } from "./services/amazon-service.js";
 import { ApiError, api } from "./services/api-client.js";
 import { applyCategoryPreset, applySavedInputs, isAboveCompetitorLimit, readInputs } from "./ui/form.js";
 import { renderDashboard } from "./ui/dashboard.js";
@@ -10,7 +10,7 @@ import { createPricingTabs } from "./ui/pricing-tabs.js";
 const $ = (selector) => document.querySelector(selector);
 const themeStorageKey = "assistente-precificacao-theme";
 const detailRouteHashes = Object.freeze({ price: "#preco-calculado" });
-const mercadoLivre = new MercadoLivreService();
+const amazon = new AmazonService();
 const taxRuleEngine = new ConfiguredTaxRuleEngine();
 const formFieldIds = [
   "productType",
@@ -59,14 +59,11 @@ let focusState = {
   error: "",
   unavailable: false,
 };
-let meliState = {
+let amazonState = {
   status: "idle",
   query: "",
-  searchUrl: "",
-  listings: [],
-  comparableListings: [],
+  items: [],
   stats: null,
-  selectedId: null,
   error: "",
 };
 let productSearchTimer;
@@ -194,7 +191,7 @@ function render() {
   const result = calculatePrice(inputs);
   const fiscalAssessment = taxRuleEngine.assess(inputs, focusState);
   const memory = buildCalculationMemory(inputs, result, fiscalAssessment);
-  renderDashboard(document, inputs, result, meliState, marketSource, fiscalAssessment, memory);
+  renderDashboard(document, inputs, result, amazonState, marketSource, fiscalAssessment, memory);
   renderNcmState();
   $("#mobileSuggestedPrice").textContent = $("#suggestedPrice").textContent;
   pricingTabs.updateCompletion();
@@ -338,38 +335,43 @@ function setAuthenticatedUser(user) {
   void syncRoute();
 }
 
-function setMeliError(query, status) {
-  const error =
-    status === 429
-      ? "O Mercado Livre limitou as consultas no momento. Aguarde um pouco e tente novamente."
-      : status === 403
-        ? "O Mercado Livre bloqueou a consulta automática de anúncios para este acesso."
-        : "Não foi possível consultar o Mercado Livre agora. Verifique sua conexão ou tente novamente mais tarde.";
+function setAmazonError(query, caughtError) {
+  const error = caughtError instanceof ApiError && caughtError.status === 429
+    ? "A Amazon limitou temporariamente as consultas. Aguarde um pouco e tente novamente."
+    : caughtError instanceof ApiError && caughtError.code === "AMAZON_NOT_CONFIGURED"
+      ? "A consulta da Amazon ainda não foi configurada neste ambiente."
+      : "Não foi possível consultar a Amazon no momento.";
 
-  meliState = { ...meliState, status: "error", query, searchUrl: buildSearchUrl(query), listings: [], comparableListings: [], stats: null, selectedId: null, error };
+  amazonState = {
+    status: "error",
+    query,
+    items: [],
+    stats: null,
+    error: `${error} Você ainda pode informar o preço médio dos concorrentes manualmente.`,
+  };
 }
 
-async function searchMercadoLivre() {
-  const query = $("#meliQuery").value.trim();
+async function searchAmazon() {
+  if (amazonState.status === "loading") return;
+  const query = $("#amazonQuery").value.trim();
   if (query.length < 3) {
-    meliState = { ...meliState, status: "error", error: "Informe pelo menos 3 caracteres para pesquisar." };
+    amazonState = { ...amazonState, status: "error", error: "Informe pelo menos 3 caracteres para pesquisar." };
     render();
     return;
   }
 
-  meliState = { status: "loading", query, searchUrl: buildSearchUrl(query), listings: [], comparableListings: [], stats: null, selectedId: null, error: "" };
+  amazonState = { status: "loading", query, items: [], stats: null, error: "" };
   render();
 
   try {
-    const data = await mercadoLivre.search(query);
-    meliState = {
+    const data = await amazon.search(query);
+    amazonState = {
       status: data.stats ? "success" : "empty",
       ...data,
-      selectedId: data.comparableListings[0]?.id || null,
       error: "",
     };
   } catch (error) {
-    setMeliError(query, error.status);
+    setAmazonError(query, error);
   }
 
   render();
@@ -386,7 +388,6 @@ function productPayloadFromCalculator() {
   if (!name) throw new ApiError("Informe o nome do produto antes de salvar.", 400);
   if (!result.isValid || result.minimumPrice === null) throw new ApiError("Revise os percentuais antes de salvar um cálculo inviável.", 400);
 
-  const selectedListing = meliState.comparableListings.find((listing) => listing.id === meliState.selectedId);
   return {
     name,
     description,
@@ -395,20 +396,17 @@ function productPayloadFromCalculator() {
     additionalCosts: Math.max(0, result.costs.baseCost - inputs.materialsCost),
     profitMargin: inputs.margin * 100,
     suggestedPrice: result.minimumPrice,
-    marketplace: marketSource.startsWith("meli") ? "Mercado Livre" : "Manual",
+    marketplace: marketSource === "amazon-median" ? "Amazon" : "Manual",
     consultationDate: new Date().toISOString(),
     calculationData: {
-      version: 2,
+      version: 3,
       inputs,
       result,
       fiscal: fiscalDataForStorage(fiscalAssessment, memory),
       market: {
         source: marketSource,
-        query: meliState.query,
-        stats: meliState.stats,
-        selectedListing: selectedListing
-          ? { id: selectedListing.id, title: selectedListing.title, price: selectedListing.price, link: selectedListing.link }
-          : null,
+        query: amazonState.query,
+        stats: amazonState.stats,
       },
     },
   };
@@ -496,9 +494,17 @@ function reuseProduct(product) {
   focusState = savedNcm?.codigo
     ? { status: "success", ncm: savedNcm, environment: "consulta salva", error: "", unavailable: false }
     : { status: "idle", ncm: null, environment: "", error: "", unavailable: false };
-  marketSource = product.calculationData?.market?.source || "manual";
-  meliState = { ...meliState, status: "idle", query: product.calculationData?.market?.query || "", stats: product.calculationData?.market?.stats || null };
-  $("#meliQuery").value = meliState.query;
+  const savedMarket = product.calculationData?.market;
+  marketSource = savedMarket?.source === "amazon-median" ? "amazon-median" : "manual";
+  amazonState = {
+    ...amazonState,
+    status: "idle",
+    query: marketSource === "amazon-median" ? savedMarket?.query || "" : "",
+    items: [],
+    stats: marketSource === "amazon-median" ? savedMarket?.stats || null : null,
+    error: "",
+  };
+  $("#amazonQuery").value = amazonState.query;
   $("#productDialog").close();
   render();
   navigate("assistant");
@@ -694,27 +700,16 @@ elements.competitorAverage.addEventListener("input", () => {
   render();
 });
 
-$("#meliSearchButton").addEventListener("click", searchMercadoLivre);
-$("#meliQuery").addEventListener("keydown", (event) => {
+$("#amazonSearchButton").addEventListener("click", searchAmazon);
+$("#amazonQuery").addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
   event.preventDefault();
-  searchMercadoLivre();
+  void searchAmazon();
 });
-$("#applyMeliMarket").addEventListener("click", () => {
-  if (!meliState.stats) return;
-  elements.competitorAverage.value = meliState.stats.median.toFixed(2);
-  marketSource = "meli-median";
-  render();
-});
-$("#meliResults").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-meli-select]");
-  if (!button) return;
-  const selectedListing = meliState.comparableListings.find((listing) => listing.id === button.dataset.meliSelect);
-  meliState = { ...meliState, selectedId: button.dataset.meliSelect };
-  if (selectedListing) {
-    elements.competitorAverage.value = selectedListing.price.toFixed(2);
-    marketSource = "meli-listing";
-  }
+$("#applyAmazonMarket").addEventListener("click", () => {
+  if (!amazonState.stats) return;
+  elements.competitorAverage.value = amazonState.stats.median.toFixed(2);
+  marketSource = "amazon-median";
   render();
 });
 

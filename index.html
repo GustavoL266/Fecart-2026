@@ -443,19 +443,19 @@
               </div>
             </div>
             <div class="sidebar-field">
-              <label for="competitorAverage">Preço médio local dos concorrentes</label>
+              <label for="competitorAverage">Preço médio local dos concorrentes (R$)</label>
               <div class="sidebar-input-wrap has-prefix">
                 <span class="input-affix input-prefix" aria-hidden="true">R$</span>
                 <input id="competitorAverage" type="number" inputmode="decimal" min="0.01" max="1000000" step="0.01" value="32" />
               </div>
             </div>
             <div class="market-search">
-              <label for="meliQuery">Produto no Mercado Livre</label>
+              <label for="amazonQuery">Produto na Amazon</label>
               <div class="search-row">
-                <input id="meliQuery" type="text" placeholder="Ex.: iPhone 13 128GB" autocomplete="off" />
-                <button id="meliSearchButton" class="market-search-button" type="button">Pesquisar</button>
+                <input id="amazonQuery" type="text" placeholder="Ex.: iPhone 13 128GB" autocomplete="off" />
+                <button id="amazonSearchButton" class="market-search-button" type="button">Pesquisar</button>
               </div>
-              <p id="meliSearchStatus" class="helper-text">Use a consulta para substituir a média manual por dados reais quando desejar.</p>
+              <p id="amazonSearchStatus" class="helper-text" role="status">A pesquisa é opcional. Use a mediana apenas quando os comparáveis fizerem sentido.</p>
             </div>
           </div>
           <footer class="pricing-step-actions">
@@ -551,7 +551,7 @@
               <strong id="marketPrice" class="summary-value compact">R$ 0,00</strong>
               <progress id="marketMeter" class="market-meter compact-meter" max="100" value="0" aria-label="Relação entre o preço calculado e o preço médio de mercado"></progress>
               <p id="marketStatus" class="summary-description"></p>
-              <div id="meliSummary" class="meli-summary" hidden></div>
+              <div id="amazonSummary" class="amazon-summary" hidden></div>
               <button type="button" class="detail-link" data-detail-view="price" data-detail-target="market-comparison">Ver detalhes <span aria-hidden="true">→</span></button>
             </article>
 
@@ -663,13 +663,13 @@
             <div id="fiscalSummary" class="fiscal-summary"></div>
           </article>
 
-          <section id="meliPanel" class="meli-panel" aria-labelledby="meli-title" hidden>
+          <section id="amazonPanel" class="amazon-panel" aria-labelledby="amazon-title" hidden>
             <div class="panel-heading compact">
-              <div><p class="eyebrow">Mercado Livre</p><h3 id="meli-title">Anúncios comparáveis</h3></div>
-              <button id="applyMeliMarket" type="button" class="secondary-button" disabled>Usar mediana</button>
+              <div><p class="eyebrow">Amazon</p><h3 id="amazon-title">Anúncios comparáveis</h3></div>
+              <button id="applyAmazonMarket" type="button" class="secondary-button" disabled>Usar mediana</button>
             </div>
-            <div id="meliStats" class="meli-stats"></div>
-            <div id="meliResults" class="meli-results"></div>
+            <div id="amazonStats" class="amazon-stats"></div>
+            <div id="amazonResults" class="amazon-results"></div>
           </section>
         </section>
       </section>

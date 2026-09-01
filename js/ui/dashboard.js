@@ -1,4 +1,4 @@
-import { MELI_CONFIG, PRODUCTIVE_HOURS_PER_WORKER_MONTH } from "../config/pricing.js";
+import { AMAZON_MARKET_CONFIG, PRODUCTIVE_HOURS_PER_WORKER_MONTH } from "../config/pricing.js";
 import { marketBadgeForGap } from "../domain/market-analysis.js";
 import { clamp, currency, escapeHtml, percent } from "../utils/formatters.js";
 import { renderPriceDetails } from "./detail-pages.js";
@@ -6,13 +6,11 @@ import { renderPriceDetails } from "./detail-pages.js";
 function marketComparisonText(inputs, result, marketStats, marketSource) {
   const difference = Math.abs(inputs.competitorAverage - result.minimumPrice);
   const source =
-    marketSource === "meli-median"
-      ? "mediana dos anúncios comparáveis do Mercado Livre"
-      : marketSource === "meli-listing"
-        ? "anúncio selecionado no Mercado Livre"
-        : "média informada";
+    marketSource === "amazon-median"
+      ? "mediana dos produtos comparáveis da Amazon"
+      : "média informada";
   const relativeGap = Math.abs(result.marketGap);
-  const confidenceNote = marketStats && marketStats.count < MELI_CONFIG.minComparableResults ? " A amostra é pequena, então use como sinal preliminar." : "";
+  const confidenceNote = marketStats && marketStats.count < AMAZON_MARKET_CONFIG.minComparableResults ? " A amostra é pequena, então use como sinal preliminar." : "";
 
   if (relativeGap <= 0.08) return `O preço calculado está próximo da ${source}, com diferença de ${percent(relativeGap)}.${confidenceNote}`;
   if (result.marketGap >= 0) return `O preço calculado fica ${currency.format(difference)} (${percent(relativeGap)}) abaixo da ${source}.${confidenceNote}`;
@@ -85,58 +83,60 @@ function renderFiscalSummary(document, assessment) {
     <p><strong>Resultado:</strong> estimativa financeira; não é uma validação fiscal da operação.</p>`;
 }
 
-function renderMeliPanel(document, result, meliState) {
-  const panel = document.querySelector("#meliPanel");
-  const summary = document.querySelector("#meliSummary");
-  const statsContainer = document.querySelector("#meliStats");
-  const resultsContainer = document.querySelector("#meliResults");
-  const applyButton = document.querySelector("#applyMeliMarket");
-  const searchStatus = document.querySelector("#meliSearchStatus");
+function renderAmazonPanel(document, result, amazonState) {
+  const panel = document.querySelector("#amazonPanel");
+  const summary = document.querySelector("#amazonSummary");
+  const statsContainer = document.querySelector("#amazonStats");
+  const resultsContainer = document.querySelector("#amazonResults");
+  const applyButton = document.querySelector("#applyAmazonMarket");
+  const searchButton = document.querySelector("#amazonSearchButton");
+  const searchStatus = document.querySelector("#amazonSearchStatus");
 
-  panel.hidden = meliState.status === "idle";
-  summary.hidden = !meliState.stats;
-  applyButton.disabled = !meliState.stats;
+  panel.hidden = amazonState.status === "idle";
+  summary.hidden = !amazonState.stats;
+  applyButton.disabled = !amazonState.stats || amazonState.status === "loading";
+  searchButton.disabled = amazonState.status === "loading";
+  searchButton.textContent = amazonState.status === "loading" ? "Pesquisando..." : "Pesquisar";
 
-  if (meliState.status === "loading") {
-    searchStatus.textContent = "Consultando anúncios reais no Mercado Livre...";
-    statsContainer.innerHTML = '<p class="helper-text">Buscando produtos ativos no Mercado Livre.</p>';
+  if (amazonState.status === "loading") {
+    searchStatus.textContent = "Consultando produtos na Amazon Brasil...";
+    statsContainer.innerHTML = '<p class="helper-text">Buscando ofertas pela Amazon Creators API.</p>';
     resultsContainer.innerHTML = "";
     return;
   }
 
-  if (meliState.status === "error") {
-    searchStatus.textContent = meliState.error;
+  if (amazonState.status === "error") {
+    searchStatus.textContent = amazonState.error;
     statsContainer.innerHTML = `
-      <div class="meli-fallback">
-        <p class="error-text">${escapeHtml(meliState.error)}</p>
-        <p class="helper-text">Você ainda pode abrir a busca, comparar alguns anúncios e preencher a média manualmente no campo de concorrentes.</p>
-        ${meliState.searchUrl ? `<a class="secondary-link" href="${escapeHtml(meliState.searchUrl)}" target="_blank" rel="noopener">Abrir busca no Mercado Livre</a>` : ""}
+      <div class="amazon-fallback">
+        <p class="error-text">${escapeHtml(amazonState.error)}</p>
+        <p class="helper-text">A pesquisa é opcional e não bloqueia o cálculo, a edição nem o salvamento.</p>
       </div>`;
     resultsContainer.innerHTML = "";
     return;
   }
 
-  if (meliState.status === "empty") {
-    searchStatus.textContent = "Nenhum anúncio comparável foi encontrado para essa busca.";
+  if (amazonState.status === "empty") {
+    searchStatus.textContent = "Nenhum produto com preço disponível foi encontrado.";
     statsContainer.innerHTML = '<p class="helper-text">Tente informar marca, modelo, capacidade, tamanho ou voltagem com mais precisão.</p>';
     resultsContainer.innerHTML = "";
     return;
   }
 
-  if (!meliState.stats) {
-    searchStatus.textContent = "Use a consulta para substituir a média manual por dados reais quando desejar.";
+  if (!amazonState.stats) {
+    searchStatus.textContent = "A pesquisa é opcional. A média manual só muda quando você escolher usar a mediana.";
     statsContainer.innerHTML = "";
     resultsContainer.innerHTML = "";
     return;
   }
 
-  const { stats } = meliState;
-  const reliabilityText = stats.count < MELI_CONFIG.minComparableResults ? "Amostra pequena: referência preliminar." : "Amostra suficiente para referência inicial.";
+  const { stats } = amazonState;
+  const reliabilityText = stats.count < AMAZON_MARKET_CONFIG.minComparableResults ? "Amostra pequena: referência preliminar." : "Amostra suficiente para referência inicial.";
   const marketGap = result.isValid ? (stats.median - result.minimumPrice) / stats.median : 0;
   const [badgeType, badgeText] = result.isValid ? marketBadgeForGap(marketGap) : ["risk", "Revise percentuais"];
 
-  searchStatus.textContent = `${stats.count} anúncio(s) comparável(is) analisado(s).`;
-  summary.innerHTML = `<span>Referência Mercado Livre</span><strong>${currency.format(stats.median)}</strong><small>Mediana de ${stats.count} anúncio(s)</small>`;
+  searchStatus.textContent = `${stats.count} produto(s) com preço em BRL analisado(s).`;
+  summary.innerHTML = `<span>Referência Amazon</span><strong>${currency.format(stats.median)}</strong><small>Mediana de ${stats.count} produto(s) exibido(s)</small>`;
   statsContainer.innerHTML = `
     <div><span>Menor preço</span><strong>${currency.format(stats.min)}</strong></div>
     <div><span>Preço médio</span><strong>${currency.format(stats.average)}</strong></div>
@@ -144,35 +144,25 @@ function renderMeliPanel(document, result, meliState) {
     <div><span>Maior preço</span><strong>${currency.format(stats.max)}</strong></div>
     <div><span>Análise</span><strong class="${badgeType}">${badgeText}</strong></div>
     <div><span>Confiança</span><strong>${reliabilityText}</strong></div>`;
-  resultsContainer.innerHTML = meliState.comparableListings
-    .map((listing) => {
-      const isSelected = listing.id === meliState.selectedId;
-      const attributes = listing.attributes
-        .filter((attribute) => ["BRAND", "MODEL", "LINE", "VOLTAGE", "CAPACITY"].includes(attribute.id) && attribute.value_name)
-        .slice(0, 3)
-        .map((attribute) => attribute.value_name)
-        .join(" | ");
-
-      return `
-        <article class="meli-result ${isSelected ? "selected" : ""}">
-          ${listing.image ? `<img src="${escapeHtml(listing.image)}" alt="">` : '<div class="meli-image-placeholder"></div>'}
+  resultsContainer.innerHTML = amazonState.items
+    .map((item) => `
+        <article class="amazon-result">
+          ${item.image ? `<img src="${escapeHtml(item.image)}" alt="">` : '<div class="amazon-image-placeholder"></div>'}
           <div>
-            <h4>${escapeHtml(listing.title)}</h4>
-            <p>${[listing.condition, listing.category, attributes].filter(Boolean).map(escapeHtml).join(" | ")}</p>
-            <strong>${currency.format(listing.price)}</strong>
+            <h4>${escapeHtml(item.title)}</h4>
+            <p>ASIN: ${escapeHtml(item.asin)}</p>
+            <strong>${currency.format(item.price)}</strong>
           </div>
-          <div class="meli-actions">
-            <button type="button" data-meli-select="${escapeHtml(listing.id)}">${isSelected ? "Selecionado" : "Selecionar"}</button>
-            <a href="${escapeHtml(listing.link)}" target="_blank" rel="noopener">Abrir anúncio</a>
+          <div class="amazon-actions">
+            <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver na Amazon</a>
           </div>
-        </article>`;
-    })
+        </article>`)
     .join("");
 }
 
-export function renderDashboard(document, inputs, result, meliState, marketSource, fiscalAssessment, memory) {
+export function renderDashboard(document, inputs, result, amazonState, marketSource, fiscalAssessment, memory) {
   const { costs } = result;
-  const activeMarketStats = marketSource === "meli-median" ? meliState.stats : null;
+  const activeMarketStats = marketSource === "amazon-median" ? amazonState.stats : null;
   const alerts = dashboardAlerts(inputs, result, fiscalAssessment);
 
   document.querySelector("#baseCost").textContent = currency.format(costs.baseCost);
@@ -223,6 +213,6 @@ export function renderDashboard(document, inputs, result, meliState, marketSourc
   renderCostTable(document, memory);
   renderAlerts(document, alerts);
   renderFiscalSummary(document, fiscalAssessment);
-  renderMeliPanel(document, result, meliState);
+  renderAmazonPanel(document, result, amazonState);
   renderPriceDetails(document, inputs, result, marketText, alerts.length);
 }

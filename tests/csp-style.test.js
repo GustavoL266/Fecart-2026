@@ -47,6 +47,17 @@ test("a CSP mantém estilos restritos à própria aplicação", async () => {
   assert.match(source, /styleSrcAttr:\s*\["'none'"\]/);
   assert.doesNotMatch(source, /unsafe-inline/);
   assert.doesNotMatch(source, /contentSecurityPolicy:\s*false/);
+  assert.match(source, /connectSrc:\s*\["'self'"\]/);
+  const formerMarketplaceApiHost = ["api", "mercado", "libre", "com"].join(".");
+  assert.ok(!source.toLowerCase().includes(formerMarketplaceApiHost));
+});
+
+test("o bundle do navegador não contém credenciais nem endpoints autenticados da Amazon", async () => {
+  const bundle = await readFile(resolve(projectRoot, "app.js"), "utf8");
+
+  assert.doesNotMatch(bundle, /AMAZON_CREATORS_CREDENTIAL|AMAZON_PARTNER_TAG/);
+  assert.doesNotMatch(bundle, /creatorsapi\.amazon|api\.amazon\.(?:com|co\.uk|co\.jp)\/auth\/o2\/token/);
+  assert.match(bundle, /\/amazon\/search\?q=/);
 });
 
 test("indicadores dinâmicos usam progress e SVG sem atributo style", async () => {
