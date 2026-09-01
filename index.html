@@ -353,44 +353,62 @@
         </section>
 
         <section id="pricing-panel-market" class="control-section pricing-tab-panel" role="tabpanel" aria-labelledby="pricing-tab-market" data-pricing-panel="market" hidden>
-          <div class="tab-panel-heading">
-            <p class="section-title">Consulta de Mercado</p>
-            <p class="section-description">Pesquise um produto para comparar seu preço com valores reais de mercado e analisar o impacto tributário quando disponível.</p>
+          <div class="market-consultation-heading">
+            <span class="market-consultation-icon" aria-hidden="true">↗</span>
+            <div>
+              <p class="eyebrow">Pesquisa de preços</p>
+              <p class="section-title">Consulta de Mercado</p>
+              <p class="section-description">Pesquise produtos reais de mercado e compare com seu preço sustentável.</p>
+            </div>
           </div>
           <div class="field-grid">
-            <div class="sidebar-field">
-              <label for="margin">Margem líquida desejada</label>
-              <div class="sidebar-input-wrap has-suffix">
-                <input id="margin" type="text" inputmode="decimal" value="18" />
-                <span class="input-affix input-suffix" aria-hidden="true">%</span>
+            <section class="market-search-card" aria-labelledby="market-search-title">
+              <div class="tab-panel-heading compact">
+                <p class="eyebrow">Amazon</p>
+                <p class="section-title" id="market-search-title">Produto para pesquisar</p>
               </div>
-            </div>
-            <div class="sidebar-field">
-              <label for="competitorAverage">Preço médio local dos concorrentes (R$)</label>
-              <div class="sidebar-input-wrap has-prefix">
-                <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                <input id="competitorAverage" type="number" inputmode="decimal" min="0.01" max="1000000" step="0.01" value="32" />
-              </div>
-              <p id="manualMarketStatus" class="helper-text">Alternativa manual. O valor é preservado quando você seleciona um produto da Amazon.</p>
-            </div>
-            <div class="market-search">
-              <label for="amazonQuery">Produto</label>
-              <div class="search-row">
+              <div class="market-search">
+                <label for="amazonQuery">Nome, marca e modelo</label>
                 <input id="amazonQuery" type="text" placeholder="Ex.: iPhone 15 Pro Max" autocomplete="off" />
                 <button id="amazonSearchButton" class="market-search-button" type="button">Pesquisar produto</button>
+                <p id="amazonSearchStatus" class="helper-text" role="status">Pesquise para encontrar de 3 a 5 referências quando disponíveis.</p>
               </div>
-              <p id="amazonSearchStatus" class="helper-text" role="status">A pesquisa é opcional e usa a Amazon Creators API pelo backend.</p>
-            </div>
+            </section>
+
+            <article id="selectedMarketProduct" class="selected-market-product" aria-live="polite" hidden></article>
 
             <section id="amazonPanel" class="amazon-panel market-results-panel" aria-labelledby="amazon-title" hidden>
               <div class="panel-heading compact">
-                <div><p class="eyebrow">Amazon</p><h3 id="amazon-title">Produtos encontrados</h3></div>
+                <div><p class="eyebrow">Resultados encontrados</p><h3 id="amazon-title">Produtos na Amazon</h3></div>
               </div>
               <div id="amazonStats" class="amazon-stats"></div>
               <div id="amazonResults" class="amazon-results"></div>
             </section>
 
-            <article id="selectedMarketProduct" class="selected-market-product" aria-live="polite" hidden></article>
+            <section class="manual-market-fallback" aria-labelledby="manual-market-title">
+              <div class="tab-panel-heading compact">
+                <p class="eyebrow">Alternativa manual</p>
+                <p class="section-title" id="manual-market-title">Preço médio local dos concorrentes</p>
+                <p class="section-description">Este valor é usado somente quando nenhuma referência Amazon está selecionada.</p>
+              </div>
+              <div class="sidebar-grid sidebar-grid--two">
+                <div class="sidebar-field">
+                  <label for="competitorAverage">Preço médio informado (R$)</label>
+                  <div class="sidebar-input-wrap has-prefix">
+                    <span class="input-affix input-prefix" aria-hidden="true">R$</span>
+                    <input id="competitorAverage" type="number" inputmode="decimal" min="0.01" max="1000000" step="0.01" value="32" />
+                  </div>
+                </div>
+                <div class="sidebar-field">
+                  <label for="margin">Margem líquida desejada</label>
+                  <div class="sidebar-input-wrap has-suffix">
+                    <input id="margin" type="text" inputmode="decimal" value="18" />
+                    <span class="input-affix input-suffix" aria-hidden="true">%</span>
+                  </div>
+                </div>
+              </div>
+              <p id="manualMarketStatus" class="helper-text">Fallback ativo. O valor é preservado quando você escolhe um produto da Amazon.</p>
+            </section>
 
             <section class="market-tax-context" aria-labelledby="market-tax-title">
               <div class="tab-panel-heading compact">
@@ -507,18 +525,29 @@
           </div>
 
           <div class="dashboard-summary-grid">
-            <article class="summary-card summary-card-primary">
+            <article id="primaryPriceCard" class="summary-card summary-card-primary">
               <div class="summary-card-heading">
-                <div><p class="eyebrow">Seu preço sustentável</p><h3>Preço mínimo sustentável</h3></div>
+                <div><p class="eyebrow">Comparação principal</p><h3>Preço sustentável e mercado</h3></div>
                 <span id="priceStatus" class="confidence">Cálculo financeiro</span>
               </div>
-              <strong id="suggestedPrice" class="summary-value">R$ 0,00</strong>
-              <p class="summary-context">Margem líquida estimada: <strong id="estimatedMargin">0%</strong></p>
-              <p id="recommendationText" class="summary-description"></p>
-              <div id="primaryMarketValues" class="primary-market-values" hidden>
-                <div><span>Preço de mercado</span><strong id="primaryMarketPrice">R$ 0,00</strong></div>
-                <div id="primaryTaxImpact" hidden><span>Mercado + impacto tributário</span><strong id="primaryTaxAdjustedPrice">R$ 0,00</strong></div>
+              <div id="primaryPriceGrid" class="primary-price-grid">
+                <div class="primary-price-cell primary-price-sustainable">
+                  <span>Seu preço sustentável</span>
+                  <strong id="suggestedPrice" class="summary-value">R$ 0,00</strong>
+                  <small>Margem líquida: <strong id="estimatedMargin">0%</strong></small>
+                </div>
+                <div id="primaryMarketValue" class="primary-price-cell" hidden>
+                  <span>Preço de mercado</span>
+                  <strong id="primaryMarketPrice">R$ 0,00</strong>
+                  <small>Fonte: Amazon</small>
+                </div>
+                <div id="primaryTaxImpact" class="primary-price-cell primary-tax-cell" hidden>
+                  <span>Mercado + impacto tributário</span>
+                  <strong id="primaryTaxAdjustedPrice">Tributação pendente</strong>
+                  <small id="primaryTaxStatus">Nenhum TaxProvider de cálculo está configurado.</small>
+                </div>
               </div>
+              <p id="recommendationText" class="summary-description"></p>
               <div class="summary-primary-actions">
                 <div class="save-product-row">
                   <button id="saveProductButton" type="button">Salvar produto</button>
@@ -530,9 +559,9 @@
 
             <article class="summary-card">
               <div class="summary-card-heading">
-                <div><p class="eyebrow">Mercado</p><h3 id="marketTitle">Comestíveis</h3></div>
+                <div><p class="eyebrow">Mercado</p><h3 id="marketTitle">Preço médio informado</h3></div>
               </div>
-              <span id="marketPriceLabel" class="summary-label">Preço médio dos concorrentes</span>
+              <span id="marketPriceLabel" class="summary-label">Referência manual</span>
               <strong id="marketPrice" class="summary-value compact">R$ 0,00</strong>
               <p id="marketReferenceDetails" class="market-reference-details">Fonte: valor manual</p>
               <progress id="marketMeter" class="market-meter compact-meter" max="100" value="0" aria-label="Relação entre o preço calculado e o preço médio de mercado"></progress>

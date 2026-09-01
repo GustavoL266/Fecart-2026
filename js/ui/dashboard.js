@@ -1,23 +1,16 @@
 import { AMAZON_MARKET_CONFIG, PRODUCTIVE_HOURS_PER_WORKER_MONTH } from "../config/pricing.js";
-import { marketBadgeForGap } from "../domain/market-analysis.js";
 import { clamp, currency, escapeHtml, percent } from "../utils/formatters.js";
 import { renderPriceDetails } from "./detail-pages.js";
 
 function marketComparisonText(inputs, result, marketStats, marketSource) {
   const difference = Math.abs(inputs.competitorAverage - result.minimumPrice);
-  const source =
-    marketSource === "amazon-product"
-      ? "referência selecionada na Amazon"
-      : marketSource === "amazon-median"
-      ? "mediana dos produtos comparáveis da Amazon"
-      : "média informada";
   const relativeGap = Math.abs(result.marketGap);
   const confidenceNote = marketStats && marketStats.count < AMAZON_MARKET_CONFIG.minComparableResults ? " A amostra é pequena, então use como sinal preliminar." : "";
 
-  if (relativeGap <= 0.08) return `O preço calculado está próximo da ${source}, com diferença de ${percent(relativeGap)}.${confidenceNote}`;
-  if (result.marketGap >= 0) return `O preço calculado fica ${currency.format(difference)} (${percent(relativeGap)}) abaixo da ${source}.${confidenceNote}`;
+  if (relativeGap <= 0.08) return `Seu preço está próximo do mercado, com diferença de ${percent(relativeGap)}.${confidenceNote}`;
+  if (result.marketGap >= 0) return `Seu preço está ${percent(relativeGap)} abaixo do mercado. Diferença: ${currency.format(difference)}.${confidenceNote}`;
 
-  return `O preço calculado fica ${currency.format(difference)} (${percent(relativeGap)}) acima da ${source}.${confidenceNote}`;
+  return `Seu preço está ${percent(relativeGap)} acima do mercado. Diferença: ${currency.format(difference)}.${confidenceNote}`;
 }
 
 function renderExplanation(document, inputs, result, fiscalAssessment) {
@@ -100,22 +93,23 @@ function renderAmazonPanel(document, result, amazonState) {
   searchButton.textContent = amazonState.status === "loading" ? "Buscando preços..." : "Pesquisar produto";
   selectedContainer.hidden = !amazonState.selectedItem;
   selectedContainer.innerHTML = amazonState.selectedItem
-    ? `<p class="eyebrow">Produto escolhido</p><strong>${escapeHtml(amazonState.selectedItem.title)}</strong><span>${currency.format(amazonState.selectedItem.price)} · Fonte: Amazon</span><small>Classificação fiscal pendente de confirmação.</small><button type="button" class="secondary-button" data-restore-manual-market>Usar valor manual anterior</button>`
+    ? `<p class="eyebrow">Referência selecionada</p><h3>${escapeHtml(amazonState.selectedItem.title)}</h3><strong>${currency.format(amazonState.selectedItem.price)}</strong><span>Fonte: Amazon</span><small>Tributação pendente; nenhuma alíquota ou NCM foi presumido.</small><button type="button" class="secondary-button" data-change-market-reference>Trocar produto</button>`
     : "";
 
   if (amazonState.status === "loading") {
     searchStatus.textContent = "Buscando preços...";
-    statsContainer.innerHTML = '<p class="helper-text">Buscando ofertas pela Amazon Creators API.</p>';
+    statsContainer.innerHTML = '<div class="market-loading"><span aria-hidden="true"></span><p>Consultando produtos na Amazon...</p></div>';
     resultsContainer.innerHTML = "";
     return;
   }
 
   if (amazonState.status === "error") {
-    searchStatus.textContent = amazonState.error;
+    searchStatus.textContent = "Não foi possível concluir a pesquisa.";
     statsContainer.innerHTML = `
-      <div class="amazon-fallback">
-        <p class="error-text">${escapeHtml(amazonState.error)}</p>
-        <p class="helper-text">A pesquisa é opcional e não bloqueia o cálculo, a edição nem o salvamento.</p>
+      <div class="market-error-alert" role="alert">
+        <span class="market-error-icon" aria-hidden="true">!</span>
+        <div><strong>Não foi possível consultar a Amazon agora.</strong><p>${escapeHtml(amazonState.error)}</p></div>
+        <button type="button" class="secondary-button" data-amazon-retry>Tentar novamente</button>
       </div>`;
     resultsContainer.innerHTML = "";
     return;
@@ -136,21 +130,11 @@ function renderAmazonPanel(document, result, amazonState) {
   }
 
   const { stats } = amazonState;
-  const reliabilityText = stats.count < AMAZON_MARKET_CONFIG.minComparableResults ? "Amostra pequena: referência preliminar." : "Amostra suficiente para referência inicial.";
-  const marketGap = result.isValid ? (stats.median - result.minimumPrice) / stats.median : 0;
-  const [badgeType, badgeText] = result.isValid ? marketBadgeForGap(marketGap) : ["risk", "Revise percentuais"];
-
-  searchStatus.textContent = `${stats.count} produto(s) com preço em BRL analisado(s).`;
+  searchStatus.textContent = `${stats.count} produto(s) encontrado(s). Escolha uma referência para atualizar o dashboard.`;
   summary.innerHTML = amazonState.selectedItem
     ? `<span>Fonte: Amazon</span><strong>${currency.format(amazonState.selectedItem.price)}</strong><small>${escapeHtml(amazonState.selectedItem.title)}</small>`
     : "";
-  statsContainer.innerHTML = `
-    <div><span>Menor preço</span><strong>${currency.format(stats.min)}</strong></div>
-    <div><span>Preço médio</span><strong>${currency.format(stats.average)}</strong></div>
-    <div><span>Preço mediano</span><strong>${currency.format(stats.median)}</strong></div>
-    <div><span>Maior preço</span><strong>${currency.format(stats.max)}</strong></div>
-    <div><span>Análise</span><strong class="${badgeType}">${badgeText}</strong></div>
-    <div><span>Confiança</span><strong>${reliabilityText}</strong></div>`;
+  statsContainer.innerHTML = "";
   resultsContainer.innerHTML = amazonState.items
     .map((item) => `
         <article class="amazon-result${amazonState.selectedItem?.asin === item.asin ? " selected" : ""}">
@@ -161,7 +145,7 @@ function renderAmazonPanel(document, result, amazonState) {
             <strong>${currency.format(item.price)}</strong>
           </div>
           <div class="amazon-actions">
-            <button type="button" data-amazon-select="${escapeHtml(item.asin)}">${amazonState.selectedItem?.asin === item.asin ? "Produto selecionado" : "Usar este produto"}</button>
+            <button type="button" data-amazon-select="${escapeHtml(item.asin)}">${amazonState.selectedItem?.asin === item.asin ? "Referência ativa" : "Usar como referência"}</button>
             <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver na Amazon</a>
           </div>
         </article>`)
@@ -176,25 +160,30 @@ export function renderDashboard(document, inputs, result, amazonState, marketSou
 
   document.querySelector("#baseCost").textContent = currency.format(costs.baseCost);
   document.querySelector("#marketPrice").textContent = currency.format(inputs.competitorAverage);
-  document.querySelector("#marketTitle").textContent = selectedAmazonProduct ? "Referência Amazon" : inputs.productType;
+  document.querySelector("#marketTitle").textContent = selectedAmazonProduct ? selectedAmazonProduct.title : "Preço médio informado";
   document.querySelector("#marketReferenceDetails").textContent = selectedAmazonProduct
-    ? `Fonte: Amazon · Produto: ${selectedAmazonProduct.title}`
+    ? "Fonte: Amazon"
     : "Fonte: valor manual";
   document.querySelector("#marketPriceLabel").textContent = selectedAmazonProduct
-    ? "Preço do produto selecionado"
-    : "Preço médio dos concorrentes";
+    ? "Produto selecionado"
+    : "Referência manual";
 
-  const primaryMarketValues = document.querySelector("#primaryMarketValues");
+  const primaryMarketValue = document.querySelector("#primaryMarketValue");
   const primaryTaxImpact = document.querySelector("#primaryTaxImpact");
-  primaryMarketValues.hidden = !selectedAmazonProduct;
+  document.querySelector("#primaryPriceCard").classList.toggle("has-market-reference", Boolean(selectedAmazonProduct));
+  primaryMarketValue.hidden = !selectedAmazonProduct;
+  primaryTaxImpact.hidden = !selectedAmazonProduct;
   document.querySelector("#primaryMarketPrice").textContent = currency.format(selectedAmazonProduct?.price || 0);
   const hasRealTaxImpact = fiscalAssessment.automaticCalculation
     && fiscalAssessment.complete
     && Number.isFinite(fiscalAssessment.marketAdjustedPrice);
-  primaryTaxImpact.hidden = !hasRealTaxImpact;
   document.querySelector("#primaryTaxAdjustedPrice").textContent = hasRealTaxImpact
     ? currency.format(fiscalAssessment.marketAdjustedPrice)
-    : "";
+    : "Tributação pendente";
+  document.querySelector("#primaryTaxStatus").textContent = hasRealTaxImpact
+    ? "Valor calculado pelo provedor fiscal configurado."
+    : "Nenhum TaxProvider de cálculo está configurado.";
+  primaryTaxImpact.classList.toggle("is-pending", !hasRealTaxImpact);
 
   const suggestedPrice = document.querySelector("#suggestedPrice");
   const profitPerSale = document.querySelector("#profitPerSale");

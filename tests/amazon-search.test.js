@@ -15,7 +15,7 @@ test("rota Amazon informa exatamente os nomes ausentes sem expor valores", async
   };
 
   await assert.rejects(
-    () => runAmazonSearch({ client: null, config, logger: { info() {} }, query: "Iphone" }),
+    () => runAmazonSearch({ client: null, config, logger: { info() {}, warn() {} }, query: "Iphone" }),
     (error) => {
       assert.equal(error.code, "AMAZON_NOT_CONFIGURED");
       assert.equal(error.status, 503);
@@ -33,14 +33,15 @@ test("rota Amazon executa Iphone e iPhone 15 Pro Max e registra somente metadado
     const result = await runAmazonSearch({
       client: { async search(receivedQuery) { assert.equal(receivedQuery, query); return { items, cached: false }; } },
       config: baseConfig,
-      logger: { info: (...values) => logs.push(values) },
+      logger: { info: (...values) => logs.push(values), warn: (...values) => logs.push(values) },
       query,
     });
     assert.deepEqual(result.items, items);
   }
 
-  assert.match(logs[0][0], /Searching: Iphone/);
-  assert.match(logs[2][0], /Searching: iPhone 15 Pro Max/);
-  assert.deepEqual(logs[1][1], { cached: false, itemCount: 1 });
+  assert.match(logs[0][0], /Query: Iphone/);
+  assert.match(logs[4][0], /Query: iPhone 15 Pro Max/);
+  assert.match(logs[2][0], /Configuration: valid/);
+  assert.deepEqual(logs[3][1], { cached: false, itemCount: 1 });
   assert.doesNotMatch(JSON.stringify(logs), /credential|secret|authorization|bearer/i);
 });

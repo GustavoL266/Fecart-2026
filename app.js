@@ -532,6 +532,57 @@ const api = {
 };
 
 
+const MARKET_REFERENCE_KEY = "assistente-precificacao-market-reference-v1";
+
+function safeAmazonItem(value) {
+  const price = Number(value?.price);
+  if (!value?.asin || !value?.title || !Number.isFinite(price) || price <= 0) return null;
+  return {
+    id: String(value.id || value.asin),
+    asin: String(value.asin),
+    title: String(value.title),
+    price,
+    source: "Amazon",
+    currency: "BRL",
+    category: String(value.category || ""),
+    image: String(value.image || ""),
+    url: String(value.url || ""),
+  };
+}
+
+function loadMarketReference(storage) {
+  try {
+    const parsed = JSON.parse(storage?.getItem(MARKET_REFERENCE_KEY) || "null");
+    const selectedItem = safeAmazonItem(parsed?.selectedItem);
+    const manualValue = Number(parsed?.manualValue);
+    if (!selectedItem || !Number.isFinite(manualValue) || manualValue <= 0) return null;
+    return { manualValue, query: String(parsed.query || ""), selectedItem };
+  } catch {
+    return null;
+  }
+}
+
+function saveMarketReference(storage, { manualValue, query, selectedItem }) {
+  const safeItem = safeAmazonItem(selectedItem);
+  const safeManualValue = Number(manualValue);
+  if (!safeItem || !Number.isFinite(safeManualValue) || safeManualValue <= 0) return false;
+  try {
+    storage?.setItem(MARKET_REFERENCE_KEY, JSON.stringify({ manualValue: safeManualValue, query, selectedItem: safeItem }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function clearMarketReference(storage) {
+  try {
+    storage?.removeItem(MARKET_REFERENCE_KEY);
+  } catch {
+    // A referência continua válida em memória quando o armazenamento está indisponível.
+  }
+}
+
+
 
 function numberValue(element, fallback = 0) {
   const rawValue = String(element.value).trim();
@@ -730,19 +781,13 @@ function renderPriceDetails(document, inputs, result, marketText, alertCount) {
 
 function marketComparisonText(inputs, result, marketStats, marketSource) {
   const difference = Math.abs(inputs.competitorAverage - result.minimumPrice);
-  const source =
-    marketSource === "amazon-product"
-      ? "referência selecionada na Amazon"
-      : marketSource === "amazon-median"
-      ? "mediana dos produtos comparáveis da Amazon"
-      : "média informada";
   const relativeGap = Math.abs(result.marketGap);
   const confidenceNote = marketStats && marketStats.count < AMAZON_MARKET_CONFIG.minComparableResults ? " A amostra é pequena, então use como sinal preliminar." : "";
 
-  if (relativeGap <= 0.08) return `O preço calculado está próximo da ${source}, com diferença de ${percent(relativeGap)}.${confidenceNote}`;
-  if (result.marketGap >= 0) return `O preço calculado fica ${currency.format(difference)} (${percent(relativeGap)}) abaixo da ${source}.${confidenceNote}`;
+  if (relativeGap <= 0.08) return `Seu preço está próximo do mercado, com diferença de ${percent(relativeGap)}.${confidenceNote}`;
+  if (result.marketGap >= 0) return `Seu preço está ${percent(relativeGap)} abaixo do mercado. Diferença: ${currency.format(difference)}.${confidenceNote}`;
 
-  return `O preço calculado fica ${currency.format(difference)} (${percent(relativeGap)}) acima da ${source}.${confidenceNote}`;
+  return `Seu preço está ${percent(relativeGap)} acima do mercado. Diferença: ${currency.format(difference)}.${confidenceNote}`;
 }
 
 function renderExplanation(document, inputs, result, fiscalAssessment) {
@@ -825,22 +870,23 @@ function renderAmazonPanel(document, result, amazonState) {
   searchButton.textContent = amazonState.status === "loading" ? "Buscando preços..." : "Pesquisar produto";
   selectedContainer.hidden = !amazonState.selectedItem;
   selectedContainer.innerHTML = amazonState.selectedItem
-    ? `<p class="eyebrow">Produto escolhido</p><strong>${escapeHtml(amazonState.selectedItem.title)}</strong><span>${currency.format(amazonState.selectedItem.price)} · Fonte: Amazon</span><small>Classificação fiscal pendente de confirmação.</small><button type="button" class="secondary-button" data-restore-manual-market>Usar valor manual anterior</button>`
+    ? `<p class="eyebrow">Referência selecionada</p><h3>${escapeHtml(amazonState.selectedItem.title)}</h3><strong>${currency.format(amazonState.selectedItem.price)}</strong><span>Fonte: Amazon</span><small>Tributação pendente; nenhuma alíquota ou NCM foi presumido.</small><button type="button" class="secondary-button" data-change-market-reference>Trocar produto</button>`
     : "";
 
   if (amazonState.status === "loading") {
     searchStatus.textContent = "Buscando preços...";
-    statsContainer.innerHTML = '<p class="helper-text">Buscando ofertas pela Amazon Creators API.</p>';
+    statsContainer.innerHTML = '<div class="market-loading"><span aria-hidden="true"></span><p>Consultando produtos na Amazon...</p></div>';
     resultsContainer.innerHTML = "";
     return;
   }
 
   if (amazonState.status === "error") {
-    searchStatus.textContent = amazonState.error;
+    searchStatus.textContent = "Não foi possível concluir a pesquisa.";
     statsContainer.innerHTML = `
-      <div class="amazon-fallback">
-        <p class="error-text">${escapeHtml(amazonState.error)}</p>
-        <p class="helper-text">A pesquisa é opcional e não bloqueia o cálculo, a edição nem o salvamento.</p>
+      <div class="market-error-alert" role="alert">
+        <span class="market-error-icon" aria-hidden="true">!</span>
+        <div><strong>Não foi possível consultar a Amazon agora.</strong><p>${escapeHtml(amazonState.error)}</p></div>
+        <button type="button" class="secondary-button" data-amazon-retry>Tentar novamente</button>
       </div>`;
     resultsContainer.innerHTML = "";
     return;
@@ -861,21 +907,11 @@ function renderAmazonPanel(document, result, amazonState) {
   }
 
   const { stats } = amazonState;
-  const reliabilityText = stats.count < AMAZON_MARKET_CONFIG.minComparableResults ? "Amostra pequena: referência preliminar." : "Amostra suficiente para referência inicial.";
-  const marketGap = result.isValid ? (stats.median - result.minimumPrice) / stats.median : 0;
-  const [badgeType, badgeText] = result.isValid ? marketBadgeForGap(marketGap) : ["risk", "Revise percentuais"];
-
-  searchStatus.textContent = `${stats.count} produto(s) com preço em BRL analisado(s).`;
+  searchStatus.textContent = `${stats.count} produto(s) encontrado(s). Escolha uma referência para atualizar o dashboard.`;
   summary.innerHTML = amazonState.selectedItem
     ? `<span>Fonte: Amazon</span><strong>${currency.format(amazonState.selectedItem.price)}</strong><small>${escapeHtml(amazonState.selectedItem.title)}</small>`
     : "";
-  statsContainer.innerHTML = `
-    <div><span>Menor preço</span><strong>${currency.format(stats.min)}</strong></div>
-    <div><span>Preço médio</span><strong>${currency.format(stats.average)}</strong></div>
-    <div><span>Preço mediano</span><strong>${currency.format(stats.median)}</strong></div>
-    <div><span>Maior preço</span><strong>${currency.format(stats.max)}</strong></div>
-    <div><span>Análise</span><strong class="${badgeType}">${badgeText}</strong></div>
-    <div><span>Confiança</span><strong>${reliabilityText}</strong></div>`;
+  statsContainer.innerHTML = "";
   resultsContainer.innerHTML = amazonState.items
     .map((item) => `
         <article class="amazon-result${amazonState.selectedItem?.asin === item.asin ? " selected" : ""}">
@@ -886,7 +922,7 @@ function renderAmazonPanel(document, result, amazonState) {
             <strong>${currency.format(item.price)}</strong>
           </div>
           <div class="amazon-actions">
-            <button type="button" data-amazon-select="${escapeHtml(item.asin)}">${amazonState.selectedItem?.asin === item.asin ? "Produto selecionado" : "Usar este produto"}</button>
+            <button type="button" data-amazon-select="${escapeHtml(item.asin)}">${amazonState.selectedItem?.asin === item.asin ? "Referência ativa" : "Usar como referência"}</button>
             <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver na Amazon</a>
           </div>
         </article>`)
@@ -901,25 +937,30 @@ function renderDashboard(document, inputs, result, amazonState, marketSource, fi
 
   document.querySelector("#baseCost").textContent = currency.format(costs.baseCost);
   document.querySelector("#marketPrice").textContent = currency.format(inputs.competitorAverage);
-  document.querySelector("#marketTitle").textContent = selectedAmazonProduct ? "Referência Amazon" : inputs.productType;
+  document.querySelector("#marketTitle").textContent = selectedAmazonProduct ? selectedAmazonProduct.title : "Preço médio informado";
   document.querySelector("#marketReferenceDetails").textContent = selectedAmazonProduct
-    ? `Fonte: Amazon · Produto: ${selectedAmazonProduct.title}`
+    ? "Fonte: Amazon"
     : "Fonte: valor manual";
   document.querySelector("#marketPriceLabel").textContent = selectedAmazonProduct
-    ? "Preço do produto selecionado"
-    : "Preço médio dos concorrentes";
+    ? "Produto selecionado"
+    : "Referência manual";
 
-  const primaryMarketValues = document.querySelector("#primaryMarketValues");
+  const primaryMarketValue = document.querySelector("#primaryMarketValue");
   const primaryTaxImpact = document.querySelector("#primaryTaxImpact");
-  primaryMarketValues.hidden = !selectedAmazonProduct;
+  document.querySelector("#primaryPriceCard").classList.toggle("has-market-reference", Boolean(selectedAmazonProduct));
+  primaryMarketValue.hidden = !selectedAmazonProduct;
+  primaryTaxImpact.hidden = !selectedAmazonProduct;
   document.querySelector("#primaryMarketPrice").textContent = currency.format(selectedAmazonProduct?.price || 0);
   const hasRealTaxImpact = fiscalAssessment.automaticCalculation
     && fiscalAssessment.complete
     && Number.isFinite(fiscalAssessment.marketAdjustedPrice);
-  primaryTaxImpact.hidden = !hasRealTaxImpact;
   document.querySelector("#primaryTaxAdjustedPrice").textContent = hasRealTaxImpact
     ? currency.format(fiscalAssessment.marketAdjustedPrice)
-    : "";
+    : "Tributação pendente";
+  document.querySelector("#primaryTaxStatus").textContent = hasRealTaxImpact
+    ? "Valor calculado pelo provedor fiscal configurado."
+    : "Nenhum TaxProvider de cálculo está configurado.";
+  primaryTaxImpact.classList.toggle("is-pending", !hasRealTaxImpact);
 
   const suggestedPrice = document.querySelector("#suggestedPrice");
   const profitPerSale = document.querySelector("#profitPerSale");
@@ -1374,7 +1415,7 @@ function renderNcmState() {
   const description = $("#ncmDescription");
   const button = $("#ncmLookupButton");
   button.disabled = focusState.status === "loading";
-  button.textContent = focusState.status === "loading" ? "Consultando..." : "Consultar";
+  button.textContent = focusState.status === "loading" ? "Consultando..." : "Validar NCM";
 
   if (focusState.status === "loading") status.textContent = "Consultando o NCM na Focus NFe…";
   else if (focusState.status === "success") status.textContent = `NCM confirmado pela Focus NFe em ${focusState.environment}. Isso não calcula a tributação.`;
@@ -1563,14 +1604,30 @@ function selectAmazonProduct(asin) {
   amazonState = { ...amazonState, selectedItem: item };
   elements.competitorAverage.value = item.price.toFixed(2);
   marketSource = "amazon-product";
+  saveMarketReference(window.sessionStorage, { manualValue: manualMarketValue, query: amazonState.query, selectedItem: item });
   render();
 }
 
-function restoreManualMarket() {
+function restoreManualMarket({ focusSearch = false } = {}) {
   elements.competitorAverage.value = manualMarketValue.toFixed(2);
   marketSource = "manual";
   amazonState = { ...amazonState, selectedItem: null };
+  clearMarketReference(window.sessionStorage);
   render();
+  if (focusSearch) {
+    pricingTabs.activate("market");
+    $("#amazonQuery").focus();
+  }
+}
+
+function restoreMarketReferenceFromSession() {
+  const saved = loadMarketReference(window.sessionStorage);
+  if (!saved) return;
+  manualMarketValue = saved.manualValue;
+  amazonState = { ...amazonState, query: saved.query, selectedItem: saved.selectedItem };
+  marketSource = "amazon-product";
+  elements.competitorAverage.value = saved.selectedItem.price.toFixed(2);
+  $("#amazonQuery").value = saved.query;
 }
 
 function productPayloadFromCalculator() {
@@ -1708,6 +1765,15 @@ function reuseProduct(product) {
     selectedItem: marketSource === "amazon-product" ? savedMarket?.selectedProduct || null : null,
     error: "",
   };
+  if (marketSource === "amazon-product" && amazonState.selectedItem) {
+    saveMarketReference(window.sessionStorage, {
+      manualValue: manualMarketValue,
+      query: amazonState.query,
+      selectedItem: amazonState.selectedItem,
+    });
+  } else {
+    clearMarketReference(window.sessionStorage);
+  }
   $("#amazonQuery").value = amazonState.query;
   $("#productDialog").close();
   render();
@@ -1784,6 +1850,7 @@ async function logout() {
   state.user = null;
   state.products = [];
   state.selectedProduct = null;
+  clearMarketReference(window.sessionStorage);
   window.history.replaceState(null, "", window.location.pathname);
   showAuth("login", "Você saiu da sua conta.");
 }
@@ -1897,6 +1964,7 @@ elements.productType.addEventListener("change", () => {
   marketSource = "manual";
   amazonState = { ...amazonState, selectedItem: null };
   manualMarketValue = Number(elements.competitorAverage.value) || manualMarketValue;
+  clearMarketReference(window.sessionStorage);
   render();
 });
 
@@ -1905,6 +1973,7 @@ elements.competitorAverage.addEventListener("input", () => {
   amazonState = { ...amazonState, selectedItem: null };
   if (isAboveCompetitorLimit(elements)) elements.competitorAverage.value = "1000000";
   manualMarketValue = Number(elements.competitorAverage.value) || manualMarketValue;
+  clearMarketReference(window.sessionStorage);
   render();
 });
 
@@ -1914,12 +1983,13 @@ $("#amazonQuery").addEventListener("keydown", (event) => {
   event.preventDefault();
   void searchAmazon();
 });
-$("#amazonResults").addEventListener("click", (event) => {
+$("#amazonPanel").addEventListener("click", (event) => {
   const button = event.target.closest("[data-amazon-select]");
   if (button) selectAmazonProduct(button.dataset.amazonSelect);
+  if (event.target.closest("[data-amazon-retry]")) void searchAmazon();
 });
 $("#selectedMarketProduct").addEventListener("click", (event) => {
-  if (event.target.closest("[data-restore-manual-market]")) restoreManualMarket();
+  if (event.target.closest("[data-change-market-reference]")) restoreManualMarket({ focusSearch: true });
 });
 
 $("#showLoginButton").addEventListener("click", () => showAuth("login"));
@@ -2042,11 +2112,13 @@ window.addEventListener("app:session-expired", () => {
   state.user = null;
   state.products = [];
   state.selectedProduct = null;
+  clearMarketReference(window.sessionStorage);
   window.history.replaceState(null, "", window.location.pathname);
   showAuth("login", "Sua sessão expirou. Entre novamente para continuar.");
 });
 
 applyCategoryPreset(elements.productType.value, elements);
+restoreMarketReferenceFromSession();
 applyTheme(document.documentElement.dataset.theme, false);
 render();
 

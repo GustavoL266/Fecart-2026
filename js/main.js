@@ -2,6 +2,7 @@ import { calculatePrice } from "./domain/pricing-calculator.js";
 import { buildCalculationMemory, ConfiguredTaxRuleEngine, fiscalDataForStorage } from "./domain/tax-rule-engine.js";
 import { AmazonService } from "./services/amazon-service.js";
 import { ApiError, api } from "./services/api-client.js";
+import { clearMarketReference, loadMarketReference, saveMarketReference } from "./services/market-reference-store.js";
 import { applyCategoryPreset, applySavedInputs, isAboveCompetitorLimit, readInputs } from "./ui/form.js";
 import { renderDashboard } from "./ui/dashboard.js";
 import { renderProductDetails, renderProductsList } from "./ui/history.js";
@@ -204,7 +205,7 @@ function renderNcmState() {
   const description = $("#ncmDescription");
   const button = $("#ncmLookupButton");
   button.disabled = focusState.status === "loading";
-  button.textContent = focusState.status === "loading" ? "Consultando..." : "Consultar";
+  button.textContent = focusState.status === "loading" ? "Consultando..." : "Validar NCM";
 
   if (focusState.status === "loading") status.textContent = "Consultando o NCM na Focus NFe…";
   else if (focusState.status === "success") status.textContent = `NCM confirmado pela Focus NFe em ${focusState.environment}. Isso não calcula a tributação.`;
@@ -393,14 +394,30 @@ function selectAmazonProduct(asin) {
   amazonState = { ...amazonState, selectedItem: item };
   elements.competitorAverage.value = item.price.toFixed(2);
   marketSource = "amazon-product";
+  saveMarketReference(window.sessionStorage, { manualValue: manualMarketValue, query: amazonState.query, selectedItem: item });
   render();
 }
 
-function restoreManualMarket() {
+function restoreManualMarket({ focusSearch = false } = {}) {
   elements.competitorAverage.value = manualMarketValue.toFixed(2);
   marketSource = "manual";
   amazonState = { ...amazonState, selectedItem: null };
+  clearMarketReference(window.sessionStorage);
   render();
+  if (focusSearch) {
+    pricingTabs.activate("market");
+    $("#amazonQuery").focus();
+  }
+}
+
+function restoreMarketReferenceFromSession() {
+  const saved = loadMarketReference(window.sessionStorage);
+  if (!saved) return;
+  manualMarketValue = saved.manualValue;
+  amazonState = { ...amazonState, query: saved.query, selectedItem: saved.selectedItem };
+  marketSource = "amazon-product";
+  elements.competitorAverage.value = saved.selectedItem.price.toFixed(2);
+  $("#amazonQuery").value = saved.query;
 }
 
 function productPayloadFromCalculator() {
@@ -538,6 +555,15 @@ function reuseProduct(product) {
     selectedItem: marketSource === "amazon-product" ? savedMarket?.selectedProduct || null : null,
     error: "",
   };
+  if (marketSource === "amazon-product" && amazonState.selectedItem) {
+    saveMarketReference(window.sessionStorage, {
+      manualValue: manualMarketValue,
+      query: amazonState.query,
+      selectedItem: amazonState.selectedItem,
+    });
+  } else {
+    clearMarketReference(window.sessionStorage);
+  }
   $("#amazonQuery").value = amazonState.query;
   $("#productDialog").close();
   render();
@@ -614,6 +640,7 @@ async function logout() {
   state.user = null;
   state.products = [];
   state.selectedProduct = null;
+  clearMarketReference(window.sessionStorage);
   window.history.replaceState(null, "", window.location.pathname);
   showAuth("login", "Você saiu da sua conta.");
 }
@@ -727,6 +754,7 @@ elements.productType.addEventListener("change", () => {
   marketSource = "manual";
   amazonState = { ...amazonState, selectedItem: null };
   manualMarketValue = Number(elements.competitorAverage.value) || manualMarketValue;
+  clearMarketReference(window.sessionStorage);
   render();
 });
 
@@ -735,6 +763,7 @@ elements.competitorAverage.addEventListener("input", () => {
   amazonState = { ...amazonState, selectedItem: null };
   if (isAboveCompetitorLimit(elements)) elements.competitorAverage.value = "1000000";
   manualMarketValue = Number(elements.competitorAverage.value) || manualMarketValue;
+  clearMarketReference(window.sessionStorage);
   render();
 });
 
@@ -744,12 +773,13 @@ $("#amazonQuery").addEventListener("keydown", (event) => {
   event.preventDefault();
   void searchAmazon();
 });
-$("#amazonResults").addEventListener("click", (event) => {
+$("#amazonPanel").addEventListener("click", (event) => {
   const button = event.target.closest("[data-amazon-select]");
   if (button) selectAmazonProduct(button.dataset.amazonSelect);
+  if (event.target.closest("[data-amazon-retry]")) void searchAmazon();
 });
 $("#selectedMarketProduct").addEventListener("click", (event) => {
-  if (event.target.closest("[data-restore-manual-market]")) restoreManualMarket();
+  if (event.target.closest("[data-change-market-reference]")) restoreManualMarket({ focusSearch: true });
 });
 
 $("#showLoginButton").addEventListener("click", () => showAuth("login"));
@@ -872,11 +902,13 @@ window.addEventListener("app:session-expired", () => {
   state.user = null;
   state.products = [];
   state.selectedProduct = null;
+  clearMarketReference(window.sessionStorage);
   window.history.replaceState(null, "", window.location.pathname);
   showAuth("login", "Sua sessão expirou. Entre novamente para continuar.");
 });
 
 applyCategoryPreset(elements.productType.value, elements);
+restoreMarketReferenceFromSession();
 applyTheme(document.documentElement.dataset.theme, false);
 render();
 
