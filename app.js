@@ -624,7 +624,7 @@ function renderDashboard(document, inputs, result, meliState, marketSource) {
     priceStatus.classList.toggle("warning-badge", badgeType === "warning");
     recommendationText.textContent = "Preço mínimo calculado para pagar todos os custos, despesas de venda e atingir a margem líquida definida.";
     marketStatus.textContent = marketComparisonText(inputs, result, activeMarketStats, marketSource);
-    marketMeter.style.width = `${clamp((result.minimumPrice / inputs.competitorAverage) * 100, 0, 100)}%`;
+    marketMeter.value = clamp((result.minimumPrice / inputs.competitorAverage) * 100, 0, 100);
     marketMeter.classList.toggle("over", result.marketGap < 0);
   } else {
     suggestedPrice.textContent = "Revise percentuais";
@@ -635,7 +635,7 @@ function renderDashboard(document, inputs, result, meliState, marketSource) {
     priceStatus.classList.remove("warning-badge");
     recommendationText.textContent = "Impostos, taxas, comissão e margem somam 100% ou mais do preço. Reduza algum percentual para calcular.";
     marketStatus.textContent = "Não é possível validar o mercado enquanto os percentuais consumirem todo o preço.";
-    marketMeter.style.width = "100%";
+    marketMeter.value = 100;
     marketMeter.classList.add("over");
   }
 
@@ -876,7 +876,6 @@ function applyTheme(theme, persist = true) {
   const normalizedTheme = theme === "dark" ? "dark" : "light";
   const isDark = normalizedTheme === "dark";
   document.documentElement.dataset.theme = normalizedTheme;
-  document.documentElement.style.colorScheme = normalizedTheme;
   if (persist) {
     try {
       localStorage.setItem(themeStorageKey, normalizedTheme);

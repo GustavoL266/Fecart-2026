@@ -11,6 +11,7 @@ import { getConfig } from "./lib/config.js";
 import { pool, verifyDatabase } from "./lib/database.js";
 import { productForClient, userForClient } from "./lib/models.js";
 import { hashPassword, verifyPassword } from "./lib/passwords.js";
+import { contentSecurityPolicyDirectives } from "./lib/security.js";
 import { loginSchema, productIdSchema, productListSchema, productSchema, registerSchema, validate } from "./lib/validation.js";
 
 const config = getConfig();
@@ -24,18 +25,7 @@ if (config.secureCookie) app.set("trust proxy", 1);
 app.use(
   helmet({
     contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        baseUri: ["'self'"],
-        connectSrc: ["'self'", "https://api.mercadolibre.com"],
-        fontSrc: ["'self'", "data:"],
-        formAction: ["'self'"],
-        frameAncestors: ["'none'"],
-        imgSrc: ["'self'", "data:", "https:"],
-        objectSrc: ["'none'"],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'"],
-      },
+      directives: contentSecurityPolicyDirectives,
     },
     crossOriginEmbedderPolicy: false,
   }),
