@@ -82,7 +82,7 @@ function createFixture() {
   const panels = sectionNames.map((section) => new FakeElement({ dataset: { pricingPanel: section } }));
   const goToMarket = new FakeElement({ dataset: { pricingGo: "market" } });
   const fieldIds = [
-    "productType", "productName", "ncmCode", "taxRegime", "originState", "destinationState", "cfop", "taxSituation", "customerType", "operationPurpose",
+    "productName", "ncmCode", "taxRegime", "originState", "destinationState", "cfop", "taxSituation", "customerType", "operationPurpose",
     "materialsCost", "waste", "packagingCost", "deliveryCost", "insuranceCost", "discountAmount", "otherExpenses",
     "totalPayroll", "monthlyFixedCosts", "workerCount", "outputPerWorkerHour", "monthlyVolume",
     "taxRate", "paymentFeeRate", "commissionRate", "margin", "competitorAverage",

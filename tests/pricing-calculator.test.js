@@ -3,7 +3,6 @@ import test from "node:test";
 import { calculateCosts, calculatePrice } from "../js/domain/pricing-calculator.js";
 
 const baseInputs = {
-  productType: "Comestíveis",
   materialsCost: 12,
   waste: 0.08,
   packagingCost: 2,

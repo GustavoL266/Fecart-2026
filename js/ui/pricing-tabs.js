@@ -1,5 +1,5 @@
 const sectionFields = Object.freeze({
-  product: ["productType", "productName"],
+  product: ["productName"],
   fiscal: ["taxRegime", "originState", "destinationState", "customerType"],
   direct: ["materialsCost", "waste", "packagingCost", "deliveryCost", "insuranceCost", "discountAmount", "otherExpenses"],
   indirect: ["totalPayroll", "monthlyFixedCosts"],

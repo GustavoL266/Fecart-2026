@@ -102,3 +102,22 @@ export function renderPriceDetails(document, inputs, result, marketText, alertCo
   renderComposition(document, result);
   renderComparison(document, inputs, result, marketText);
 }
+
+export function renderPriceDetailsUnavailable(document, invalidCount) {
+  [
+    "detailSuggestedPrice",
+    "detailDonutPrice",
+    "detailBaseCost",
+    "detailSalesRate",
+    "detailProfit",
+    "detailMargin",
+    "detailMarketPrice",
+    "detailMarketCostLimit",
+  ].forEach((id) => { document.querySelector(`#${id}`).textContent = "-"; });
+  document.querySelector("#detailAlertCount").textContent = `${invalidCount} ${invalidCount === 1 ? "campo pendente" : "campos pendentes"}`;
+  document.querySelector("#priceDonutSegments").innerHTML = "";
+  document.querySelector("#priceDonut").setAttribute("aria-label", "Composição indisponível enquanto o formulário estiver inválido.");
+  document.querySelector("#priceCompositionLegend").innerHTML = '<li class="chart-empty">Preencha os campos obrigatórios para visualizar a composição.</li>';
+  document.querySelector("#priceComparisonBars").innerHTML = "";
+  document.querySelector("#detailMarketNarrative").textContent = "A comparação será exibida depois que os dados da precificação forem validados.";
+}

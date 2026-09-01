@@ -20,104 +20,6 @@ const PERCENTAGE_FIELDS = new Set([
   "capitalRate",
 ]);
 
-const CATEGORY_PRESETS = {
-  comestiveis: {
-    materialsCost: 12,
-    waste: 8,
-    packagingCost: 2,
-    deliveryCost: 1.5,
-    totalPayroll: 12600,
-    workerCount: 6,
-    outputPerWorkerHour: 12,
-    monthlyFixedCosts: 16000,
-    monthlyVolume: 4000,
-    taxRate: 6,
-    paymentFeeRate: 2.8,
-    commissionRate: 0,
-    margin: 18,
-    competitorAverage: 32,
-    receiveDays: 7,
-    payDays: 14,
-    capitalRate: 2.5,
-  },
-  domesticos: {
-    materialsCost: 30,
-    waste: 2,
-    packagingCost: 3,
-    deliveryCost: 5,
-    totalPayroll: 10800,
-    workerCount: 4,
-    outputPerWorkerHour: 6,
-    monthlyFixedCosts: 18000,
-    monthlyVolume: 750,
-    taxRate: 6,
-    paymentFeeRate: 3.2,
-    commissionRate: 0,
-    margin: 22,
-    competitorAverage: 105,
-    receiveDays: 15,
-    payDays: 20,
-    capitalRate: 2.5,
-  },
-  eletrodomesticos: {
-    materialsCost: 320,
-    waste: 0.5,
-    packagingCost: 10,
-    deliveryCost: 35,
-    totalPayroll: 10000,
-    workerCount: 3,
-    outputPerWorkerHour: 1.5,
-    monthlyFixedCosts: 22000,
-    monthlyVolume: 250,
-    taxRate: 6,
-    paymentFeeRate: 4,
-    commissionRate: 1,
-    margin: 14,
-    competitorAverage: 650,
-    receiveDays: 30,
-    payDays: 30,
-    capitalRate: 2.5,
-  },
-  vestuario: {
-    materialsCost: 35,
-    waste: 2.5,
-    packagingCost: 3,
-    deliveryCost: 7,
-    totalPayroll: 12500,
-    workerCount: 5,
-    outputPerWorkerHour: 4,
-    monthlyFixedCosts: 20000,
-    monthlyVolume: 800,
-    taxRate: 6,
-    paymentFeeRate: 3.5,
-    commissionRate: 2,
-    margin: 28,
-    competitorAverage: 135,
-    receiveDays: 20,
-    payDays: 25,
-    capitalRate: 2.5,
-  },
-  cosmeticos: {
-    materialsCost: 20,
-    waste: 1.5,
-    packagingCost: 6,
-    deliveryCost: 4,
-    totalPayroll: 11000,
-    workerCount: 4,
-    outputPerWorkerHour: 5,
-    monthlyFixedCosts: 16000,
-    monthlyVolume: 600,
-    taxRate: 6,
-    paymentFeeRate: 3.5,
-    commissionRate: 4,
-    margin: 30,
-    competitorAverage: 125,
-    receiveDays: 30,
-    payDays: 15,
-    capitalRate: 2.5,
-  },
-};
-
 
 const currency = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -555,8 +457,9 @@ function loadMarketReference(storage) {
     const parsed = JSON.parse(storage?.getItem(MARKET_REFERENCE_KEY) || "null");
     const selectedItem = safeAmazonItem(parsed?.selectedItem);
     const manualValue = Number(parsed?.manualValue);
-    if (!selectedItem || !Number.isFinite(manualValue) || manualValue <= 0) return null;
-    return { manualValue, query: String(parsed.query || ""), selectedItem };
+    const hasManualValue = parsed?.manualValue !== null && parsed?.manualValue !== "";
+    if (!selectedItem || (hasManualValue && (!Number.isFinite(manualValue) || manualValue <= 0))) return null;
+    return { manualValue: hasManualValue ? manualValue : null, query: String(parsed.query || ""), selectedItem };
   } catch {
     return null;
   }
@@ -565,9 +468,10 @@ function loadMarketReference(storage) {
 function saveMarketReference(storage, { manualValue, query, selectedItem }) {
   const safeItem = safeAmazonItem(selectedItem);
   const safeManualValue = Number(manualValue);
-  if (!safeItem || !Number.isFinite(safeManualValue) || safeManualValue <= 0) return false;
+  const hasManualValue = manualValue !== null && manualValue !== "";
+  if (!safeItem || (hasManualValue && (!Number.isFinite(safeManualValue) || safeManualValue <= 0))) return false;
   try {
-    storage?.setItem(MARKET_REFERENCE_KEY, JSON.stringify({ manualValue: safeManualValue, query, selectedItem: safeItem }));
+    storage?.setItem(MARKET_REFERENCE_KEY, JSON.stringify({ manualValue: hasManualValue ? safeManualValue : null, query, selectedItem: safeItem }));
     return true;
   } catch {
     return false;
@@ -584,77 +488,151 @@ function clearMarketReference(storage) {
 
 
 
-function numberValue(element, fallback = 0) {
-  const rawValue = String(element.value).trim();
-  const normalizedValue = rawValue.includes(",") ? rawValue.replace(/\./g, "").replace(",", ".") : rawValue;
-  const value = Number(normalizedValue);
-  return Number.isFinite(value) ? value : fallback;
+const PRICING_FIELD_RULES = Object.freeze({
+  materialsCost: { requiredMessage: "Informe o custo dos insumos.", min: 0, minMessage: "O custo dos insumos não pode ser negativo." },
+  waste: { requiredMessage: "Informe a perda e desperdício.", min: 0, max: 100, minMessage: "A perda e desperdício não pode ser negativa.", maxMessage: "A perda e desperdício máxima permitida é 100%." },
+  packagingCost: { requiredMessage: "Informe o custo de embalagem.", min: 0, minMessage: "O custo de embalagem não pode ser negativo." },
+  deliveryCost: { requiredMessage: "Informe o frete ou custo de entrega.", min: 0, minMessage: "O frete ou custo de entrega não pode ser negativo." },
+  insuranceCost: { optional: true, min: 0, minMessage: "O seguro não pode ser negativo." },
+  discountAmount: { optional: true, min: 0, minMessage: "O desconto não pode ser negativo." },
+  otherExpenses: { optional: true, min: 0, minMessage: "As outras despesas não podem ser negativas." },
+  totalPayroll: { requiredMessage: "Informe a folha salarial mensal.", min: 0, minMessage: "A folha salarial não pode ser negativa." },
+  workerCount: { requiredMessage: "Informe o número de trabalhadores.", min: 1, integer: true, minMessage: "O número de trabalhadores deve ser pelo menos 1." },
+  outputPerWorkerHour: { requiredMessage: "Informe a produção por trabalhador/hora.", min: 0.01, minMessage: "A produção por trabalhador/hora deve ser pelo menos 0,01." },
+  monthlyFixedCosts: { requiredMessage: "Informe os custos fixos mensais.", min: 0, minMessage: "Os custos fixos não podem ser negativos." },
+  monthlyVolume: { requiredMessage: "Informe as operações previstas no mês.", min: 1, integer: true, minMessage: "As operações previstas devem ser pelo menos 1." },
+  taxRate: { requiredMessage: "Informe a carga tributária estimada.", min: 0, max: 60, minMessage: "A carga tributária não pode ser negativa.", maxMessage: "A carga tributária máxima permitida é 60%." },
+  paymentFeeRate: { requiredMessage: "Informe a taxa de pagamento.", min: 0, max: 30, minMessage: "A taxa de pagamento não pode ser negativa.", maxMessage: "A taxa de pagamento máxima permitida é 30%." },
+  commissionRate: { requiredMessage: "Informe a comissão.", min: 0, max: 50, minMessage: "A comissão não pode ser negativa.", maxMessage: "A comissão máxima permitida é 50%." },
+  margin: { requiredMessage: "Informe a margem líquida desejada.", min: 0.1, max: 60, minMessage: "A margem mínima permitida é 0,1%.", maxMessage: "A margem máxima permitida é 60%." },
+  competitorAverage: { requiredMessage: "Informe o preço médio local dos concorrentes.", min: 0.01, max: 1_000_000, minMessage: "O preço médio dos concorrentes deve ser pelo menos R$ 0,01.", maxMessage: "O preço médio dos concorrentes não pode ultrapassar R$ 1.000.000,00." },
+  receiveDays: { requiredMessage: "Informe o prazo de recebimento.", min: 0, integer: true, minMessage: "O prazo de recebimento não pode ser negativo." },
+  payDays: { requiredMessage: "Informe o prazo de pagamento.", min: 0, integer: true, minMessage: "O prazo de pagamento não pode ser negativo." },
+  capitalRate: { requiredMessage: "Informe o custo do capital.", min: 0, max: 8, minMessage: "O custo do capital não pode ser negativo.", maxMessage: "O custo do capital máximo permitido é 8% ao mês." },
+});
+
+const PRICING_FIELD_IDS = Object.freeze(Object.keys(PRICING_FIELD_RULES));
+
+function parseBrazilianNumber(rawValue) {
+  const value = String(rawValue ?? "").trim().replace(/\s/g, "");
+  if (value === "") return { status: "empty", value: null };
+
+  const commaCount = (value.match(/,/g) || []).length;
+  const normalizedValue = commaCount === 1
+    ? value.replace(/\./g, "").replace(",", ".")
+    : value;
+  if (commaCount > 1 || !/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalizedValue)) {
+    return { status: "invalid", value: null };
+  }
+
+  const numericValue = Number(normalizedValue);
+  return Number.isFinite(numericValue)
+    ? { status: "valid", value: numericValue }
+    : { status: "invalid", value: null };
 }
 
-function averagePreset() {
-  const presets = Object.values(CATEGORY_PRESETS);
-  const fields = Object.keys(CATEGORY_PRESETS.comestiveis);
-
-  return Object.fromEntries(
-    fields.map((field) => {
-      const average = presets.reduce((sum, preset) => sum + preset[field], 0) / presets.length;
-      return [field, field === "workerCount" ? Math.max(1, Math.round(average)) : Number(average.toFixed(2))];
-    }),
-  );
-}
-
-function readInputs(elements) {
+function readFiscalContext(elements) {
   return {
-    productType: elements.productType.selectedOptions[0].textContent,
-    materialsCost: numberValue(elements.materialsCost),
-    waste: clamp(numberValue(elements.waste), 0, 100) / 100,
-    packagingCost: numberValue(elements.packagingCost),
-    deliveryCost: numberValue(elements.deliveryCost),
-    insuranceCost: numberValue(elements.insuranceCost),
-    discountAmount: numberValue(elements.discountAmount),
-    otherExpenses: numberValue(elements.otherExpenses),
-    totalPayroll: numberValue(elements.totalPayroll),
-    workerCount: Math.max(numberValue(elements.workerCount, 1), 1),
-    outputPerWorkerHour: Math.max(numberValue(elements.outputPerWorkerHour, 0.01), 0.01),
-    monthlyFixedCosts: numberValue(elements.monthlyFixedCosts),
-    monthlyVolume: Math.max(numberValue(elements.monthlyVolume, 1), 1),
-    taxRate: clamp(numberValue(elements.taxRate), 0, 60) / 100,
-    paymentFeeRate: clamp(numberValue(elements.paymentFeeRate), 0, 30) / 100,
-    commissionRate: clamp(numberValue(elements.commissionRate), 0, 50) / 100,
-    margin: clamp(numberValue(elements.margin), 0.1, 60) / 100,
-    competitorAverage: clamp(numberValue(elements.competitorAverage, 0.01), 0.01, 1000000),
-    receiveDays: numberValue(elements.receiveDays),
-    payDays: numberValue(elements.payDays),
-    capitalRate: clamp(numberValue(elements.capitalRate), 0, 8) / 100,
-    fiscalContext: {
-      ncmCode: String(elements.ncmCode.value || "").replace(/\D/g, ""),
-      taxRegime: elements.taxRegime.value,
-      originState: elements.originState.value.trim().toUpperCase(),
-      destinationState: elements.destinationState.value.trim().toUpperCase(),
-      cfop: String(elements.cfop.value || "").replace(/\D/g, ""),
-      taxSituation: elements.taxSituation.value.trim().toUpperCase(),
-      customerType: elements.customerType.value,
-      operationPurpose: elements.operationPurpose.value,
-    },
+    ncmCode: String(elements.ncmCode.value || "").replace(/\D/g, ""),
+    taxRegime: elements.taxRegime.value,
+    originState: elements.originState.value.trim().toUpperCase(),
+    destinationState: elements.destinationState.value.trim().toUpperCase(),
+    cfop: String(elements.cfop.value || "").replace(/\D/g, ""),
+    taxSituation: elements.taxSituation.value.trim().toUpperCase(),
+    customerType: elements.customerType.value,
+    operationPurpose: elements.operationPurpose.value,
   };
 }
 
-function applyCategoryPreset(category, elements) {
-  const preset = category === "outros" ? averagePreset() : CATEGORY_PRESETS[category];
+function validatePricingForm(elements) {
+  const errors = {};
+  const inputs = {};
+  const emptyOptionalFields = [];
 
-  Object.entries(preset).forEach(([field, value]) => {
-    elements[field].value = PERCENTAGE_FIELDS.has(field) ? String(value).replace(".", ",") : value;
-  });
+  for (const [fieldId, rule] of Object.entries(PRICING_FIELD_RULES)) {
+    const parsed = parseBrazilianNumber(elements[fieldId]?.value);
+    if (parsed.status === "empty") {
+      if (rule.optional) {
+        inputs[fieldId] = 0;
+        emptyOptionalFields.push(fieldId);
+      } else {
+        errors[fieldId] = rule.requiredMessage;
+      }
+      continue;
+    }
+    if (parsed.status === "invalid") {
+      errors[fieldId] = "Informe um número válido.";
+      continue;
+    }
+    if (rule.integer && !Number.isInteger(parsed.value)) {
+      errors[fieldId] = "Informe um número inteiro.";
+      continue;
+    }
+    if (rule.min !== undefined && parsed.value < rule.min) {
+      errors[fieldId] = rule.minMessage;
+      continue;
+    }
+    if (rule.max !== undefined && parsed.value > rule.max) {
+      errors[fieldId] = rule.maxMessage;
+      continue;
+    }
+    inputs[fieldId] = PERCENTAGE_FIELDS.has(fieldId) ? parsed.value / 100 : parsed.value;
+  }
+
+  const rateFields = ["taxRate", "paymentFeeRate", "commissionRate", "margin"];
+  if (rateFields.every((fieldId) => inputs[fieldId] !== undefined)) {
+    const totalRate = rateFields.reduce((total, fieldId) => total + inputs[fieldId], 0);
+    if (totalRate >= 1) errors.margin = "A soma de impostos, taxas, comissão e margem deve ser menor que 100%.";
+  }
+
+  const isValid = Object.keys(errors).length === 0;
+  return {
+    isValid,
+    errors,
+    emptyOptionalFields,
+    inputs: isValid ? { ...inputs, fiscalContext: readFiscalContext(elements) } : null,
+  };
 }
 
-function applySavedInputs(savedInputs, elements) {
-  if (!savedInputs || typeof savedInputs !== "object") return false;
+function renderPricingErrors(elements, errors, visibleFieldIds = null) {
+  for (const fieldId of PRICING_FIELD_IDS) {
+    const field = elements[fieldId];
+    if (!field) continue;
+    const error = errors[fieldId] || "";
+    const isVisible = Boolean(error) && (visibleFieldIds === null || visibleFieldIds.has(fieldId));
+    field.setCustomValidity?.(error);
+    field.setAttribute("aria-invalid", String(isVisible));
 
-  const categoryOption = [...elements.productType.options].find((option) => option.textContent === savedInputs.productType);
-  if (categoryOption) elements.productType.value = categoryOption.value;
+    const container = field.closest?.(".sidebar-field");
+    if (!container) continue;
+    container.classList.toggle("has-error", isVisible);
+    const errorId = `${fieldId}Error`;
+    let errorElement = field.ownerDocument.getElementById(errorId);
+    if (!errorElement) {
+      errorElement = field.ownerDocument.createElement("p");
+      errorElement.id = errorId;
+      errorElement.className = "pricing-field-error";
+      errorElement.setAttribute("role", "alert");
+      container.append(errorElement);
+      const describedBy = new Set(String(field.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean));
+      describedBy.add(errorId);
+      field.setAttribute("aria-describedby", [...describedBy].join(" "));
+    }
+    errorElement.textContent = isVisible ? error : "";
+    errorElement.hidden = !isVisible;
+  }
+}
+
+function applySavedInputs(savedInputs, elements, emptyOptionalFields = []) {
+  if (!savedInputs || typeof savedInputs !== "object") return false;
+  const fieldsToKeepEmpty = new Set(Array.isArray(emptyOptionalFields) ? emptyOptionalFields : []);
 
   Object.entries(savedInputs).forEach(([field, value]) => {
     if (!elements[field] || !Number.isFinite(value)) return;
+    if (fieldsToKeepEmpty.has(field)) {
+      elements[field].value = "";
+      return;
+    }
     const displayValue = PERCENTAGE_FIELDS.has(field) ? value * 100 : value;
     elements[field].value = String(Number(displayValue.toFixed(4))).replace(".", ",");
   });
@@ -666,10 +644,6 @@ function applySavedInputs(savedInputs, elements) {
   }
 
   return true;
-}
-
-function isAboveCompetitorLimit(elements) {
-  return numberValue(elements.competitorAverage) > 1000000;
 }
 
 
@@ -775,6 +749,25 @@ function renderPriceDetails(document, inputs, result, marketText, alertCount) {
 
   renderComposition(document, result);
   renderComparison(document, inputs, result, marketText);
+}
+
+function renderPriceDetailsUnavailable(document, invalidCount) {
+  [
+    "detailSuggestedPrice",
+    "detailDonutPrice",
+    "detailBaseCost",
+    "detailSalesRate",
+    "detailProfit",
+    "detailMargin",
+    "detailMarketPrice",
+    "detailMarketCostLimit",
+  ].forEach((id) => { document.querySelector(`#${id}`).textContent = "-"; });
+  document.querySelector("#detailAlertCount").textContent = `${invalidCount} ${invalidCount === 1 ? "campo pendente" : "campos pendentes"}`;
+  document.querySelector("#priceDonutSegments").innerHTML = "";
+  document.querySelector("#priceDonut").setAttribute("aria-label", "Composição indisponível enquanto o formulário estiver inválido.");
+  document.querySelector("#priceCompositionLegend").innerHTML = '<li class="chart-empty">Preencha os campos obrigatórios para visualizar a composição.</li>';
+  document.querySelector("#priceComparisonBars").innerHTML = "";
+  document.querySelector("#detailMarketNarrative").textContent = "A comparação será exibida depois que os dados da precificação forem validados.";
 }
 
 
@@ -927,6 +920,53 @@ function renderAmazonPanel(document, result, amazonState) {
           </div>
         </article>`)
     .join("");
+}
+
+function renderIncompleteDashboard(document, amazonState, errors) {
+  const invalidCount = Object.keys(errors).length;
+  const selectedAmazonProduct = amazonState.selectedItem;
+  const generalMessage = invalidCount === 1
+    ? "Corrija o campo indicado para liberar o cálculo."
+    : "Preencha ou corrija os campos indicados para liberar o cálculo.";
+
+  document.querySelector("#baseCost").textContent = "-";
+  document.querySelector("#marketPrice").textContent = "-";
+  document.querySelector("#marketTitle").textContent = selectedAmazonProduct ? selectedAmazonProduct.title : "Preço médio informado";
+  document.querySelector("#marketReferenceDetails").textContent = selectedAmazonProduct ? "Fonte: Amazon" : "Aguardando valor válido";
+  document.querySelector("#marketPriceLabel").textContent = selectedAmazonProduct ? "Produto selecionado" : "Referência manual";
+
+  const primaryMarketValue = document.querySelector("#primaryMarketValue");
+  const primaryTaxImpact = document.querySelector("#primaryTaxImpact");
+  document.querySelector("#primaryPriceCard").classList.toggle("has-market-reference", Boolean(selectedAmazonProduct));
+  primaryMarketValue.hidden = !selectedAmazonProduct;
+  primaryTaxImpact.hidden = !selectedAmazonProduct;
+  document.querySelector("#primaryMarketPrice").textContent = selectedAmazonProduct ? currency.format(selectedAmazonProduct.price) : "-";
+  document.querySelector("#primaryTaxAdjustedPrice").textContent = "Tributação pendente";
+  document.querySelector("#primaryTaxStatus").textContent = "Complete a precificação antes de avaliar o impacto fiscal.";
+  primaryTaxImpact.classList.add("is-pending");
+
+  document.querySelector("#suggestedPrice").textContent = "-";
+  document.querySelector("#profitPerSale").textContent = "-";
+  document.querySelector("#estimatedMargin").textContent = "-";
+  const priceStatus = document.querySelector("#priceStatus");
+  priceStatus.textContent = "Aguardando dados válidos";
+  priceStatus.classList.remove("risk-badge", "warning-badge");
+  document.querySelector("#recommendationText").textContent = generalMessage;
+  document.querySelector("#marketStatus").textContent = "O mercado será comparado somente depois que todos os dados necessários forem válidos.";
+  const marketMeter = document.querySelector("#marketMeter");
+  marketMeter.value = 0;
+  marketMeter.setAttribute("aria-valuetext", "Cálculo ainda não realizado");
+  marketMeter.classList.remove("over");
+
+  document.querySelector("#alertCount").textContent = `${invalidCount} ${invalidCount === 1 ? "campo pendente" : "campos pendentes"}`;
+  document.querySelector("#alertSummary").textContent = generalMessage;
+  document.querySelector("#explanationList").innerHTML = `<li>${generalMessage}</li>`;
+  document.querySelector("#costRows").innerHTML = '<tr><td colspan="4">Os custos serão detalhados após a validação do formulário.</td></tr>';
+  renderAlerts(document, [["warning", generalMessage]]);
+  document.querySelector("#fiscalSummary").innerHTML = "<p>O resumo fiscal será exibido depois que os dados financeiros obrigatórios forem validados.</p>";
+
+  renderAmazonPanel(document, null, amazonState);
+  renderPriceDetailsUnavailable(document, invalidCount);
 }
 
 function renderDashboard(document, inputs, result, amazonState, marketSource, fiscalAssessment, memory) {
@@ -1099,7 +1139,7 @@ function renderProductDetails(container, product) {
 
 
 const sectionFields = Object.freeze({
-  product: ["productType", "productName"],
+  product: ["productName"],
   fiscal: ["taxRegime", "originState", "destinationState", "customerType"],
   direct: ["materialsCost", "waste", "packagingCost", "deliveryCost", "insuranceCost", "discountAmount", "otherExpenses"],
   indirect: ["totalPayroll", "monthlyFixedCosts"],
@@ -1345,7 +1385,6 @@ const detailRouteHashes = Object.freeze({ price: "#preco-calculado" });
 const amazon = new AmazonService();
 const taxRuleEngine = new ConfiguredTaxRuleEngine();
 const formFieldIds = [
-  "productType",
   "ncmCode",
   "taxRegime",
   "originState",
@@ -1354,26 +1393,7 @@ const formFieldIds = [
   "taxSituation",
   "customerType",
   "operationPurpose",
-  "materialsCost",
-  "waste",
-  "packagingCost",
-  "deliveryCost",
-  "insuranceCost",
-  "discountAmount",
-  "otherExpenses",
-  "totalPayroll",
-  "workerCount",
-  "outputPerWorkerHour",
-  "monthlyFixedCosts",
-  "monthlyVolume",
-  "taxRate",
-  "paymentFeeRate",
-  "commissionRate",
-  "margin",
-  "competitorAverage",
-  "receiveDays",
-  "payDays",
-  "capitalRate",
+  ...PRICING_FIELD_IDS,
 ];
 const elements = Object.fromEntries(formFieldIds.map((id) => [id, $(`#${id}`)]));
 const pricingTabs = createPricingTabs($(".pricing-sidebar"));
@@ -1400,9 +1420,11 @@ let amazonState = {
   selectedItem: null,
   error: "",
 };
-let manualMarketValue = Number(elements.competitorAverage.value) || 32;
+let manualMarketValue = elements.competitorAverage.value;
 let productSearchTimer;
 let pendingDetailTarget = "";
+let revealAllPricingErrors = false;
+const touchedPricingFields = new Set();
 
 function applyTheme(theme, persist = true) {
   const normalizedTheme = theme === "dark" ? "dark" : "light";
@@ -1521,12 +1543,23 @@ function setSubmitState(button, isLoading, label) {
   button.querySelector("span").textContent = label;
 }
 
+function currentPricingValidation() {
+  const validation = validatePricingForm(elements);
+  renderPricingErrors(elements, validation.errors, revealAllPricingErrors ? null : touchedPricingFields);
+  return validation;
+}
+
 function render() {
-  const inputs = readInputs(elements);
-  const result = calculatePrice(inputs);
-  const fiscalAssessment = taxRuleEngine.assess(inputs, focusState);
-  const memory = buildCalculationMemory(inputs, result, fiscalAssessment);
-  renderDashboard(document, inputs, result, amazonState, marketSource, fiscalAssessment, memory);
+  const validation = currentPricingValidation();
+  if (validation.isValid) {
+    const inputs = validation.inputs;
+    const result = calculatePrice(inputs);
+    const fiscalAssessment = taxRuleEngine.assess(inputs, focusState);
+    const memory = buildCalculationMemory(inputs, result, fiscalAssessment);
+    renderDashboard(document, inputs, result, amazonState, marketSource, fiscalAssessment, memory);
+  } else {
+    renderIncompleteDashboard(document, amazonState, validation.errors);
+  }
   renderNcmState();
   $("#mobileSuggestedPrice").textContent = $("#suggestedPrice").textContent;
   pricingTabs.updateCompletion();
@@ -1737,16 +1770,20 @@ async function searchAmazon() {
 function selectAmazonProduct(asin) {
   const item = amazonState.items.find((candidate) => candidate.asin === asin);
   if (!item) return;
-  if (marketSource !== "amazon-product") manualMarketValue = Number(elements.competitorAverage.value) || manualMarketValue;
+  if (marketSource !== "amazon-product") manualMarketValue = elements.competitorAverage.value;
   amazonState = { ...amazonState, selectedItem: item };
   elements.competitorAverage.value = item.price.toFixed(2);
+  touchedPricingFields.add("competitorAverage");
   marketSource = "amazon-product";
-  saveMarketReference(window.sessionStorage, { manualValue: manualMarketValue, query: amazonState.query, selectedItem: item });
+  const parsedManualValue = parseBrazilianNumber(manualMarketValue);
+  const storedManualValue = parsedManualValue.status === "valid" && parsedManualValue.value > 0 ? parsedManualValue.value : null;
+  saveMarketReference(window.sessionStorage, { manualValue: storedManualValue, query: amazonState.query, selectedItem: item });
   render();
 }
 
 function restoreManualMarket({ focusSearch = false } = {}) {
-  elements.competitorAverage.value = manualMarketValue.toFixed(2);
+  elements.competitorAverage.value = manualMarketValue === null ? "" : String(manualMarketValue);
+  touchedPricingFields.add("competitorAverage");
   marketSource = "manual";
   amazonState = { ...amazonState, selectedItem: null };
   clearMarketReference(window.sessionStorage);
@@ -1760,7 +1797,7 @@ function restoreManualMarket({ focusSearch = false } = {}) {
 function restoreMarketReferenceFromSession() {
   const saved = loadMarketReference(window.sessionStorage);
   if (!saved) return;
-  manualMarketValue = saved.manualValue;
+  manualMarketValue = saved.manualValue === null ? "" : String(saved.manualValue).replace(".", ",");
   amazonState = { ...amazonState, query: saved.query, selectedItem: saved.selectedItem };
   marketSource = "amazon-product";
   elements.competitorAverage.value = saved.selectedItem.price.toFixed(2);
@@ -1770,7 +1807,17 @@ function restoreMarketReferenceFromSession() {
 function productPayloadFromCalculator() {
   const name = $("#productName").value.trim();
   const description = $("#productDescription").value.trim();
-  const inputs = readInputs(elements);
+  revealAllPricingErrors = true;
+  const validation = currentPricingValidation();
+  if (!validation.isValid) {
+    renderIncompleteDashboard(document, amazonState, validation.errors);
+    const firstInvalidField = elements[Object.keys(validation.errors)[0]];
+    const panel = firstInvalidField?.closest?.("[data-pricing-panel]");
+    if (panel) pricingTabs.activate(panel.dataset.pricingPanel, { focusTab: true });
+    firstInvalidField?.focus();
+    throw new ApiError("Corrija os campos indicados antes de salvar.", 400);
+  }
+  const inputs = validation.inputs;
   const result = calculatePrice(inputs);
   const fiscalAssessment = taxRuleEngine.assess(inputs, focusState);
   const memory = buildCalculationMemory(inputs, result, fiscalAssessment);
@@ -1781,7 +1828,7 @@ function productPayloadFromCalculator() {
   return {
     name,
     description,
-    category: inputs.productType,
+    category: "Não categorizado",
     costPrice: inputs.materialsCost,
     additionalCosts: Math.max(0, result.costs.baseCost - inputs.materialsCost),
     profitMargin: inputs.margin * 100,
@@ -1789,8 +1836,9 @@ function productPayloadFromCalculator() {
     marketplace: marketSource === "amazon-product" || marketSource === "amazon-median" ? "Amazon" : "Manual",
     consultationDate: new Date().toISOString(),
     calculationData: {
-      version: 3,
+      version: 4,
       inputs,
+      emptyOptionalFields: validation.emptyOptionalFields,
       result,
       fiscal: fiscalDataForStorage(fiscalAssessment, memory),
       market: {
@@ -1798,7 +1846,10 @@ function productPayloadFromCalculator() {
         query: amazonState.query,
         stats: amazonState.stats,
         selectedProduct: amazonState.selectedItem,
-        manualValue: manualMarketValue,
+        manualValue: (() => {
+          const parsed = parseBrazilianNumber(manualMarketValue);
+          return parsed.status === "valid" && parsed.value > 0 ? parsed.value : null;
+        })(),
         marketPrice: inputs.competitorAverage,
         taxAdjustedPrice: fiscalAssessment.automaticCalculation && fiscalAssessment.complete
           ? fiscalAssessment.marketAdjustedPrice || null
@@ -1879,7 +1930,7 @@ async function getProduct(id) {
 
 function reuseProduct(product) {
   const savedInputs = product.calculationData?.inputs;
-  if (!applySavedInputs(savedInputs, elements)) {
+  if (!applySavedInputs(savedInputs, elements, product.calculationData?.emptyOptionalFields)) {
     setMessage($("#historyMessage"), "Esta consulta não possui os dados necessários para ser reutilizada.");
     return;
   }
@@ -1892,7 +1943,11 @@ function reuseProduct(product) {
     : { status: "idle", ncm: null, environment: "", error: "", unavailable: false };
   const savedMarket = product.calculationData?.market;
   marketSource = ["amazon-product", "amazon-median"].includes(savedMarket?.source) ? savedMarket.source : "manual";
-  manualMarketValue = Number(savedMarket?.manualValue ?? savedInputs?.competitorAverage) || manualMarketValue;
+  const hasSavedManualValue = savedMarket && Object.prototype.hasOwnProperty.call(savedMarket, "manualValue");
+  const savedManualValue = hasSavedManualValue ? savedMarket.manualValue : savedInputs?.competitorAverage;
+  manualMarketValue = Number.isFinite(savedManualValue) && savedManualValue > 0
+    ? String(savedManualValue).replace(".", ",")
+    : "";
   amazonState = {
     ...amazonState,
     status: "idle",
@@ -2048,27 +2103,12 @@ async function submitRegistration(event) {
   }
 }
 
-[
-  elements.materialsCost,
-  elements.waste,
-  elements.packagingCost,
-  elements.deliveryCost,
-  elements.insuranceCost,
-  elements.discountAmount,
-  elements.otherExpenses,
-  elements.totalPayroll,
-  elements.workerCount,
-  elements.outputPerWorkerHour,
-  elements.monthlyFixedCosts,
-  elements.monthlyVolume,
-  elements.taxRate,
-  elements.paymentFeeRate,
-  elements.commissionRate,
-  elements.margin,
-  elements.receiveDays,
-  elements.payDays,
-  elements.capitalRate,
-].forEach((field) => field.addEventListener("input", render));
+PRICING_FIELD_IDS
+  .filter((fieldId) => fieldId !== "competitorAverage")
+  .forEach((fieldId) => elements[fieldId].addEventListener("input", () => {
+    touchedPricingFields.add(fieldId);
+    render();
+  }));
 
 [
   elements.taxRegime,
@@ -2096,20 +2136,11 @@ elements.ncmCode.addEventListener("keydown", (event) => {
   void lookupNcm();
 });
 
-elements.productType.addEventListener("change", () => {
-  applyCategoryPreset(elements.productType.value, elements);
-  marketSource = "manual";
-  amazonState = { ...amazonState, selectedItem: null };
-  manualMarketValue = Number(elements.competitorAverage.value) || manualMarketValue;
-  clearMarketReference(window.sessionStorage);
-  render();
-});
-
 elements.competitorAverage.addEventListener("input", () => {
+  touchedPricingFields.add("competitorAverage");
   marketSource = "manual";
   amazonState = { ...amazonState, selectedItem: null };
-  if (isAboveCompetitorLimit(elements)) elements.competitorAverage.value = "1000000";
-  manualMarketValue = Number(elements.competitorAverage.value) || manualMarketValue;
+  manualMarketValue = elements.competitorAverage.value;
   clearMarketReference(window.sessionStorage);
   render();
 });
@@ -2257,7 +2288,6 @@ window.addEventListener("app:session-expired", () => {
   showAuth("login", "Sua sessão expirou. Entre novamente para continuar.");
 });
 
-applyCategoryPreset(elements.productType.value, elements);
 restoreMarketReferenceFromSession();
 applyTheme(document.documentElement.dataset.theme, false);
 render();

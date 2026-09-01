@@ -1,6 +1,6 @@
 import { AMAZON_MARKET_CONFIG, PRODUCTIVE_HOURS_PER_WORKER_MONTH } from "../config/pricing.js";
 import { clamp, currency, escapeHtml, percent } from "../utils/formatters.js";
-import { renderPriceDetails } from "./detail-pages.js";
+import { renderPriceDetails, renderPriceDetailsUnavailable } from "./detail-pages.js";
 
 function marketComparisonText(inputs, result, marketStats, marketSource) {
   const difference = Math.abs(inputs.competitorAverage - result.minimumPrice);
@@ -150,6 +150,53 @@ function renderAmazonPanel(document, result, amazonState) {
           </div>
         </article>`)
     .join("");
+}
+
+export function renderIncompleteDashboard(document, amazonState, errors) {
+  const invalidCount = Object.keys(errors).length;
+  const selectedAmazonProduct = amazonState.selectedItem;
+  const generalMessage = invalidCount === 1
+    ? "Corrija o campo indicado para liberar o cálculo."
+    : "Preencha ou corrija os campos indicados para liberar o cálculo.";
+
+  document.querySelector("#baseCost").textContent = "-";
+  document.querySelector("#marketPrice").textContent = "-";
+  document.querySelector("#marketTitle").textContent = selectedAmazonProduct ? selectedAmazonProduct.title : "Preço médio informado";
+  document.querySelector("#marketReferenceDetails").textContent = selectedAmazonProduct ? "Fonte: Amazon" : "Aguardando valor válido";
+  document.querySelector("#marketPriceLabel").textContent = selectedAmazonProduct ? "Produto selecionado" : "Referência manual";
+
+  const primaryMarketValue = document.querySelector("#primaryMarketValue");
+  const primaryTaxImpact = document.querySelector("#primaryTaxImpact");
+  document.querySelector("#primaryPriceCard").classList.toggle("has-market-reference", Boolean(selectedAmazonProduct));
+  primaryMarketValue.hidden = !selectedAmazonProduct;
+  primaryTaxImpact.hidden = !selectedAmazonProduct;
+  document.querySelector("#primaryMarketPrice").textContent = selectedAmazonProduct ? currency.format(selectedAmazonProduct.price) : "-";
+  document.querySelector("#primaryTaxAdjustedPrice").textContent = "Tributação pendente";
+  document.querySelector("#primaryTaxStatus").textContent = "Complete a precificação antes de avaliar o impacto fiscal.";
+  primaryTaxImpact.classList.add("is-pending");
+
+  document.querySelector("#suggestedPrice").textContent = "-";
+  document.querySelector("#profitPerSale").textContent = "-";
+  document.querySelector("#estimatedMargin").textContent = "-";
+  const priceStatus = document.querySelector("#priceStatus");
+  priceStatus.textContent = "Aguardando dados válidos";
+  priceStatus.classList.remove("risk-badge", "warning-badge");
+  document.querySelector("#recommendationText").textContent = generalMessage;
+  document.querySelector("#marketStatus").textContent = "O mercado será comparado somente depois que todos os dados necessários forem válidos.";
+  const marketMeter = document.querySelector("#marketMeter");
+  marketMeter.value = 0;
+  marketMeter.setAttribute("aria-valuetext", "Cálculo ainda não realizado");
+  marketMeter.classList.remove("over");
+
+  document.querySelector("#alertCount").textContent = `${invalidCount} ${invalidCount === 1 ? "campo pendente" : "campos pendentes"}`;
+  document.querySelector("#alertSummary").textContent = generalMessage;
+  document.querySelector("#explanationList").innerHTML = `<li>${generalMessage}</li>`;
+  document.querySelector("#costRows").innerHTML = '<tr><td colspan="4">Os custos serão detalhados após a validação do formulário.</td></tr>';
+  renderAlerts(document, [["warning", generalMessage]]);
+  document.querySelector("#fiscalSummary").innerHTML = "<p>O resumo fiscal será exibido depois que os dados financeiros obrigatórios forem validados.</p>";
+
+  renderAmazonPanel(document, null, amazonState);
+  renderPriceDetailsUnavailable(document, invalidCount);
 }
 
 export function renderDashboard(document, inputs, result, amazonState, marketSource, fiscalAssessment, memory) {

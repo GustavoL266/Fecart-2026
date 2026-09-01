@@ -4,7 +4,6 @@ import { calculatePrice } from "../js/domain/pricing-calculator.js";
 import { buildCalculationMemory, ConfiguredTaxRuleEngine, TaxRuleEngine } from "../js/domain/tax-rule-engine.js";
 
 const inputs = {
-  productType: "Comestíveis",
   materialsCost: 12,
   waste: 0.08,
   packagingCost: 2,

@@ -40,3 +40,12 @@ test("ignora conteúdo inválido do armazenamento da sessão", () => {
   assert.equal(loadMarketReference(storage), null);
   assert.equal(saveMarketReference(storage, { manualValue: 0, selectedItem: {} }), false);
 });
+
+test("preserva referência Amazon quando o fallback manual ainda está vazio", () => {
+  const storage = memoryStorage();
+  const selectedItem = { asin: "B002TESTE", title: "Produto sem fallback", price: 99.9 };
+
+  assert.equal(saveMarketReference(storage, { manualValue: null, query: "produto", selectedItem }), true);
+  assert.equal(loadMarketReference(storage).manualValue, null);
+  assert.equal(loadMarketReference(storage).selectedItem.price, 99.9);
+});
