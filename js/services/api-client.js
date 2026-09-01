@@ -1,9 +1,10 @@
 export class ApiError extends Error {
-  constructor(message, status = 0, code = "") {
+  constructor(message, status = 0, code = "", details = {}) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -36,7 +37,7 @@ async function request(path, options = {}) {
   const payload = response.status === 204 ? null : await response.json().catch(() => null);
   if (response.ok) return payload;
 
-  const error = new ApiError(payload?.error || "Não foi possível concluir a operação.", response.status, payload?.code || "");
+  const error = new ApiError(payload?.error || "Não foi possível concluir a operação.", response.status, payload?.code || "", payload || {});
   if (handleUnauthorized && response.status === 401) window.dispatchEvent(new CustomEvent("app:session-expired"));
   throw error;
 }

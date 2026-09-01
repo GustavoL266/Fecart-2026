@@ -146,9 +146,6 @@
             <button id="pricing-tab-product" class="pricing-tab is-active" type="button" role="tab" aria-controls="pricing-panel-product" aria-selected="true" data-pricing-tab="product" data-pricing-label="Produto">
               <span class="pricing-tab-status" aria-hidden="true">○</span><span>Produto</span>
             </button>
-            <button id="pricing-tab-fiscal" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-fiscal" aria-selected="false" tabindex="-1" data-pricing-tab="fiscal" data-pricing-label="Contexto fiscal">
-              <span class="pricing-tab-status" aria-hidden="true">○</span><span>Fiscal</span>
-            </button>
             <button id="pricing-tab-direct" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-direct" aria-selected="false" tabindex="-1" data-pricing-tab="direct" data-pricing-label="Custos diretos">
               <span class="pricing-tab-status" aria-hidden="true">○</span><span>Diretos</span>
             </button>
@@ -161,8 +158,8 @@
             <button id="pricing-tab-sales" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-sales" aria-selected="false" tabindex="-1" data-pricing-tab="sales" data-pricing-label="Despesas da venda">
               <span class="pricing-tab-status" aria-hidden="true">○</span><span>Despesas</span>
             </button>
-            <button id="pricing-tab-market" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-market" aria-selected="false" tabindex="-1" data-pricing-tab="market" data-pricing-label="Mercado e margem">
-              <span class="pricing-tab-status" aria-hidden="true">○</span><span>Mercado</span>
+            <button id="pricing-tab-market" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-market" aria-selected="false" tabindex="-1" data-pricing-tab="market" data-pricing-label="Consulta de mercado">
+              <span class="pricing-tab-status" aria-hidden="true">○</span><span>Consulta</span>
             </button>
             <button id="pricing-tab-terms" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-terms" aria-selected="false" tabindex="-1" data-pricing-tab="terms" data-pricing-label="Prazos financeiros">
               <span class="pricing-tab-status" aria-hidden="true">○</span><span>Prazos</span>
@@ -198,80 +195,6 @@
             </div>
           </div>
           <footer class="pricing-step-actions is-first">
-            <button class="pricing-step-button" type="button" data-pricing-go="fiscal">Próximo <span aria-hidden="true">→</span></button>
-          </footer>
-        </section>
-
-        <section id="pricing-panel-fiscal" class="control-section pricing-tab-panel" role="tabpanel" aria-labelledby="pricing-tab-fiscal" data-pricing-panel="fiscal" hidden>
-          <div class="tab-panel-heading">
-            <p class="section-title">Contexto fiscal</p>
-            <p class="section-description">A Focus NFe valida a classificação NCM. Os demais dados precisam ser confirmados com seu contador.</p>
-          </div>
-          <div class="field-grid">
-            <div class="sidebar-field">
-              <label for="ncmCode">NCM (8 dígitos)</label>
-              <div class="search-row fiscal-search-row">
-                <input id="ncmCode" type="text" inputmode="numeric" maxlength="8" pattern="[0-9]{8}" placeholder="Ex.: 90049090" autocomplete="off" />
-                <button id="ncmLookupButton" class="market-search-button" type="button">Consultar</button>
-              </div>
-              <p id="ncmLookupStatus" class="helper-text" role="status">A consulta ocorre no backend; nenhuma credencial é enviada ao navegador.</p>
-              <p id="ncmDescription" class="fiscal-description" hidden></p>
-            </div>
-            <div class="sidebar-field">
-              <label for="taxRegime">Regime tributário</label>
-              <select id="taxRegime">
-                <option value="">Selecione</option>
-                <option value="simples-nacional">Simples Nacional</option>
-                <option value="lucro-presumido">Lucro Presumido</option>
-                <option value="lucro-real">Lucro Real</option>
-                <option value="mei">MEI</option>
-                <option value="outro">Outro / confirmar</option>
-              </select>
-            </div>
-            <div class="sidebar-grid sidebar-grid--two">
-              <div class="sidebar-field">
-                <label for="originState">UF de origem</label>
-                <input id="originState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="SP" autocomplete="off" />
-              </div>
-              <div class="sidebar-field">
-                <label for="destinationState">UF de destino</label>
-                <input id="destinationState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="RJ" autocomplete="off" />
-              </div>
-            </div>
-            <div class="sidebar-grid sidebar-grid--two">
-              <div class="sidebar-field">
-                <label for="cfop">CFOP</label>
-                <input id="cfop" type="text" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="5102" autocomplete="off" />
-              </div>
-              <div class="sidebar-field">
-                <label for="taxSituation">CST/CSOSN</label>
-                <input id="taxSituation" type="text" maxlength="4" placeholder="Ex.: 00 ou 102" autocomplete="off" />
-              </div>
-            </div>
-            <div class="sidebar-field">
-              <label for="customerType">Tipo de cliente</label>
-              <select id="customerType">
-                <option value="">Selecione</option>
-                <option value="contribuinte">Contribuinte de ICMS</option>
-                <option value="nao-contribuinte">Não contribuinte</option>
-                <option value="consumidor-final">Consumidor final</option>
-              </select>
-            </div>
-            <div class="sidebar-field">
-              <label for="operationPurpose">Finalidade da operação</label>
-              <select id="operationPurpose">
-                <option value="">Selecione</option>
-                <option value="venda">Venda normal</option>
-                <option value="revenda">Revenda</option>
-                <option value="industrializacao">Industrialização</option>
-                <option value="consumo">Uso/consumo</option>
-                <option value="ativo">Ativo imobilizado</option>
-                <option value="outra">Outra / confirmar</option>
-              </select>
-            </div>
-          </div>
-          <footer class="pricing-step-actions">
-            <button class="pricing-step-button secondary-button" type="button" data-pricing-go="product"><span aria-hidden="true">←</span> Anterior</button>
             <button class="pricing-step-button" type="button" data-pricing-go="direct">Próximo <span aria-hidden="true">→</span></button>
           </footer>
         </section>
@@ -335,7 +258,7 @@
             </div>
           </div>
           <footer class="pricing-step-actions">
-            <button class="pricing-step-button secondary-button" type="button" data-pricing-go="fiscal"><span aria-hidden="true">←</span> Anterior</button>
+            <button class="pricing-step-button secondary-button" type="button" data-pricing-go="product"><span aria-hidden="true">←</span> Anterior</button>
             <button class="pricing-step-button" type="button" data-pricing-go="indirect">Próximo <span aria-hidden="true">→</span></button>
           </footer>
         </section>
@@ -431,8 +354,8 @@
 
         <section id="pricing-panel-market" class="control-section pricing-tab-panel" role="tabpanel" aria-labelledby="pricing-tab-market" data-pricing-panel="market" hidden>
           <div class="tab-panel-heading">
-            <p class="section-title">Mercado e margem</p>
-            <p class="section-description">Defina a meta de lucro e compare seu preço com o mercado.</p>
+            <p class="section-title">Consulta de Mercado</p>
+            <p class="section-description">Pesquise um produto para comparar seu preço com valores reais de mercado e analisar o impacto tributário quando disponível.</p>
           </div>
           <div class="field-grid">
             <div class="sidebar-field">
@@ -448,15 +371,73 @@
                 <span class="input-affix input-prefix" aria-hidden="true">R$</span>
                 <input id="competitorAverage" type="number" inputmode="decimal" min="0.01" max="1000000" step="0.01" value="32" />
               </div>
+              <p id="manualMarketStatus" class="helper-text">Alternativa manual. O valor é preservado quando você seleciona um produto da Amazon.</p>
             </div>
             <div class="market-search">
-              <label for="amazonQuery">Produto na Amazon</label>
+              <label for="amazonQuery">Produto</label>
               <div class="search-row">
-                <input id="amazonQuery" type="text" placeholder="Ex.: iPhone 13 128GB" autocomplete="off" />
-                <button id="amazonSearchButton" class="market-search-button" type="button">Pesquisar</button>
+                <input id="amazonQuery" type="text" placeholder="Ex.: iPhone 15 Pro Max" autocomplete="off" />
+                <button id="amazonSearchButton" class="market-search-button" type="button">Pesquisar produto</button>
               </div>
-              <p id="amazonSearchStatus" class="helper-text" role="status">A pesquisa é opcional. Use a mediana apenas quando os comparáveis fizerem sentido.</p>
+              <p id="amazonSearchStatus" class="helper-text" role="status">A pesquisa é opcional e usa a Amazon Creators API pelo backend.</p>
             </div>
+
+            <section id="amazonPanel" class="amazon-panel market-results-panel" aria-labelledby="amazon-title" hidden>
+              <div class="panel-heading compact">
+                <div><p class="eyebrow">Amazon</p><h3 id="amazon-title">Produtos encontrados</h3></div>
+              </div>
+              <div id="amazonStats" class="amazon-stats"></div>
+              <div id="amazonResults" class="amazon-results"></div>
+            </section>
+
+            <article id="selectedMarketProduct" class="selected-market-product" aria-live="polite" hidden></article>
+
+            <section class="market-tax-context" aria-labelledby="market-tax-title">
+              <div class="tab-panel-heading compact">
+                <p class="section-title" id="market-tax-title">Dados para análise fiscal</p>
+                <p class="section-description">A Focus NFe apenas valida um NCM informado. Ela não classifica o produto automaticamente nem calcula tributos.</p>
+              </div>
+              <div class="sidebar-field">
+                <label for="ncmCode">NCM (8 dígitos, quando conhecido)</label>
+                <div class="search-row fiscal-search-row">
+                  <input id="ncmCode" type="text" inputmode="numeric" maxlength="8" pattern="[0-9]{8}" placeholder="Confirme com seu contador" autocomplete="off" />
+                  <button id="ncmLookupButton" class="market-search-button" type="button">Validar NCM</button>
+                </div>
+                <p id="ncmLookupStatus" class="helper-text" role="status">A classificação fiscal precisa ser confirmada; o nome do produto não determina um NCM confiável.</p>
+                <p id="ncmDescription" class="fiscal-description" hidden></p>
+              </div>
+              <div class="sidebar-field">
+                <label for="taxRegime">Regime tributário</label>
+                <select id="taxRegime">
+                  <option value="">Selecione</option>
+                  <option value="simples-nacional">Simples Nacional</option>
+                  <option value="lucro-presumido">Lucro Presumido</option>
+                  <option value="lucro-real">Lucro Real</option>
+                  <option value="mei">MEI</option>
+                  <option value="outro">Outro / confirmar</option>
+                </select>
+              </div>
+              <div class="sidebar-grid sidebar-grid--two">
+                <div class="sidebar-field"><label for="originState">UF de origem</label><input id="originState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="SP" autocomplete="off" /></div>
+                <div class="sidebar-field"><label for="destinationState">UF de destino</label><input id="destinationState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="SP" autocomplete="off" /></div>
+              </div>
+              <div class="sidebar-field">
+                <label for="customerType">Tipo de cliente</label>
+                <select id="customerType"><option value="">Selecione</option><option value="contribuinte">Contribuinte de ICMS</option><option value="nao-contribuinte">Não contribuinte</option><option value="consumidor-final">Consumidor final</option></select>
+              </div>
+              <details class="fiscal-advanced-fields">
+                <summary>Dados fiscais adicionais</summary>
+                <p class="helper-text">Preencha somente quando sua regra fiscal ou contador exigir.</p>
+                <div class="sidebar-grid sidebar-grid--two">
+                  <div class="sidebar-field"><label for="cfop">CFOP</label><input id="cfop" type="text" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="5102" autocomplete="off" /></div>
+                  <div class="sidebar-field"><label for="taxSituation">CST/CSOSN</label><input id="taxSituation" type="text" maxlength="4" placeholder="Ex.: 00 ou 102" autocomplete="off" /></div>
+                </div>
+                <div class="sidebar-field">
+                  <label for="operationPurpose">Finalidade da operação</label>
+                  <select id="operationPurpose"><option value="">Selecione</option><option value="venda">Venda normal</option><option value="revenda">Revenda</option><option value="industrializacao">Industrialização</option><option value="consumo">Uso/consumo</option><option value="ativo">Ativo imobilizado</option><option value="outra">Outra / confirmar</option></select>
+                </div>
+              </details>
+            </section>
           </div>
           <footer class="pricing-step-actions">
             <button class="pricing-step-button secondary-button" type="button" data-pricing-go="sales"><span aria-hidden="true">←</span> Anterior</button>
@@ -528,12 +509,16 @@
           <div class="dashboard-summary-grid">
             <article class="summary-card summary-card-primary">
               <div class="summary-card-heading">
-                <div><p class="eyebrow">Preço calculado</p><h3>Preço mínimo sustentável</h3></div>
+                <div><p class="eyebrow">Seu preço sustentável</p><h3>Preço mínimo sustentável</h3></div>
                 <span id="priceStatus" class="confidence">Cálculo financeiro</span>
               </div>
               <strong id="suggestedPrice" class="summary-value">R$ 0,00</strong>
               <p class="summary-context">Margem líquida estimada: <strong id="estimatedMargin">0%</strong></p>
               <p id="recommendationText" class="summary-description"></p>
+              <div id="primaryMarketValues" class="primary-market-values" hidden>
+                <div><span>Preço de mercado</span><strong id="primaryMarketPrice">R$ 0,00</strong></div>
+                <div id="primaryTaxImpact" hidden><span>Mercado + impacto tributário</span><strong id="primaryTaxAdjustedPrice">R$ 0,00</strong></div>
+              </div>
               <div class="summary-primary-actions">
                 <div class="save-product-row">
                   <button id="saveProductButton" type="button">Salvar produto</button>
@@ -547,8 +532,9 @@
               <div class="summary-card-heading">
                 <div><p class="eyebrow">Mercado</p><h3 id="marketTitle">Comestíveis</h3></div>
               </div>
-              <span class="summary-label">Preço médio dos concorrentes</span>
+              <span id="marketPriceLabel" class="summary-label">Preço médio dos concorrentes</span>
               <strong id="marketPrice" class="summary-value compact">R$ 0,00</strong>
+              <p id="marketReferenceDetails" class="market-reference-details">Fonte: valor manual</p>
               <progress id="marketMeter" class="market-meter compact-meter" max="100" value="0" aria-label="Relação entre o preço calculado e o preço médio de mercado"></progress>
               <p id="marketStatus" class="summary-description"></p>
               <div id="amazonSummary" class="amazon-summary" hidden></div>
@@ -663,14 +649,6 @@
             <div id="fiscalSummary" class="fiscal-summary"></div>
           </article>
 
-          <section id="amazonPanel" class="amazon-panel" aria-labelledby="amazon-title" hidden>
-            <div class="panel-heading compact">
-              <div><p class="eyebrow">Amazon</p><h3 id="amazon-title">Anúncios comparáveis</h3></div>
-              <button id="applyAmazonMarket" type="button" class="secondary-button" disabled>Usar mediana</button>
-            </div>
-            <div id="amazonStats" class="amazon-stats"></div>
-            <div id="amazonResults" class="amazon-results"></div>
-          </section>
         </section>
       </section>
 

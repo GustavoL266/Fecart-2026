@@ -65,7 +65,7 @@ class FakeElement {
 }
 
 function createFixture() {
-  const sectionNames = ["product", "fiscal", "direct", "indirect", "production", "sales", "market", "terms"];
+  const sectionNames = ["product", "direct", "indirect", "production", "sales", "market", "terms"];
   const tabs = sectionNames.map((section) => {
     const tab = new FakeElement({ dataset: { pricingTab: section, pricingLabel: section } });
     tab.status = new FakeElement();
@@ -115,7 +115,7 @@ test("trocar de aba mantém valores e exibe somente o painel ativo", () => {
 
   assert.equal(controller.getActiveSection(), "product");
   assert.equal(fixture.panels[0].hidden, false);
-  assert.equal(fixture.panels.filter((panel) => panel.hidden).length, 7);
+  assert.equal(fixture.panels.filter((panel) => panel.hidden).length, 6);
 
   fixture.fields.materialsCost.value = "37.5";
   controller.activate("direct");
@@ -123,8 +123,8 @@ test("trocar de aba mantém valores e exibe somente o painel ativo", () => {
   controller.activate("direct");
 
   assert.equal(fixture.fields.materialsCost.value, "37.5");
-  assert.equal(fixture.panels[2].hidden, false);
-  assert.equal(fixture.panels.filter((panel) => panel.hidden).length, 7);
+  assert.equal(fixture.panels[1].hidden, false);
+  assert.equal(fixture.panels.filter((panel) => panel.hidden).length, 6);
   assert.equal(fixture.root.scrollTop, 0);
 });
 
@@ -135,7 +135,7 @@ test("abas aceitam teclado, navegação direta e indicador de preenchimento", ()
   let prevented = false;
   fixture.tabs[0].emit("keydown", { key: "ArrowRight", preventDefault: () => { prevented = true; } });
   assert.equal(prevented, true);
-  assert.equal(controller.getActiveSection(), "fiscal");
+  assert.equal(controller.getActiveSection(), "direct");
   assert.equal(fixture.tabs[1].focused, true);
 
   fixture.goToMarket.emit("click");

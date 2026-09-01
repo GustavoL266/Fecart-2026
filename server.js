@@ -10,6 +10,7 @@ import { rateLimit } from "express-rate-limit";
 import { getAmazonCreatorsConfig, getConfig, getFocusNfeConfig } from "./lib/config.js";
 import { pool, verifyDatabase } from "./lib/database.js";
 import { amazonErrorForClient, AmazonCreatorsError, createAmazonCreatorsClient, redactAmazonSensitiveData } from "./lib/amazon-creators-client.js";
+import { runAmazonSearch } from "./lib/amazon-search.js";
 import { createFocusNFeClient, focusNFeErrorForClient, FocusNFeError, redactFocusNFeSensitiveData } from "./lib/focus-nfe-client.js";
 import { productForClient, userForClient } from "./lib/models.js";
 import { hashPassword, verifyPassword } from "./lib/passwords.js";
@@ -29,6 +30,7 @@ console.info(
 );
 console.info(
   `[Amazon] Provider: Creators API | configured=${amazonConfig.isConfigured} | marketplace=${amazonConfig.marketplace}`,
+  amazonConfig.isConfigured ? {} : { missingEnvironmentVariables: amazonConfig.missingEnvironmentVariables },
 );
 
 app.disable("x-powered-by");
@@ -205,7 +207,9 @@ app.get("/health", async (req, res, next) => {
       },
       amazon: {
         configured: amazonConfig.isConfigured,
+        credentialVersion: amazonConfig.credentialVersion,
         marketplace: amazonConfig.marketplace,
+        missingEnvironmentVariables: amazonConfig.missingEnvironmentVariables,
         provider: "Amazon Creators API",
       },
     });
@@ -217,13 +221,7 @@ app.get("/health", async (req, res, next) => {
 app.get("/amazon/search", requireAuth, amazonSearchLimiter, async (req, res, next) => {
   try {
     const { q } = validate(amazonSearchSchema, req.query);
-    if (!amazonClient) {
-      throw new AmazonCreatorsError(
-        "A consulta da Amazon ainda não foi configurada. Informe o preço médio dos concorrentes manualmente.",
-        { code: "AMAZON_NOT_CONFIGURED", status: 503 },
-      );
-    }
-    const result = await amazonClient.search(q);
+    const result = await runAmazonSearch({ client: amazonClient, config: amazonConfig, query: q });
     return res.json(result);
   } catch (error) {
     return next(error);
@@ -262,13 +260,13 @@ app.get("/products", requireAuth, async (req, res, next) => {
     const { search, sort, limit } = validate(productListSchema, req.query);
     const direction = sort === "asc" ? "ASC" : "DESC";
     const { rows } = await pool.query(
-      `SELECT ${productColumns(false)} FROM products
+      `SELECT ${productColumns()} FROM products
        WHERE user_id = $1 AND name ILIKE $2
        ORDER BY consultation_date ${direction}, created_at ${direction}
        LIMIT $3`,
       [req.user.id, `%${search}%`, limit],
     );
-    return res.json({ products: rows.map((row) => productForClient(row, false)) });
+    return res.json({ products: rows.map((row) => productForClient(row)) });
   } catch (error) {
     return next(error);
   }

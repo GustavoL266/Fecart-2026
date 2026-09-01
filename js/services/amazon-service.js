@@ -1,5 +1,10 @@
 import { api } from "./api-client.js";
 
+const ACCESSORY_TERMS = new Set([
+  "acessorio", "accessory", "cabo", "cable", "capa", "case", "carregador", "charger",
+  "pelicula", "protector", "suporte", "holder",
+]);
+
 function normalizeText(value) {
   return String(value)
     .normalize("NFD")
@@ -16,8 +21,12 @@ function extractTokens(value) {
 function isComparable(item, query) {
   const queryTokens = extractTokens(query);
   const titleTokens = extractTokens(item.title);
+  const categoryTokens = extractTokens(item.category);
   const compactTitle = normalizeText(item.title).replace(/\s+/g, "");
-  return queryTokens.every((token) => titleTokens.includes(token) || compactTitle.includes(token));
+  const introducesAccessory = [...ACCESSORY_TERMS].some((term) =>
+    (titleTokens.includes(term) || categoryTokens.includes(term)) && !queryTokens.includes(term));
+  return !introducesAccessory
+    && queryTokens.every((token) => titleTokens.includes(token) || compactTitle.includes(token));
 }
 
 function calculateMedian(values) {
@@ -54,10 +63,13 @@ function normalizeItem(item) {
   ) return null;
 
   return {
+    id: String(item.id || item.asin),
     asin: String(item.asin),
     title: String(item.title),
     price,
+    source: "Amazon",
     currency: "BRL",
+    category: String(item.category || ""),
     image: String(item.image || ""),
     url: String(item.url),
   };
@@ -72,7 +84,7 @@ export class AmazonService {
 
   async search(query) {
     const normalizedQuery = String(query || "").trim().replace(/\s+/g, " ");
-    const response = await this.#api.get(`/amazon/search?q=${encodeURIComponent(normalizedQuery)}`);
+    const response = await this.#api.get(`/amazon/search?q=${encodeURIComponent(normalizedQuery)}`, { handleUnauthorized: false });
     const seenAsins = new Set();
     const items = (Array.isArray(response?.items) ? response.items : [])
       .map(normalizeItem)

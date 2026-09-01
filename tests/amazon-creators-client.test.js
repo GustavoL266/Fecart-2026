@@ -28,6 +28,7 @@ function sampleSearchResponse() {
         {
           asin: "B0TESTEBRL",
           detailPageURL: "https://www.amazon.com.br/dp/B0TESTEBRL?tag=teste-20",
+          browseNodeInfo: { browseNodes: [{ contextFreeName: "Celulares e Smartphones" }] },
           images: { primary: { medium: { url: "https://m.media-amazon.com/images/I/teste.jpg" } } },
           itemInfo: { title: { displayValue: "Produto brasileiro" } },
           offersV2: { listings: [{ price: { money: { amount: 1299.9, currency: "BRL" } } }] },
@@ -111,16 +112,21 @@ test("usa OAuth 2.0 no backend, chama SearchItems e normaliza somente ofertas BR
   const searchBody = JSON.parse(calls[1].options.body);
   assert.equal(searchBody.marketplace, "www.amazon.com.br");
   assert.equal(searchBody.partnerTag, "parceiro-teste-20");
+  assert.equal(searchBody.itemCount, 5);
   assert.deepEqual(searchBody.resources, [
+    "browseNodeInfo.browseNodes",
     "images.primary.medium",
     "itemInfo.title",
     "offersV2.listings.price",
   ]);
   assert.deepEqual(result.items, [{
+    id: "B0TESTEBRL",
     asin: "B0TESTEBRL",
     title: "Produto brasileiro",
     price: 1299.9,
+    source: "Amazon",
     currency: "BRL",
+    category: "Celulares e Smartphones",
     image: "https://m.media-amazon.com/images/I/teste.jpg",
     url: "https://www.amazon.com.br/dp/B0TESTEBRL?tag=teste-20",
   }]);
@@ -190,6 +196,60 @@ test("faz retry limitado para 429 e não expõe credenciais ou tokens", async ()
   );
   const error = new AmazonCreatorsError("Falha segredo-ficticio", { code: "TEST" });
   assert.equal(JSON.stringify(amazonErrorForClient(error, ["segredo-ficticio"])).includes("segredo-ficticio"), false);
+});
+
+test("diferencia credencial inválida, falta de permissão e Partner Tag incompatível", async (context) => {
+  await context.test("credencial inválida no OAuth", async () => {
+    const client = clientWith(async () => response(400, { error: "invalid_client" }));
+    await assert.rejects(() => client.search("Iphone"), { code: "AMAZON_AUTHENTICATION_FAILED", status: 401 });
+  });
+
+  await context.test("conta sem permissão", async () => {
+    const client = clientWith(async (url) => url.includes("/auth/o2/token")
+      ? response(200, { access_token: "token-ficticio", expires_in: 3600 })
+      : response(403, { type: "AccessDeniedException", reason: "AssociateNotEligible" }));
+    await assert.rejects(() => client.search("Iphone"), { code: "AMAZON_ACCESS_DENIED", status: 403 });
+  });
+
+  await context.test("Partner Tag inválido", async () => {
+    const client = clientWith(async (url) => url.includes("/auth/o2/token")
+      ? response(200, { access_token: "token-ficticio", expires_in: 3600 })
+      : response(400, { type: "ValidationException", reason: "InvalidPartnerTag" }));
+    await assert.rejects(() => client.search("Iphone"), { code: "AMAZON_PARTNER_TAG_INVALID", status: 400 });
+  });
+});
+
+test("diferencia timeout e indisponibilidade do provedor", async (context) => {
+  await context.test("timeout", async () => {
+    const timeout = new Error("timeout");
+    timeout.name = "TimeoutError";
+    const client = clientWith(async () => { throw timeout; });
+    await assert.rejects(() => client.search("iPhone 15 Pro Max"), { code: "AMAZON_TIMEOUT", status: 504 });
+  });
+
+  await context.test("API indisponível", async () => {
+    const client = clientWith(async (url) => url.includes("/auth/o2/token")
+      ? response(200, { access_token: "token-ficticio", expires_in: 3600 })
+      : response(503));
+    await assert.rejects(() => client.search("iPhone 15 Pro Max"), { code: "AMAZON_UNAVAILABLE", status: 503 });
+  });
+});
+
+test("mantém resultado vazio e reutiliza cache curto para pesquisa repetida", async () => {
+  let searchCalls = 0;
+  let now = 1_000;
+  const client = clientWith(async (url) => {
+    if (url.includes("/auth/o2/token")) return response(200, { access_token: "token-ficticio", expires_in: 3600 });
+    searchCalls += 1;
+    return response(200, { searchResult: { items: [] } });
+  }, { now: () => now, searchCacheTtlMs: 300_000 });
+
+  assert.deepEqual((await client.search("Iphone")).items, []);
+  assert.equal((await client.search("iphone")).cached, true);
+  assert.equal(searchCalls, 1);
+  now += 300_001;
+  await client.search("Iphone");
+  assert.equal(searchCalls, 2);
 });
 
 test("rejeita consulta vazia sem fazer requisição", async () => {

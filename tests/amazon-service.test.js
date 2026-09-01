@@ -20,7 +20,7 @@ test("calcula a mediana local somente com preços BRL válidos", () => {
   assert.equal(stats.max, 40);
 });
 
-test("consulta somente a rota interna e descarta itens incompletos", async () => {
+test("consulta somente a rota interna e descarta itens incompletos ou acessórios não solicitados", async () => {
   const calls = [];
   const service = new AmazonService({
     async get(path) {
@@ -28,9 +28,10 @@ test("consulta somente a rota interna e descarta itens incompletos", async () =>
       return {
         marketplace: "www.amazon.com.br",
         items: [
-          { asin: "B001", title: "Produto teste", price: 99.9, currency: "BRL", image: "https://imagem", url: "https://amazon" },
+          { asin: "B001", title: "Produto teste", price: 99.9, currency: "BRL", category: "Eletrônicos", image: "https://imagem", url: "https://amazon" },
           { asin: "B002", title: "Sem preço", price: null, currency: "BRL", url: "https://amazon" },
           { asin: "B003", title: "Item incompatível", price: 10, currency: "BRL", url: "https://amazon" },
+          { asin: "B004", title: "Capa para Produto teste", price: 20, currency: "BRL", category: "Acessórios", url: "https://amazon" },
         ],
       };
     },
@@ -39,5 +40,6 @@ test("consulta somente a rota interna e descarta itens incompletos", async () =>
   const result = await service.search("  produto   teste ");
   assert.deepEqual(calls, ["/amazon/search?q=produto%20teste"]);
   assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].category, "Eletrônicos");
   assert.equal(result.stats.median, 99.9);
 });

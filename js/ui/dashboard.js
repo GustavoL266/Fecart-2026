@@ -6,7 +6,9 @@ import { renderPriceDetails } from "./detail-pages.js";
 function marketComparisonText(inputs, result, marketStats, marketSource) {
   const difference = Math.abs(inputs.competitorAverage - result.minimumPrice);
   const source =
-    marketSource === "amazon-median"
+    marketSource === "amazon-product"
+      ? "referência selecionada na Amazon"
+      : marketSource === "amazon-median"
       ? "mediana dos produtos comparáveis da Amazon"
       : "média informada";
   const relativeGap = Math.abs(result.marketGap);
@@ -88,18 +90,21 @@ function renderAmazonPanel(document, result, amazonState) {
   const summary = document.querySelector("#amazonSummary");
   const statsContainer = document.querySelector("#amazonStats");
   const resultsContainer = document.querySelector("#amazonResults");
-  const applyButton = document.querySelector("#applyAmazonMarket");
   const searchButton = document.querySelector("#amazonSearchButton");
   const searchStatus = document.querySelector("#amazonSearchStatus");
+  const selectedContainer = document.querySelector("#selectedMarketProduct");
 
   panel.hidden = amazonState.status === "idle";
-  summary.hidden = !amazonState.stats;
-  applyButton.disabled = !amazonState.stats || amazonState.status === "loading";
+  summary.hidden = !amazonState.selectedItem;
   searchButton.disabled = amazonState.status === "loading";
-  searchButton.textContent = amazonState.status === "loading" ? "Pesquisando..." : "Pesquisar";
+  searchButton.textContent = amazonState.status === "loading" ? "Buscando preços..." : "Pesquisar produto";
+  selectedContainer.hidden = !amazonState.selectedItem;
+  selectedContainer.innerHTML = amazonState.selectedItem
+    ? `<p class="eyebrow">Produto escolhido</p><strong>${escapeHtml(amazonState.selectedItem.title)}</strong><span>${currency.format(amazonState.selectedItem.price)} · Fonte: Amazon</span><small>Classificação fiscal pendente de confirmação.</small><button type="button" class="secondary-button" data-restore-manual-market>Usar valor manual anterior</button>`
+    : "";
 
   if (amazonState.status === "loading") {
-    searchStatus.textContent = "Consultando produtos na Amazon Brasil...";
+    searchStatus.textContent = "Buscando preços...";
     statsContainer.innerHTML = '<p class="helper-text">Buscando ofertas pela Amazon Creators API.</p>';
     resultsContainer.innerHTML = "";
     return;
@@ -117,14 +122,14 @@ function renderAmazonPanel(document, result, amazonState) {
   }
 
   if (amazonState.status === "empty") {
-    searchStatus.textContent = "Nenhum produto com preço disponível foi encontrado.";
+    searchStatus.textContent = "Não encontramos produtos compatíveis.";
     statsContainer.innerHTML = '<p class="helper-text">Tente informar marca, modelo, capacidade, tamanho ou voltagem com mais precisão.</p>';
     resultsContainer.innerHTML = "";
     return;
   }
 
   if (!amazonState.stats) {
-    searchStatus.textContent = "A pesquisa é opcional. A média manual só muda quando você escolher usar a mediana.";
+    searchStatus.textContent = "A pesquisa é opcional. O valor manual só muda quando você escolher um produto.";
     statsContainer.innerHTML = "";
     resultsContainer.innerHTML = "";
     return;
@@ -136,7 +141,9 @@ function renderAmazonPanel(document, result, amazonState) {
   const [badgeType, badgeText] = result.isValid ? marketBadgeForGap(marketGap) : ["risk", "Revise percentuais"];
 
   searchStatus.textContent = `${stats.count} produto(s) com preço em BRL analisado(s).`;
-  summary.innerHTML = `<span>Referência Amazon</span><strong>${currency.format(stats.median)}</strong><small>Mediana de ${stats.count} produto(s) exibido(s)</small>`;
+  summary.innerHTML = amazonState.selectedItem
+    ? `<span>Fonte: Amazon</span><strong>${currency.format(amazonState.selectedItem.price)}</strong><small>${escapeHtml(amazonState.selectedItem.title)}</small>`
+    : "";
   statsContainer.innerHTML = `
     <div><span>Menor preço</span><strong>${currency.format(stats.min)}</strong></div>
     <div><span>Preço médio</span><strong>${currency.format(stats.average)}</strong></div>
@@ -146,14 +153,15 @@ function renderAmazonPanel(document, result, amazonState) {
     <div><span>Confiança</span><strong>${reliabilityText}</strong></div>`;
   resultsContainer.innerHTML = amazonState.items
     .map((item) => `
-        <article class="amazon-result">
+        <article class="amazon-result${amazonState.selectedItem?.asin === item.asin ? " selected" : ""}">
           ${item.image ? `<img src="${escapeHtml(item.image)}" alt="">` : '<div class="amazon-image-placeholder"></div>'}
           <div>
             <h4>${escapeHtml(item.title)}</h4>
-            <p>ASIN: ${escapeHtml(item.asin)}</p>
+            <p>${escapeHtml(item.category || "Categoria não informada")} · ASIN: ${escapeHtml(item.asin)}</p>
             <strong>${currency.format(item.price)}</strong>
           </div>
           <div class="amazon-actions">
+            <button type="button" data-amazon-select="${escapeHtml(item.asin)}">${amazonState.selectedItem?.asin === item.asin ? "Produto selecionado" : "Usar este produto"}</button>
             <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver na Amazon</a>
           </div>
         </article>`)
@@ -163,11 +171,30 @@ function renderAmazonPanel(document, result, amazonState) {
 export function renderDashboard(document, inputs, result, amazonState, marketSource, fiscalAssessment, memory) {
   const { costs } = result;
   const activeMarketStats = marketSource === "amazon-median" ? amazonState.stats : null;
+  const selectedAmazonProduct = marketSource === "amazon-product" ? amazonState.selectedItem : null;
   const alerts = dashboardAlerts(inputs, result, fiscalAssessment);
 
   document.querySelector("#baseCost").textContent = currency.format(costs.baseCost);
   document.querySelector("#marketPrice").textContent = currency.format(inputs.competitorAverage);
-  document.querySelector("#marketTitle").textContent = inputs.productType;
+  document.querySelector("#marketTitle").textContent = selectedAmazonProduct ? "Referência Amazon" : inputs.productType;
+  document.querySelector("#marketReferenceDetails").textContent = selectedAmazonProduct
+    ? `Fonte: Amazon · Produto: ${selectedAmazonProduct.title}`
+    : "Fonte: valor manual";
+  document.querySelector("#marketPriceLabel").textContent = selectedAmazonProduct
+    ? "Preço do produto selecionado"
+    : "Preço médio dos concorrentes";
+
+  const primaryMarketValues = document.querySelector("#primaryMarketValues");
+  const primaryTaxImpact = document.querySelector("#primaryTaxImpact");
+  primaryMarketValues.hidden = !selectedAmazonProduct;
+  document.querySelector("#primaryMarketPrice").textContent = currency.format(selectedAmazonProduct?.price || 0);
+  const hasRealTaxImpact = fiscalAssessment.automaticCalculation
+    && fiscalAssessment.complete
+    && Number.isFinite(fiscalAssessment.marketAdjustedPrice);
+  primaryTaxImpact.hidden = !hasRealTaxImpact;
+  document.querySelector("#primaryTaxAdjustedPrice").textContent = hasRealTaxImpact
+    ? currency.format(fiscalAssessment.marketAdjustedPrice)
+    : "";
 
   const suggestedPrice = document.querySelector("#suggestedPrice");
   const profitPerSale = document.querySelector("#profitPerSale");

@@ -10,7 +10,7 @@
     "build": "node scripts/build.mjs",
     "lint": "node scripts/lint.mjs",
     "focus:check": "node scripts/check-focus-nfe.mjs",
-    "test": "node --test"
+    "test": "node --test --test-isolation=none"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

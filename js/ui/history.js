@@ -8,6 +8,19 @@ function detail(label, value, extraClass = "") {
   return `<div class="${extraClass}"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`;
 }
 
+function savedMarket(product) {
+  const market = product.calculationData?.market;
+  const price = Number(market?.selectedProduct?.price ?? market?.marketPrice ?? market?.stats?.median);
+  if (!Number.isFinite(price) || price <= 0 || !String(market?.source || "").startsWith("amazon-")) return null;
+  const relativeDifference = (product.suggestedPrice - price) / price;
+  return {
+    difference: `${Math.abs(relativeDifference * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% ${relativeDifference <= 0 ? "abaixo" : "acima"}`,
+    price,
+    productTitle: market.selectedProduct?.title || market.query || "Produto consultado",
+    source: "Amazon",
+  };
+}
+
 export function renderProductsList(container, products) {
   if (products.length === 0) {
     container.innerHTML = '<div class="empty-history">Nenhum produto encontrado. Salve uma precificação no assistente para montar seu histórico.</div>';
@@ -15,8 +28,9 @@ export function renderProductsList(container, products) {
   }
 
   container.innerHTML = products
-    .map(
-      (product) => `
+    .map((product) => {
+      const market = savedMarket(product);
+      return `
         <article class="product-card">
           <div>
             <p class="eyebrow">${escapeHtml(product.category)}</p>
@@ -25,6 +39,7 @@ export function renderProductsList(container, products) {
               <span>Custo: <strong>${currency.format(product.costPrice)}</strong></span>
               <span>Margem: <strong>${Number(product.profitMargin).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%</strong></span>
               <span>Preço sugerido: <strong>${currency.format(product.suggestedPrice)}</strong></span>
+              ${market ? `<span>Mercado na data: <strong>${currency.format(market.price)}</strong></span><span>Diferença: <strong>${escapeHtml(market.difference)}</strong></span><span>Fonte: <strong>${market.source}</strong></span>` : ""}
               <span>Criado em: <strong>${escapeHtml(formatDate(product.consultationDate))}</strong></span>
             </div>
           </div>
@@ -34,14 +49,15 @@ export function renderProductsList(container, products) {
             <button type="button" class="secondary-button" data-product-action="edit" data-product-id="${escapeHtml(product.id)}">Editar</button>
             <button type="button" class="danger-button" data-product-action="delete" data-product-id="${escapeHtml(product.id)}">Excluir</button>
           </div>
-        </article>`,
-    )
+        </article>`;
+    })
     .join("");
 }
 
 export function renderProductDetails(container, product) {
   const description = product.description || "Sem descrição informada.";
   const fiscal = product.calculationData?.fiscal;
+  const market = savedMarket(product);
   const fiscalDetails = fiscal
     ? `
       ${detail("NCM", `${fiscal.ncm?.codigo || "Não informado"} (${fiscal.ncmSource || "origem desconhecida"})`)}
@@ -56,6 +72,7 @@ export function renderProductDetails(container, product) {
       ${detail("Custos adicionais", currency.format(product.additionalCosts))}
       ${detail("Margem desejada", `${Number(product.profitMargin).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`)}
       ${detail("Preço sugerido", currency.format(product.suggestedPrice))}
+      ${market ? `${detail("Produto de mercado", market.productTitle)}${detail("Mercado na data", currency.format(market.price))}${detail("Diferença", market.difference)}${detail("Fonte de mercado", market.source)}` : ""}
       ${detail("Data da consulta", formatDate(product.consultationDate))}
       ${detail("Última atualização", formatDate(product.updatedAt))}
       ${fiscalDetails}

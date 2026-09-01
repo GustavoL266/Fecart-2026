@@ -51,7 +51,7 @@ O assistente usa a Focus NFe apenas para consultar e validar a descrição de um
 
 ### Amazon Creators API
 
-A busca auxiliar de concorrentes usa a operação `SearchItems` da Amazon Creators API no marketplace `www.amazon.com.br`. O navegador chama apenas `GET /amazon/search`; OAuth 2.0, cache do access token, retry limitado e normalização de `Images`, `ItemInfo.Title` e `OffersV2.Listings.Price` ficam no backend.
+A busca de mercado usa a operação `SearchItems` da Amazon Creators API no marketplace `www.amazon.com.br`. O navegador chama apenas `GET /amazon/search`; OAuth 2.0, cache do access token, cache de pesquisa por cinco minutos, retry limitado e normalização de até cinco produtos ficam no backend. Cada resultado contém somente ASIN, título, preço BRL, categoria, imagem, URL e fonte permitidos pela resposta da API.
 
 Configure somente no ambiente do servidor:
 
@@ -64,7 +64,9 @@ AMAZON_MARKETPLACE=www.amazon.com.br
 AMAZON_CREATORS_TIMEOUT_MS=5000
 ```
 
-As três credenciais (`CREDENTIAL_ID`, `CREDENTIAL_SECRET` e `PARTNER_TAG`) devem ser obtidas nas contas Amazon Associates/Creators API autorizadas para o Brasil. Nunca coloque esses valores no frontend. Sem essas variáveis, ou se a Amazon estiver indisponível, o simulador continua funcionando normalmente com o campo manual **Preço médio local dos concorrentes (R$)**.
+As três primeiras variáveis sem valor padrão (`AMAZON_CREATORS_CREDENTIAL_ID`, `AMAZON_CREATORS_CREDENTIAL_SECRET` e `AMAZON_PARTNER_TAG`) são obrigatórias e devem vir da mesma conta Amazon Associates/Creators API aprovada para o Brasil. O Partner Tag precisa estar associado à credencial e à loja brasileira. Nunca coloque esses valores no frontend. Sem essas variáveis, o `/health` informa os nomes ausentes e a pesquisa fica indisponível; o simulador continua funcionando com o campo manual **Preço médio local dos concorrentes (R$)**.
+
+O endpoint diferencia configuração ausente (`503`), consulta inválida (`400`), credencial recusada (`401`), conta sem permissão (`403`), limite da Amazon (`429`), resposta externa inválida/erro do provedor (`502`), indisponibilidade (`503`) e timeout (`504`). Os logs registram apenas consulta, provedor, status, contagem e uso de cache — nunca credenciais, token ou cabeçalho de autorização.
 
 ## Publicação a partir do GitHub
 
@@ -76,7 +78,7 @@ O repositório contém [`render.yaml`](render.yaml), que publica a aplicação c
 2. No Render, escolha **New → Blueprint**, conecte o repositório e confirme os recursos propostos.
 3. O serviço cria o PostgreSQL, injeta `DATABASE_URL`, gera `SESSION_SECRET`, executa `npm run migrate` antes de cada publicação e inicia `npm start`.
 4. Configure no Web Service um `FOCUS_NFE_TOKEN` de produção. O Blueprint já seleciona `https://api.focusnfe.com.br` e o backend registra apenas `configured=true/false`, nunca o token.
-5. Para habilitar a pesquisa Amazon, configure `AMAZON_CREATORS_CREDENTIAL_ID`, `AMAZON_CREATORS_CREDENTIAL_SECRET` e `AMAZON_PARTNER_TAG`. O Blueprint já define a versão 3.1, o marketplace brasileiro e o timeout.
+5. Para habilitar a pesquisa Amazon, preencha manualmente no Web Service as variáveis marcadas como `sync: false`: `AMAZON_CREATORS_CREDENTIAL_ID`, `AMAZON_CREATORS_CREDENTIAL_SECRET` e `AMAZON_PARTNER_TAG`. A existência delas no `render.yaml` não preenche os segredos. O Blueprint já define `AMAZON_CREATORS_CREDENTIAL_VERSION=3.1`, `AMAZON_MARKETPLACE=www.amazon.com.br` e `AMAZON_CREATORS_TIMEOUT_MS=5000`.
 6. Abra a URL `https://…onrender.com` fornecida pelo Render. Essa é a URL que deve ser compartilhada e usada para criar contas.
 
 Não é preciso (nem correto) colocar credenciais no GitHub, no código ou no GitHub Pages. Se o Pages já estiver ativo no repositório, desative-o em **Settings → Pages** para evitar que usuários cheguem à cópia estática sem API.
@@ -88,6 +90,7 @@ O frontend e a API são servidos pelo mesmo processo; não há um segundo servid
 - `SESSION_SECRET não foi definida`: copie `.env.example` para `.env` e informe uma chave aleatória de pelo menos 32 caracteres.
 - `DATABASE_URL não foi definida` ou falha de conexão: inicie o PostgreSQL e confira host, porta, usuário, senha e nome do banco no `.env`.
 - `MIGRATIONS_PENDING`: execute `npm run migrate` (ou `pnpm migrate`) antes de iniciar a aplicação.
+- `amazon.configured: false` no `/health`: confira `amazon.missingEnvironmentVariables`; os valores continuam ocultos. Se estiver `true`, mas a busca responder `401`/`403`, confirme se a credencial Creators API está ativa, se a conta está elegível para a API e se o Partner Tag pertence à conta/marketplace brasileiro.
 
 Na inicialização, o servidor testa a conexão com o PostgreSQL e confirma que as tabelas exigidas existem. Assim, uma configuração incompleta aparece no terminal com a causa concreta, em vez de falhar apenas ao enviar o formulário.
 
@@ -156,7 +159,7 @@ O frontend sempre envia cookies com `credentials: "same-origin"`. A API nunca re
 1. Inicie banco, migrações e servidor.
 2. Acesse `http://localhost:3000` e crie uma conta.
 3. Informe o preço médio local dos concorrentes manualmente, gere a precificação e confirme que o fluxo funciona sem pesquisar na Amazon.
-4. Opcionalmente, pesquise um produto na Amazon, confira os comparáveis e clique em **Usar mediana**; o campo manual deve continuar editável.
+4. Opcionalmente, pesquise um produto na Amazon, confira os resultados e clique em **Usar este produto**; o preço individual selecionado passa a ser a referência de mercado, sem apagar a referência manual anterior.
 5. Clique em **Salvar produto**.
 6. Abra **Meus produtos**, pesquise, visualize, edite, reutilize e exclua um registro.
 7. Faça logout e login novamente: os produtos permanecem no banco.

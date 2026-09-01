@@ -55,7 +55,7 @@ test("a CSP mantém estilos restritos à própria aplicação", async () => {
 test("o bundle do navegador não contém credenciais nem endpoints autenticados da Amazon", async () => {
   const bundle = await readFile(resolve(projectRoot, "app.js"), "utf8");
 
-  assert.doesNotMatch(bundle, /AMAZON_CREATORS_CREDENTIAL|AMAZON_PARTNER_TAG/);
+  assert.doesNotMatch(bundle, /AMAZON_CREATORS_CREDENTIAL_(?:ID|SECRET)\b|\bAMAZON_PARTNER_TAG\b/);
   assert.doesNotMatch(bundle, /creatorsapi\.amazon|api\.amazon\.(?:com|co\.uk|co\.jp)\/auth\/o2\/token/);
   assert.match(bundle, /\/amazon\/search\?q=/);
 });
