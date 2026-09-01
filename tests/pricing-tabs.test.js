@@ -13,6 +13,14 @@ class FakeClassList {
     else this.values.delete(name);
   }
 
+  add(name) {
+    this.values.add(name);
+  }
+
+  remove(name) {
+    this.values.delete(name);
+  }
+
   contains(name) {
     return this.values.has(name);
   }
@@ -81,7 +89,15 @@ function createFixture() {
     "receiveDays", "payDays", "capitalRate",
   ];
   const fields = Object.fromEntries(fieldIds.map((id) => [id, new FakeElement({ value: id === "productName" ? "" : "1" })]));
-  const tabList = { clientWidth: 500, scrollWidth: 500, scrollTo() {} };
+  const tabList = new FakeElement();
+  tabList.clientWidth = 500;
+  tabList.scrollWidth = 800;
+  tabList.scrollLeft = 0;
+  tabList.capturedPointer = null;
+  tabList.scrollTo = ({ left }) => { tabList.scrollLeft = left; };
+  tabList.setPointerCapture = (pointerId) => { tabList.capturedPointer = pointerId; };
+  tabList.hasPointerCapture = (pointerId) => tabList.capturedPointer === pointerId;
+  tabList.releasePointerCapture = () => { tabList.capturedPointer = null; };
   const rootListeners = new Map();
   const root = {
     scrollTop: 180,
@@ -106,7 +122,7 @@ function createFixture() {
     },
   };
 
-  return { root, tabs, panels, fields, goToMarket };
+  return { root, tabs, panels, fields, goToMarket, tabList };
 }
 
 test("trocar de aba mantém valores e exibe somente o painel ativo", () => {
@@ -126,6 +142,22 @@ test("trocar de aba mantém valores e exibe somente o painel ativo", () => {
   assert.equal(fixture.panels[1].hidden, false);
   assert.equal(fixture.panels.filter((panel) => panel.hidden).length, 6);
   assert.equal(fixture.root.scrollTop, 0);
+});
+
+test("toque ou clique abre a aba e a captura do ponteiro acontece somente durante arraste", () => {
+  const fixture = createFixture();
+  const controller = createPricingTabs(fixture.root);
+
+  fixture.tabList.emit("pointerdown", { button: 0, pointerType: "touch", pointerId: 7, clientX: 120 });
+  assert.equal(fixture.tabList.capturedPointer, null);
+  fixture.tabs[2].emit("click", { preventDefault() {} });
+  assert.equal(controller.getActiveSection(), "indirect");
+
+  fixture.tabList.emit("pointerdown", { button: 0, pointerType: "touch", pointerId: 8, clientX: 120 });
+  fixture.tabList.emit("pointermove", { pointerId: 8, clientX: 80, preventDefault() {} });
+  assert.equal(fixture.tabList.capturedPointer, 8);
+  fixture.tabList.emit("pointerup", { pointerId: 8 });
+  assert.equal(fixture.tabList.capturedPointer, null);
 });
 
 test("abas aceitam teclado, navegação direta e indicador de preenchimento", () => {

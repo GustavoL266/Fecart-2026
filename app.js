@@ -1224,13 +1224,15 @@ function createPricingTabs(root) {
       scrollStart = tabList.scrollLeft;
       dragging = true;
       moved = false;
-      tabList.setPointerCapture(event.pointerId);
     });
     tabList.addEventListener("pointermove", (event) => {
       if (!dragging) return;
       const distance = event.clientX - pointerStartX;
       if (Math.abs(distance) > 5) moved = true;
       if (!moved) return;
+      if (event.pointerId !== undefined && typeof tabList.setPointerCapture === "function" && !tabList.hasPointerCapture?.(event.pointerId)) {
+        tabList.setPointerCapture(event.pointerId);
+      }
       tabList.scrollLeft = scrollStart - distance;
       tabList.classList.add("is-dragging");
       event.preventDefault();
@@ -1239,8 +1241,8 @@ function createPricingTabs(root) {
       if (!dragging) return;
       dragging = false;
       tabList.classList.remove("is-dragging");
-      if (tabList.hasPointerCapture(event.pointerId)) tabList.releasePointerCapture(event.pointerId);
-      window.setTimeout(() => { moved = false; }, 0);
+      if (event.pointerId !== undefined && tabList.hasPointerCapture?.(event.pointerId)) tabList.releasePointerCapture(event.pointerId);
+      globalThis.setTimeout(() => { moved = false; }, 0);
     };
     tabList.addEventListener("pointerup", stopDrag);
     tabList.addEventListener("pointercancel", stopDrag);
