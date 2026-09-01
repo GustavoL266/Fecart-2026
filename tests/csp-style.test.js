@@ -43,6 +43,8 @@ test("a CSP mantém estilos restritos à própria aplicação", async () => {
   const source = await readFile(resolve(projectRoot, "server.js"), "utf8");
 
   assert.match(source, /styleSrc:\s*\["'self'"\]/);
+  assert.match(source, /styleSrcElem:\s*\["'self'"\]/);
+  assert.match(source, /styleSrcAttr:\s*\["'none'"\]/);
   assert.doesNotMatch(source, /unsafe-inline/);
   assert.doesNotMatch(source, /contentSecurityPolicy:\s*false/);
 });

@@ -502,7 +502,10 @@ input[type="range"] {
   transition: width 180ms ease;
 }
 
-.market-meter.over::-webkit-progress-value,
+.market-meter.over::-webkit-progress-value {
+  background: var(--red);
+}
+
 .market-meter.over::-moz-progress-bar {
   background: var(--red);
 }
@@ -3736,18 +3739,28 @@ tr:last-child td {
   background: var(--meter-track);
 }
 
-.comparison-track::-webkit-progress-value,
+.comparison-track::-webkit-progress-value {
+  border-radius: inherit;
+  background: var(--chart-teal);
+}
+
 .comparison-track::-moz-progress-bar {
   border-radius: inherit;
   background: var(--chart-teal);
 }
 
-.comparison-fill-2::-webkit-progress-value,
+.comparison-fill-2::-webkit-progress-value {
+  background: var(--chart-green);
+}
+
 .comparison-fill-2::-moz-progress-bar {
   background: var(--chart-green);
 }
 
-.comparison-fill-3::-webkit-progress-value,
+.comparison-fill-3::-webkit-progress-value {
+  background: var(--chart-blue);
+}
+
 .comparison-fill-3::-moz-progress-bar {
   background: var(--chart-blue);
 }

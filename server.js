@@ -42,6 +42,8 @@ app.use(
         objectSrc: ["'none'"],
         scriptSrc: ["'self'"],
         styleSrc: ["'self'"],
+        styleSrcElem: ["'self'"],
+        styleSrcAttr: ["'none'"],
       },
     },
     crossOriginEmbedderPolicy: false,
