@@ -25,6 +25,7 @@ const formFieldIds = [
   "operationPurpose",
   "marketReferenceRule",
   ...PRICING_FIELD_IDS,
+  ...CAPACITY_FIELD_IDS,
 ];
 const elements = Object.fromEntries(formFieldIds.map((id) => [id, $(`#${id}`)]));
 const pricingTabs = createPricingTabs($(".pricing-sidebar"));
