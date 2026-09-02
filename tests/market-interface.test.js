@@ -35,6 +35,7 @@ test("resultados de mercado pertencem ao dashboard e não à sidebar", () => {
   assert.match(dashboard, /Buscando produtos no mercado/);
   assert.match(dashboard, /Nenhum produto compatível foi encontrado/);
   assert.match(dashboard, /Usar como referência/);
+  assert.match(styles, /market-dashboard-section \.market-stats[\s\S]*grid-template-columns:\s*repeat\(5,/);
   assert.match(styles, /grid-template-columns:\s*repeat\(3,/);
 });
 

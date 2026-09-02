@@ -889,6 +889,24 @@ function renderFiscalSummary(document, assessment) {
   document.querySelector("#fiscalSummary").innerHTML = `<p><strong>NCM:</strong> ${escapeHtml(ncm)} (${escapeHtml(status)})</p><p><strong>Carga usada:</strong> estimada manualmente; a Focus NFe não calculou qualquer alíquota.</p><p><strong>Tributos ainda dependentes de regra externa:</strong> ${escapeHtml(assessment.unresolvedTaxes.join(", "))}.</p>`;
 }
 
+function renderTaxedMaximumStat(marketState) {
+  const maximumItem = marketState.items.reduce((current, item) => {
+    if (!Number.isFinite(item.price)) return current;
+    return !current || item.price > current.price ? item : current;
+  }, null);
+  const maximumPrice = maximumItem?.price ?? marketState.stats.max;
+  const details = [
+    maximumItem ? `Produto: ${maximumItem.title}` : null,
+    `Preço de mercado: ${dashboardMoney(maximumPrice)}`,
+    "Tributos: não disponíveis",
+    "Total: não disponível",
+    "Fonte de mercado: Google Shopping",
+    "Fonte fiscal: nenhum TaxProvider de cálculo configurado",
+  ].filter(Boolean).join(" · ");
+
+  return `<div class="market-tax-stat" title="${escapeHtml(details)}" aria-label="${escapeHtml(details)}" tabindex="0"><span>Maior + tributos</span><strong>—</strong><small>Tributação pendente</small></div>`;
+}
+
 function renderMarketPanel(document, marketState) {
   const panel = document.querySelector("#marketPanel");
   const stats = document.querySelector("#marketStats");
@@ -937,12 +955,13 @@ function renderMarketPanel(document, marketState) {
   const resultCount = marketState.items.length;
   sidebarStatus.textContent = `${resultCount} ${resultCount === 1 ? "produto encontrado" : "produtos encontrados"}.`;
   dashboardStatus.textContent = `${resultCount} ${resultCount === 1 ? "referência encontrada" : "referências encontradas"} para “${marketState.query}”.`;
-  stats.innerHTML = [
+  const standardStats = [
     ["Média", marketState.stats.average],
     ["Mediana", marketState.stats.median],
     ["Menor", marketState.stats.min],
     ["Maior", marketState.stats.max],
   ].map(([label, value]) => `<div><span>${label}</span><strong>${dashboardMoney(value)}</strong></div>`).join("");
+  stats.innerHTML = `${standardStats}${renderTaxedMaximumStat(marketState)}`;
   results.innerHTML = marketState.items.map((item) => {
     const isSelected = marketState.selectedItem?.id === item.id;
     const rating = Number.isFinite(item.rating)
