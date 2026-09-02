@@ -377,17 +377,6 @@
               </div>
             </section>
 
-            <article id="selectedMarketProduct" class="selected-market-product" aria-live="polite" hidden></article>
-
-              <section id="marketPanel" class="market-provider-panel market-results-panel" aria-labelledby="market-results-title" hidden>
-              <div class="panel-heading compact">
-                <div><p class="eyebrow">Resultados encontrados</p><h3 id="market-results-title">Produtos no mercado</h3></div>
-              </div>
-              <div id="marketStats" class="market-stats"></div>
-              <div id="marketResults" class="market-results"></div>
-              <p class="market-provider-credit">Dados via Google Shopping.</p>
-            </section>
-
             <section class="manual-market-fallback" aria-labelledby="manual-market-title">
               <div class="tab-panel-heading compact">
                 <p class="eyebrow">Alternativa manual</p>
@@ -499,6 +488,21 @@
               <p>Veja os principais indicadores e abra os detalhes somente quando precisar entender a composição.</p>
             </div>
           </div>
+
+          <section id="marketPanel" class="market-dashboard-section" aria-labelledby="market-results-title" aria-live="polite" hidden>
+            <header class="market-dashboard-heading">
+              <div>
+                <p class="eyebrow">Resultados de mercado</p>
+                <h2 id="market-results-title">Produtos encontrados</h2>
+                <p>Escolha o produto que mais se aproxima do que você está analisando.</p>
+              </div>
+              <span class="market-provider-label">Dados via Google Shopping</span>
+            </header>
+            <p id="marketDashboardStatus" class="market-dashboard-status" role="status"></p>
+            <div id="marketStats" class="market-stats"></div>
+            <article id="selectedMarketProduct" class="selected-market-product" hidden></article>
+            <div id="marketResults" class="market-results"></div>
+          </section>
 
           <div class="dashboard-summary-grid">
             <article id="primaryPriceCard" class="summary-card summary-card-primary">

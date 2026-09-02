@@ -19,3 +19,27 @@ test("mercado mantém Google Shopping opcional e distingue regras de referência
   assert.match(main, /saveMarketReference\(window\.sessionStorage/);
   assert.match(styles, /\.market-error-alert/);
 });
+
+test("resultados de mercado pertencem ao dashboard e não à sidebar", () => {
+  const sidebarEnd = html.indexOf("</aside>");
+  const dashboardHeading = html.indexOf('class="dashboard-heading"');
+  const marketPanel = html.indexOf('id="marketPanel"');
+  const summaryGrid = html.indexOf('class="dashboard-summary-grid"');
+
+  assert.ok(sidebarEnd > 0);
+  assert.ok(marketPanel > sidebarEnd);
+  assert.ok(marketPanel > dashboardHeading);
+  assert.ok(marketPanel < summaryGrid);
+  assert.equal((html.match(/id="marketPanel"/g) || []).length, 1);
+  assert.match(html, /Escolha o produto que mais se aproxima/);
+  assert.match(dashboard, /Buscando produtos no mercado/);
+  assert.match(dashboard, /Nenhum produto compatível foi encontrado/);
+  assert.match(dashboard, /Usar como referência/);
+  assert.match(styles, /grid-template-columns:\s*repeat\(3,/);
+});
+
+test("renderização do dashboard reutiliza o state sem disparar nova consulta", () => {
+  assert.doesNotMatch(dashboard, /market\.search|\/market\/search/);
+  assert.match(main, /await market\.search\(query\)/);
+  assert.match(main, /marketSearchButton.*addEventListener\("click", searchMarket\)/s);
+});
