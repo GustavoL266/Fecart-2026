@@ -26,17 +26,9 @@ services:
         value: "5000"
       - key: FOCUS_NFE_TOKEN
         sync: false
-      - key: AMAZON_CREATORS_CREDENTIAL_ID
+      - key: NEXSCOPE_API_KEY
         sync: false
-      - key: AMAZON_CREATORS_CREDENTIAL_SECRET
-        sync: false
-      - key: AMAZON_CREATORS_CREDENTIAL_VERSION
-        value: "3.1"
-      - key: AMAZON_PARTNER_TAG
-        sync: false
-      - key: AMAZON_MARKETPLACE
-        value: www.amazon.com.br
-      - key: AMAZON_CREATORS_TIMEOUT_MS
+      - key: NEXSCOPE_TIMEOUT_MS
         value: "5000"
 
 databases:

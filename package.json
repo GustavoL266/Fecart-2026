@@ -10,6 +10,7 @@
     "build": "node scripts/build.mjs",
     "lint": "node scripts/lint.mjs",
     "focus:check": "node scripts/check-focus-nfe.mjs",
+    "nexscope:check": "node scripts/check-nexscope.mjs",
     "test": "node --test --test-isolation=none"
   },
   "dependencies": {

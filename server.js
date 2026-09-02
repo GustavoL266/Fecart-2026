@@ -7,20 +7,20 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
-import { getAmazonCreatorsConfig, getConfig, getFocusNfeConfig } from "./lib/config.js";
+import { getConfig, getFocusNfeConfig, getNexscopeConfig } from "./lib/config.js";
 import { pool, verifyDatabase } from "./lib/database.js";
-import { amazonErrorForClient, AmazonCreatorsError, createAmazonCreatorsClient, redactAmazonSensitiveData } from "./lib/amazon-creators-client.js";
-import { runAmazonSearch } from "./lib/amazon-search.js";
+import { runMarketSearch } from "./lib/market-search.js";
+import { createNexscopeProvider, nexscopeErrorForClient, NexscopeError, redactNexscopeSensitiveData } from "./lib/nexscope-provider.js";
 import { createFocusNFeClient, focusNFeErrorForClient, FocusNFeError, redactFocusNFeSensitiveData } from "./lib/focus-nfe-client.js";
 import { productForClient, userForClient } from "./lib/models.js";
 import { hashPassword, verifyPassword } from "./lib/passwords.js";
-import { amazonSearchSchema, loginSchema, productIdSchema, productListSchema, productSchema, registerSchema, validate } from "./lib/validation.js";
+import { loginSchema, marketSearchSchema, productIdSchema, productListSchema, productSchema, registerSchema, validate } from "./lib/validation.js";
 
 const config = getConfig();
 const focusNfeConfig = getFocusNfeConfig();
 const focusNfeClient = focusNfeConfig.isConfigured ? createFocusNFeClient(focusNfeConfig) : null;
-const amazonConfig = getAmazonCreatorsConfig();
-const amazonClient = amazonConfig.isConfigured ? createAmazonCreatorsClient(amazonConfig) : null;
+const nexscopeConfig = getNexscopeConfig();
+const marketProvider = nexscopeConfig.isConfigured ? createNexscopeProvider(nexscopeConfig) : null;
 const projectRoot = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PgSession = connectPgSimple(session);
@@ -29,8 +29,8 @@ console.info(
   `[Fiscal] Provider: FocusNFe | configured=${focusNfeConfig.isConfigured} | environment=${focusNfeConfig.environment}`,
 );
 console.info(
-  `[Amazon] Provider: Creators API | configured=${amazonConfig.isConfigured} | marketplace=${amazonConfig.marketplace}`,
-  amazonConfig.isConfigured ? {} : { missingEnvironmentVariables: amazonConfig.missingEnvironmentVariables },
+  `[Market] Provider: Nexscope | configured=${nexscopeConfig.isConfigured} | marketplace=${nexscopeConfig.marketplace}`,
+  nexscopeConfig.isConfigured ? {} : { missingEnvironmentVariables: nexscopeConfig.missingEnvironmentVariables },
 );
 
 app.disable("x-powered-by");
@@ -59,7 +59,7 @@ app.use(
 );
 app.use(express.json({ limit: "100kb" }));
 app.use((req, res, next) => {
-  if (req.path.startsWith("/auth") || req.path.startsWith("/products") || req.path.startsWith("/fiscal") || req.path.startsWith("/amazon")) {
+  if (req.path.startsWith("/auth") || req.path.startsWith("/products") || req.path.startsWith("/fiscal") || req.path.startsWith("/market")) {
     res.set("Cache-Control", "no-store");
   }
   next();
@@ -96,12 +96,12 @@ const fiscalLookupLimiter = rateLimit({
   message: { error: "Muitas consultas fiscais. Aguarde um minuto e tente novamente." },
 });
 
-const amazonSearchLimiter = rateLimit({
+const marketSearchLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 30,
   standardHeaders: "draft-8",
   legacyHeaders: false,
-  message: { error: "Muitas consultas à Amazon. Aguarde um minuto e tente novamente.", code: "AMAZON_RATE_LIMITED" },
+  message: { error: "Muitas consultas de mercado. Aguarde um minuto e tente novamente.", code: "MARKET_RATE_LIMITED" },
 });
 
 function sessionRegenerate(req) {
@@ -205,12 +205,9 @@ app.get("/health", async (req, res, next) => {
         environment: focusNfeConfig.environment,
         provider: "FocusNFe",
       },
-      amazon: {
-        configured: amazonConfig.isConfigured,
-        credentialVersion: amazonConfig.credentialVersion,
-        marketplace: amazonConfig.marketplace,
-        missingEnvironmentVariables: amazonConfig.missingEnvironmentVariables,
-        provider: "Amazon Creators API",
+      market: {
+        configured: nexscopeConfig.isConfigured,
+        provider: "Nexscope",
       },
     });
   } catch (error) {
@@ -218,10 +215,10 @@ app.get("/health", async (req, res, next) => {
   }
 });
 
-app.get("/amazon/search", requireAuth, amazonSearchLimiter, async (req, res, next) => {
+app.get("/market/search", requireAuth, marketSearchLimiter, async (req, res, next) => {
   try {
-    const { q } = validate(amazonSearchSchema, req.query);
-    const result = await runAmazonSearch({ client: amazonClient, config: amazonConfig, query: q });
+    const { q } = validate(marketSearchSchema, req.query);
+    const result = await runMarketSearch({ provider: marketProvider, config: nexscopeConfig, query: q });
     return res.json(result);
   } catch (error) {
     return next(error);
@@ -353,8 +350,8 @@ function isDatabaseError(error) {
 app.use((error, req, res, next) => {
   const safeLogMessage = error instanceof FocusNFeError
     ? redactFocusNFeSensitiveData(error.message, [focusNfeConfig.token])
-    : error instanceof AmazonCreatorsError
-      ? redactAmazonSensitiveData(error.message, [amazonConfig.credentialId, amazonConfig.credentialSecret])
+    : error instanceof NexscopeError
+      ? redactNexscopeSensitiveData(error.message, [nexscopeConfig.apiKey])
       : error.message;
   console.error(`[api] ${req.method} ${req.path} falhou (${error.code || "UNKNOWN"}):`, safeLogMessage);
   if (res.headersSent) return next(error);
@@ -369,8 +366,8 @@ app.use((error, req, res, next) => {
           : error.message;
   const payload = error instanceof FocusNFeError
     ? focusNFeErrorForClient(error, [focusNfeConfig.token])
-    : error instanceof AmazonCreatorsError
-      ? amazonErrorForClient(error, [amazonConfig.credentialId, amazonConfig.credentialSecret])
+    : error instanceof NexscopeError
+      ? nexscopeErrorForClient(error, [nexscopeConfig.apiKey])
       : { error: message };
   return res.status(status).json(payload);
 });

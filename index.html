@@ -369,32 +369,32 @@
           <div class="field-grid">
             <section class="market-search-card" aria-labelledby="market-search-title">
               <div class="tab-panel-heading compact">
-                <p class="eyebrow">Amazon</p>
+                <p class="eyebrow">Mercado online</p>
                 <p class="section-title" id="market-search-title">Produto para pesquisar</p>
               </div>
               <div class="market-search">
-                <label for="amazonQuery">Nome, marca e modelo</label>
-                <input id="amazonQuery" type="text" placeholder="Ex.: iPhone 15 Pro Max" autocomplete="off" />
-                <button id="amazonSearchButton" class="market-search-button" type="button">Pesquisar produto</button>
-                <p id="amazonSearchStatus" class="helper-text" role="status">Pesquise para encontrar de 3 a 5 referências quando disponíveis.</p>
+                <label for="marketQuery">Nome, marca e modelo</label>
+                <input id="marketQuery" type="text" placeholder="Ex.: iPhone 15 Pro Max" autocomplete="off" />
+                <button id="marketSearchButton" class="market-search-button" type="button">Pesquisar produto</button>
+                <p id="marketSearchStatus" class="helper-text" role="status">Pesquise para encontrar de 3 a 5 referências quando disponíveis.</p>
               </div>
             </section>
 
             <article id="selectedMarketProduct" class="selected-market-product" aria-live="polite" hidden></article>
 
-            <section id="amazonPanel" class="amazon-panel market-results-panel" aria-labelledby="amazon-title" hidden>
+            <section id="marketPanel" class="amazon-panel market-results-panel" aria-labelledby="market-results-title" hidden>
               <div class="panel-heading compact">
-                <div><p class="eyebrow">Resultados encontrados</p><h3 id="amazon-title">Produtos na Amazon</h3></div>
+                <div><p class="eyebrow">Resultados encontrados</p><h3 id="market-results-title">Produtos no mercado</h3></div>
               </div>
-              <div id="amazonStats" class="amazon-stats"></div>
-              <div id="amazonResults" class="amazon-results"></div>
+              <div id="marketStats" class="amazon-stats"></div>
+              <div id="marketResults" class="amazon-results"></div>
             </section>
 
             <section class="manual-market-fallback" aria-labelledby="manual-market-title">
               <div class="tab-panel-heading compact">
                 <p class="eyebrow">Alternativa manual</p>
                 <p class="section-title" id="manual-market-title">Preço médio local dos concorrentes</p>
-                <p class="section-description">Este valor é usado somente quando nenhuma referência Amazon está selecionada.</p>
+                <p class="section-description">Este valor é usado somente quando nenhuma referência externa está selecionada.</p>
               </div>
               <div class="sidebar-grid sidebar-grid--two">
                 <div class="sidebar-field">
@@ -412,7 +412,7 @@
                   </div>
                 </div>
               </div>
-              <p id="manualMarketStatus" class="helper-text">Fallback ativo. O valor é preservado quando você escolhe um produto da Amazon.</p>
+              <p id="manualMarketStatus" class="helper-text">Fallback ativo. O valor é preservado quando você escolhe um produto do mercado.</p>
             </section>
 
           </div>
@@ -501,7 +501,7 @@
                 <div id="primaryMarketValue" class="primary-price-cell" hidden>
                   <span>Preço de mercado</span>
                   <strong id="primaryMarketPrice">R$ 0,00</strong>
-                  <small>Fonte: Amazon</small>
+                  <small id="primaryMarketSource">Fonte: mercado</small>
                 </div>
                 <div id="primaryTaxImpact" class="primary-price-cell primary-tax-cell" hidden>
                   <span>Mercado + impacto tributário</span>
@@ -528,7 +528,7 @@
               <p id="marketReferenceDetails" class="market-reference-details">Fonte: valor manual</p>
               <progress id="marketMeter" class="market-meter compact-meter" max="100" value="0" aria-label="Relação entre o preço calculado e o preço médio de mercado"></progress>
               <p id="marketStatus" class="summary-description"></p>
-              <div id="amazonSummary" class="amazon-summary" hidden></div>
+              <div id="marketSummary" class="amazon-summary" hidden></div>
               <button type="button" class="detail-link" data-detail-view="price" data-detail-target="market-comparison">Ver detalhes <span aria-hidden="true">→</span></button>
             </article>
 

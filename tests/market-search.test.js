@@ -1,0 +1,40 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { runMarketSearch } from "../lib/market-search.js";
+
+const baseConfig = {
+  marketplace: "Amazon",
+  missingEnvironmentVariables: [],
+};
+
+test("rota de mercado informa a configuração ausente sem expor valores", async () => {
+  const config = { ...baseConfig, missingEnvironmentVariables: ["NEXSCOPE_API_KEY"] };
+  await assert.rejects(
+    () => runMarketSearch({ provider: null, config, logger: { info() {}, warn() {} }, query: "Iphone" }),
+    (error) => {
+      assert.equal(error.code, "NEXSCOPE_NOT_CONFIGURED");
+      assert.equal(error.status, 503);
+      assert.deepEqual(error.details.missingEnvironmentVariables, ["NEXSCOPE_API_KEY"]);
+      return true;
+    },
+  );
+});
+
+test("rota executa as duas consultas pedidas e registra somente metadados seguros", async () => {
+  const logs = [];
+  const results = [{ id: "B001", title: "Telefone", price: 100, currency: "BRL", source: "Amazon" }];
+  for (const query of ["Iphone", "iPhone 15 Pro Max"]) {
+    const result = await runMarketSearch({
+      provider: { async search(receivedQuery) { assert.equal(receivedQuery, query); return { results, cached: false }; } },
+      config: baseConfig,
+      logger: { info: (...values) => logs.push(values), warn: (...values) => logs.push(values) },
+      query,
+    });
+    assert.deepEqual(result.results, results);
+  }
+  assert.match(logs[0][0], /Query: Iphone/);
+  assert.match(logs[4][0], /Query: iPhone 15 Pro Max/);
+  assert.match(logs[1][0], /Provider: Nexscope/);
+  assert.doesNotMatch(JSON.stringify(logs), /authorization|bearer|nk-/i);
+});

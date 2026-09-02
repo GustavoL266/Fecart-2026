@@ -78,99 +78,100 @@ function renderFiscalSummary(document, assessment) {
     <p><strong>Resultado:</strong> estimativa financeira; não é uma validação fiscal da operação.</p>`;
 }
 
-function renderAmazonPanel(document, result, amazonState) {
-  const panel = document.querySelector("#amazonPanel");
-  const summary = document.querySelector("#amazonSummary");
-  const statsContainer = document.querySelector("#amazonStats");
-  const resultsContainer = document.querySelector("#amazonResults");
-  const searchButton = document.querySelector("#amazonSearchButton");
-  const searchStatus = document.querySelector("#amazonSearchStatus");
+function renderMarketPanel(document, result, marketState) {
+  const panel = document.querySelector("#marketPanel");
+  const summary = document.querySelector("#marketSummary");
+  const statsContainer = document.querySelector("#marketStats");
+  const resultsContainer = document.querySelector("#marketResults");
+  const searchButton = document.querySelector("#marketSearchButton");
+  const searchStatus = document.querySelector("#marketSearchStatus");
   const selectedContainer = document.querySelector("#selectedMarketProduct");
 
-  panel.hidden = amazonState.status === "idle";
-  summary.hidden = !amazonState.selectedItem;
-  searchButton.disabled = amazonState.status === "loading";
-  searchButton.textContent = amazonState.status === "loading" ? "Buscando preços..." : "Pesquisar produto";
-  selectedContainer.hidden = !amazonState.selectedItem;
-  selectedContainer.innerHTML = amazonState.selectedItem
-    ? `<p class="eyebrow">Referência selecionada</p><h3>${escapeHtml(amazonState.selectedItem.title)}</h3><strong>${currency.format(amazonState.selectedItem.price)}</strong><span>Fonte: Amazon</span><small>Tributação pendente; nenhuma alíquota ou NCM foi presumido.</small><button type="button" class="secondary-button" data-change-market-reference>Trocar produto</button>`
+  panel.hidden = marketState.status === "idle";
+  summary.hidden = !marketState.selectedItem;
+  searchButton.disabled = marketState.status === "loading";
+  searchButton.textContent = marketState.status === "loading" ? "Buscando preços..." : "Pesquisar produto";
+  selectedContainer.hidden = !marketState.selectedItem;
+  selectedContainer.innerHTML = marketState.selectedItem
+    ? `<p class="eyebrow">Referência selecionada</p><h3>${escapeHtml(marketState.selectedItem.title)}</h3><strong>${currency.format(marketState.selectedItem.price)}</strong><span>Fonte: ${escapeHtml(marketState.selectedItem.source)}</span><small>Tributação pendente; nenhuma alíquota ou NCM foi presumido.</small><button type="button" class="secondary-button" data-change-market-reference>Trocar produto</button>`
     : "";
 
-  if (amazonState.status === "loading") {
+  if (marketState.status === "loading") {
     searchStatus.textContent = "Buscando preços...";
-    statsContainer.innerHTML = '<div class="market-loading"><span aria-hidden="true"></span><p>Consultando produtos na Amazon...</p></div>';
+    statsContainer.innerHTML = '<div class="market-loading"><span aria-hidden="true"></span><p>Consultando produtos no mercado...</p></div>';
     resultsContainer.innerHTML = "";
     return;
   }
 
-  if (amazonState.status === "error") {
+  if (marketState.status === "error") {
     searchStatus.textContent = "Não foi possível concluir a pesquisa.";
     statsContainer.innerHTML = `
       <div class="market-error-alert" role="alert">
         <span class="market-error-icon" aria-hidden="true">!</span>
-        <div><strong>Não foi possível consultar a Amazon agora.</strong><p>${escapeHtml(amazonState.error)}</p></div>
-        <button type="button" class="secondary-button" data-amazon-retry>Tentar novamente</button>
+        <div><strong>Não foi possível consultar o mercado agora.</strong><p>${escapeHtml(marketState.error)}</p></div>
+        <button type="button" class="secondary-button" data-market-retry>Tentar novamente</button>
       </div>`;
     resultsContainer.innerHTML = "";
     return;
   }
 
-  if (amazonState.status === "empty") {
+  if (marketState.status === "empty") {
     searchStatus.textContent = "Não encontramos produtos compatíveis.";
     statsContainer.innerHTML = '<p class="helper-text">Tente informar marca, modelo, capacidade, tamanho ou voltagem com mais precisão.</p>';
     resultsContainer.innerHTML = "";
     return;
   }
 
-  if (!amazonState.stats) {
+  if (!marketState.stats) {
     searchStatus.textContent = "A pesquisa é opcional. O valor manual só muda quando você escolher um produto.";
     statsContainer.innerHTML = "";
     resultsContainer.innerHTML = "";
     return;
   }
 
-  const { stats } = amazonState;
+  const { stats } = marketState;
   searchStatus.textContent = `${stats.count} produto(s) encontrado(s). Escolha uma referência para atualizar o dashboard.`;
-  summary.innerHTML = amazonState.selectedItem
-    ? `<span>Fonte: Amazon</span><strong>${currency.format(amazonState.selectedItem.price)}</strong><small>${escapeHtml(amazonState.selectedItem.title)}</small>`
+  summary.innerHTML = marketState.selectedItem
+    ? `<span>Fonte: ${escapeHtml(marketState.selectedItem.source)}</span><strong>${currency.format(marketState.selectedItem.price)}</strong><small>${escapeHtml(marketState.selectedItem.title)}</small>`
     : "";
   statsContainer.innerHTML = "";
-  resultsContainer.innerHTML = amazonState.items
+  resultsContainer.innerHTML = marketState.items
     .map((item) => `
-        <article class="amazon-result${amazonState.selectedItem?.asin === item.asin ? " selected" : ""}">
+        <article class="amazon-result${marketState.selectedItem?.id === item.id ? " selected" : ""}">
           ${item.image ? `<img src="${escapeHtml(item.image)}" alt="">` : '<div class="amazon-image-placeholder"></div>'}
           <div>
             <h4>${escapeHtml(item.title)}</h4>
-            <p>${escapeHtml(item.category || "Categoria não informada")} · ASIN: ${escapeHtml(item.asin)}</p>
+            <p>${escapeHtml(item.category || "Categoria não informada")} · Fonte: ${escapeHtml(item.source)}</p>
             <strong>${currency.format(item.price)}</strong>
           </div>
           <div class="amazon-actions">
-            <button type="button" data-amazon-select="${escapeHtml(item.asin)}">${amazonState.selectedItem?.asin === item.asin ? "Referência ativa" : "Usar como referência"}</button>
-            <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver na Amazon</a>
+            <button type="button" data-market-select="${escapeHtml(item.id)}">${marketState.selectedItem?.id === item.id ? "Referência ativa" : "Usar como referência"}</button>
+            <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver na ${escapeHtml(item.source)}</a>
           </div>
         </article>`)
     .join("");
 }
 
-export function renderIncompleteDashboard(document, amazonState, errors) {
+export function renderIncompleteDashboard(document, marketState, errors) {
   const invalidCount = Object.keys(errors).length;
-  const selectedAmazonProduct = amazonState.selectedItem;
+  const selectedMarketProduct = marketState.selectedItem;
   const generalMessage = invalidCount === 1
     ? "Corrija o campo indicado para liberar o cálculo."
     : "Preencha ou corrija os campos indicados para liberar o cálculo.";
 
   document.querySelector("#baseCost").textContent = "-";
-  document.querySelector("#marketPrice").textContent = "-";
-  document.querySelector("#marketTitle").textContent = selectedAmazonProduct ? selectedAmazonProduct.title : "Preço médio informado";
-  document.querySelector("#marketReferenceDetails").textContent = selectedAmazonProduct ? "Fonte: Amazon" : "Aguardando valor válido";
-  document.querySelector("#marketPriceLabel").textContent = selectedAmazonProduct ? "Produto selecionado" : "Referência manual";
+  document.querySelector("#marketPrice").textContent = selectedMarketProduct ? currency.format(selectedMarketProduct.price) : "-";
+  document.querySelector("#marketTitle").textContent = selectedMarketProduct ? selectedMarketProduct.title : "Preço médio informado";
+  document.querySelector("#marketReferenceDetails").textContent = selectedMarketProduct ? `Fonte: ${selectedMarketProduct.source}` : "Aguardando valor válido";
+  document.querySelector("#marketPriceLabel").textContent = selectedMarketProduct ? "Produto selecionado" : "Referência manual";
 
   const primaryMarketValue = document.querySelector("#primaryMarketValue");
   const primaryTaxImpact = document.querySelector("#primaryTaxImpact");
-  document.querySelector("#primaryPriceCard").classList.toggle("has-market-reference", Boolean(selectedAmazonProduct));
-  primaryMarketValue.hidden = !selectedAmazonProduct;
-  primaryTaxImpact.hidden = !selectedAmazonProduct;
-  document.querySelector("#primaryMarketPrice").textContent = selectedAmazonProduct ? currency.format(selectedAmazonProduct.price) : "-";
+  document.querySelector("#primaryPriceCard").classList.toggle("has-market-reference", Boolean(selectedMarketProduct));
+  primaryMarketValue.hidden = !selectedMarketProduct;
+  primaryTaxImpact.hidden = !selectedMarketProduct;
+  document.querySelector("#primaryMarketPrice").textContent = selectedMarketProduct ? currency.format(selectedMarketProduct.price) : "-";
+  document.querySelector("#primaryMarketSource").textContent = selectedMarketProduct ? `Fonte: ${selectedMarketProduct.source}` : "Fonte: mercado";
   document.querySelector("#primaryTaxAdjustedPrice").textContent = "Tributação pendente";
   document.querySelector("#primaryTaxStatus").textContent = "Complete a precificação antes de avaliar o impacto fiscal.";
   primaryTaxImpact.classList.add("is-pending");
@@ -195,32 +196,33 @@ export function renderIncompleteDashboard(document, amazonState, errors) {
   renderAlerts(document, [["warning", generalMessage]]);
   document.querySelector("#fiscalSummary").innerHTML = "<p>O resumo fiscal será exibido depois que os dados financeiros obrigatórios forem validados.</p>";
 
-  renderAmazonPanel(document, null, amazonState);
+  renderMarketPanel(document, null, marketState);
   renderPriceDetailsUnavailable(document, invalidCount);
 }
 
-export function renderDashboard(document, inputs, result, amazonState, marketSource, fiscalAssessment, memory) {
+export function renderDashboard(document, inputs, result, marketState, marketSource, fiscalAssessment, memory) {
   const { costs } = result;
-  const activeMarketStats = marketSource === "amazon-median" ? amazonState.stats : null;
-  const selectedAmazonProduct = marketSource === "amazon-product" ? amazonState.selectedItem : null;
+  const activeMarketStats = marketSource === "market-median" ? marketState.stats : null;
+  const selectedMarketProduct = marketSource === "market-product" ? marketState.selectedItem : null;
   const alerts = dashboardAlerts(inputs, result, fiscalAssessment);
 
   document.querySelector("#baseCost").textContent = currency.format(costs.baseCost);
   document.querySelector("#marketPrice").textContent = currency.format(inputs.competitorAverage);
-  document.querySelector("#marketTitle").textContent = selectedAmazonProduct ? selectedAmazonProduct.title : "Preço médio informado";
-  document.querySelector("#marketReferenceDetails").textContent = selectedAmazonProduct
-    ? "Fonte: Amazon"
+  document.querySelector("#marketTitle").textContent = selectedMarketProduct ? selectedMarketProduct.title : "Preço médio informado";
+  document.querySelector("#marketReferenceDetails").textContent = selectedMarketProduct
+    ? `Fonte: ${selectedMarketProduct.source}`
     : "Fonte: valor manual";
-  document.querySelector("#marketPriceLabel").textContent = selectedAmazonProduct
+  document.querySelector("#marketPriceLabel").textContent = selectedMarketProduct
     ? "Produto selecionado"
     : "Referência manual";
 
   const primaryMarketValue = document.querySelector("#primaryMarketValue");
   const primaryTaxImpact = document.querySelector("#primaryTaxImpact");
-  document.querySelector("#primaryPriceCard").classList.toggle("has-market-reference", Boolean(selectedAmazonProduct));
-  primaryMarketValue.hidden = !selectedAmazonProduct;
-  primaryTaxImpact.hidden = !selectedAmazonProduct;
-  document.querySelector("#primaryMarketPrice").textContent = currency.format(selectedAmazonProduct?.price || 0);
+  document.querySelector("#primaryPriceCard").classList.toggle("has-market-reference", Boolean(selectedMarketProduct));
+  primaryMarketValue.hidden = !selectedMarketProduct;
+  primaryTaxImpact.hidden = !selectedMarketProduct;
+  document.querySelector("#primaryMarketPrice").textContent = currency.format(selectedMarketProduct?.price || 0);
+  document.querySelector("#primaryMarketSource").textContent = selectedMarketProduct ? `Fonte: ${selectedMarketProduct.source}` : "Fonte: mercado";
   const hasRealTaxImpact = fiscalAssessment.automaticCalculation
     && fiscalAssessment.complete
     && Number.isFinite(fiscalAssessment.marketAdjustedPrice);
@@ -276,6 +278,6 @@ export function renderDashboard(document, inputs, result, amazonState, marketSou
   renderCostTable(document, memory);
   renderAlerts(document, alerts);
   renderFiscalSummary(document, fiscalAssessment);
-  renderAmazonPanel(document, result, amazonState);
+  renderMarketPanel(document, result, marketState);
   renderPriceDetails(document, inputs, result, marketText, alerts.length);
 }

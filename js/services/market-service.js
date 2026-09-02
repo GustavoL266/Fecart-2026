@@ -35,7 +35,7 @@ function calculateMedian(values) {
   return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
 }
 
-export function calculateAmazonStats(items) {
+export function calculateMarketStats(items) {
   const prices = items
     .filter((item) => item.currency === "BRL")
     .map((item) => Number(item.price))
@@ -54,7 +54,7 @@ export function calculateAmazonStats(items) {
 function normalizeItem(item) {
   const price = Number(item?.price);
   if (
-    !item?.asin
+    !item?.id
     || !item?.title
     || !item?.url
     || item.currency !== "BRL"
@@ -63,19 +63,20 @@ function normalizeItem(item) {
   ) return null;
 
   return {
-    id: String(item.id || item.asin),
-    asin: String(item.asin),
+    id: String(item.id),
+    asin: String(item.asin || item.id),
     title: String(item.title),
     price,
-    source: "Amazon",
+    source: String(item.source || "Marketplace"),
     currency: "BRL",
     category: String(item.category || ""),
     image: String(item.image || ""),
     url: String(item.url),
+    consultedAt: String(item.consultedAt || ""),
   };
 }
 
-export class AmazonService {
+export class MarketService {
   #api;
 
   constructor(apiClient = api) {
@@ -84,20 +85,22 @@ export class AmazonService {
 
   async search(query) {
     const normalizedQuery = String(query || "").trim().replace(/\s+/g, " ");
-    const response = await this.#api.get(`/amazon/search?q=${encodeURIComponent(normalizedQuery)}`, { handleUnauthorized: false });
-    const seenAsins = new Set();
-    const items = (Array.isArray(response?.items) ? response.items : [])
+    const response = await this.#api.get(`/market/search?q=${encodeURIComponent(normalizedQuery)}`, { handleUnauthorized: false });
+    const seenIds = new Set();
+    const items = (Array.isArray(response?.results) ? response.results : [])
       .map(normalizeItem)
       .filter((item) => {
-        if (!item || seenAsins.has(item.asin) || !isComparable(item, normalizedQuery)) return false;
-        seenAsins.add(item.asin);
+        if (!item || seenIds.has(item.id) || !isComparable(item, normalizedQuery)) return false;
+        seenIds.add(item.id);
         return true;
-      });
+      })
+      .slice(0, 5);
     return {
       query: normalizedQuery,
-      marketplace: response?.marketplace || "www.amazon.com.br",
+      marketplace: response?.marketplace || "Marketplace",
+      provider: response?.provider || "Nexscope",
       items,
-      stats: calculateAmazonStats(items),
+      stats: calculateMarketStats(items),
     };
   }
 }

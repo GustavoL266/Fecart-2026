@@ -19,7 +19,7 @@ const product = {
   updatedAt: "2026-09-01T12:00:00.000Z",
   calculationData: {
     market: {
-      source: "amazon-product",
+      source: "market-product",
       selectedProduct: { asin: "B001", title: "Produto Amazon", price: 100, source: "Amazon" },
       marketPrice: 100,
     },
@@ -41,7 +41,7 @@ test("histórico mostra preço próprio, mercado na data, diferença e fonte sem
   }
 });
 
-test("modelo preserva consulta amazon-product e mantém registros antigos compatíveis", () => {
+test("modelo preserva consulta market-product e mantém registros antigos compatíveis", () => {
   const row = {
     id: product.id,
     name: product.name,
@@ -58,6 +58,8 @@ test("modelo preserva consulta amazon-product e mantém registros antigos compat
     calculation_data: product.calculationData,
   };
 
-  assert.equal(productForClient(row).calculationData.market.source, "amazon-product");
+  assert.equal(productForClient(row).calculationData.market.source, "market-product");
+  const legacy = { ...row, calculation_data: { market: { source: "amazon-product" } } };
+  assert.equal(productForClient(legacy).calculationData.market.source, "amazon-product");
   assert.doesNotThrow(() => renderProductsList({ innerHTML: "" }, [{ ...product, calculationData: {} }]));
 });

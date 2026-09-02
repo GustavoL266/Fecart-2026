@@ -18,7 +18,8 @@ test("Consulta de Mercado tem identidade própria, fallback manual e cards selec
   assert.match(html, /data-pricing-panel="fiscal"/);
   assert.match(dashboard, /Usar como referência/);
   assert.match(dashboard, /Referência selecionada/);
-  assert.match(dashboard, /data-amazon-retry/);
+  assert.match(dashboard, /data-market-retry/);
+  assert.match(dashboard, /selectedMarketProduct\.source/);
 });
 
 test("dashboard possui três áreas responsivas e tributação pendente sem valor inventado", () => {

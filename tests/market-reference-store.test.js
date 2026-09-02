@@ -12,13 +12,15 @@ function memoryStorage() {
   };
 }
 
-test("preserva a referência Amazon durante reload e mantém o fallback manual", () => {
+test("preserva a referência de mercado durante reload e mantém o fallback manual", () => {
   const storage = memoryStorage();
   const selectedItem = {
+    id: "B001TESTE",
     asin: "B001TESTE",
     title: "Produto de teste 256 GB",
     price: 7499,
     currency: "BRL",
+    source: "Amazon",
     category: "Smartphones",
     url: "https://www.amazon.com.br/dp/B001TESTE",
   };
@@ -27,7 +29,7 @@ test("preserva a referência Amazon durante reload e mantém o fallback manual",
   assert.deepEqual(loadMarketReference(storage), {
     manualValue: 32,
     query: "produto teste",
-    selectedItem: { ...selectedItem, id: "B001TESTE", image: "", source: "Amazon" },
+    selectedItem: { ...selectedItem, image: "", source: "Amazon", consultedAt: "" },
   });
 
   clearMarketReference(storage);
@@ -41,9 +43,9 @@ test("ignora conteúdo inválido do armazenamento da sessão", () => {
   assert.equal(saveMarketReference(storage, { manualValue: 0, selectedItem: {} }), false);
 });
 
-test("preserva referência Amazon quando o fallback manual ainda está vazio", () => {
+test("preserva referência externa quando o fallback manual ainda está vazio", () => {
   const storage = memoryStorage();
-  const selectedItem = { asin: "B002TESTE", title: "Produto sem fallback", price: 99.9 };
+  const selectedItem = { id: "B002TESTE", asin: "B002TESTE", title: "Produto sem fallback", price: 99.9, source: "Amazon" };
 
   assert.equal(saveMarketReference(storage, { manualValue: null, query: "produto", selectedItem }), true);
   assert.equal(loadMarketReference(storage).manualValue, null);
