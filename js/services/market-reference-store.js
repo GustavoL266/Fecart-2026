@@ -5,15 +5,17 @@ function safeMarketItem(value) {
   if (!value?.id || !value?.title || !Number.isFinite(price) || price <= 0) return null;
   return {
     id: String(value.id),
-    asin: String(value.asin || value.id),
     title: String(value.title),
     price,
     source: String(value.source || "Marketplace"),
+    seller: String(value.seller || value.source || "Marketplace"),
     currency: String(value.currency || "BRL"),
     category: String(value.category || ""),
     image: String(value.image || ""),
     url: String(value.url || ""),
     consultedAt: String(value.consultedAt || ""),
+    ...(Number.isFinite(Number(value.rating)) ? { rating: Number(value.rating) } : {}),
+    ...(Number.isInteger(Number(value.reviews)) && Number(value.reviews) >= 0 ? { reviews: Number(value.reviews) } : {}),
   };
 }
 

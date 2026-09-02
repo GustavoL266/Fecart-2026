@@ -13,14 +13,14 @@ const product = {
   additionalCosts: 5,
   profitMargin: 18,
   suggestedPrice: 80,
-  marketplace: "Amazon",
+  marketplace: "Google Shopping",
   consultationDate: "2026-09-01T12:00:00.000Z",
   createdAt: "2026-09-01T12:00:00.000Z",
   updatedAt: "2026-09-01T12:00:00.000Z",
   calculationData: {
     market: {
       source: "market-product",
-      selectedProduct: { asin: "B001", title: "Produto Amazon", price: 100, source: "Amazon" },
+      selectedProduct: { id: "B001", title: "Produto Google Shopping", price: 100, source: "Loja Exemplo" },
       marketPrice: 100,
     },
   },
@@ -37,11 +37,11 @@ test("histórico mostra preço próprio, mercado na data, diferença e fonte sem
     assert.match(html, /R\$\s*80,00/);
     assert.match(html, /R\$\s*100,00/);
     assert.match(html, /20% abaixo/);
-    assert.match(html, /Amazon/);
+    assert.match(html, /Google Shopping|Loja Exemplo/);
   }
 });
 
-test("modelo preserva consulta market-product e mantém registros antigos compatíveis", () => {
+test("modelo preserva consulta market-product e neutraliza fonte antiga não reconhecida", () => {
   const row = {
     id: product.id,
     name: product.name,
@@ -51,7 +51,7 @@ test("modelo preserva consulta market-product e mantém registros antigos compat
     additional_costs: "5",
     profit_margin: "18",
     suggested_price: "80",
-    marketplace: "Amazon",
+    marketplace: "Google Shopping",
     consultation_date: product.consultationDate,
     created_at: product.createdAt,
     updated_at: product.updatedAt,
@@ -59,7 +59,7 @@ test("modelo preserva consulta market-product e mantém registros antigos compat
   };
 
   assert.equal(productForClient(row).calculationData.market.source, "market-product");
-  const legacy = { ...row, calculation_data: { market: { source: "amazon-product" } } };
-  assert.equal(productForClient(legacy).calculationData.market.source, "amazon-product");
+  const legacy = { ...row, calculation_data: { market: { source: "provedor-desativado" } } };
+  assert.equal(productForClient(legacy).calculationData.market.source, "manual");
   assert.doesNotThrow(() => renderProductsList({ innerHTML: "" }, [{ ...product, calculationData: {} }]));
 });

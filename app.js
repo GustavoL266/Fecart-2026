@@ -2,10 +2,6 @@
 
 const PRODUCTIVE_HOURS_PER_WORKER_MONTH = 176;
 
-const AMAZON_MARKET_CONFIG = {
-  minComparableResults: 3,
-};
-
 const MARKET_RULES = {
   closeGap: 0.08,
   attentionGap: 0.18,
@@ -445,15 +441,17 @@ function normalizeItem(item) {
 
   return {
     id: String(item.id),
-    asin: String(item.asin || item.id),
     title: String(item.title),
     price,
     source: String(item.source || "Marketplace"),
+    seller: String(item.seller || item.source || "Marketplace"),
     currency: "BRL",
     category: String(item.category || ""),
     image: String(item.image || ""),
     url: String(item.url),
     consultedAt: String(item.consultedAt || ""),
+    ...(Number.isFinite(Number(item.rating)) ? { rating: Number(item.rating) } : {}),
+    ...(Number.isInteger(Number(item.reviews)) && Number(item.reviews) >= 0 ? { reviews: Number(item.reviews) } : {}),
   };
 }
 
@@ -479,7 +477,7 @@ class MarketService {
     return {
       query: normalizedQuery,
       marketplace: response?.marketplace || "Marketplace",
-      provider: response?.provider || "Nexscope",
+      provider: response?.provider || "SearchAPI / Google Shopping",
       items,
       stats: calculateMarketStats(items),
     };
@@ -546,15 +544,17 @@ function safeMarketItem(value) {
   if (!value?.id || !value?.title || !Number.isFinite(price) || price <= 0) return null;
   return {
     id: String(value.id),
-    asin: String(value.asin || value.id),
     title: String(value.title),
     price,
     source: String(value.source || "Marketplace"),
+    seller: String(value.seller || value.source || "Marketplace"),
     currency: String(value.currency || "BRL"),
     category: String(value.category || ""),
     image: String(value.image || ""),
     url: String(value.url || ""),
     consultedAt: String(value.consultedAt || ""),
+    ...(Number.isFinite(Number(value.rating)) ? { rating: Number(value.rating) } : {}),
+    ...(Number.isInteger(Number(value.reviews)) && Number(value.reviews) >= 0 ? { reviews: Number(value.reviews) } : {}),
   };
 }
 
@@ -848,8 +848,8 @@ function dashboardMoney(value) { return value === null || value === undefined ? 
 function marketLabel(market) {
   if (!market?.price) return "Sem referência de mercado";
   if (market.rule === "selected-product") return "Produto individual selecionado";
-  if (market.rule === "amazon-average") return "Média da pesquisa Amazon";
-  if (market.rule === "amazon-median") return "Mediana da pesquisa Amazon";
+  if (market.rule === "market-average") return "Média da pesquisa Google Shopping";
+  if (market.rule === "market-median") return "Mediana da pesquisa Google Shopping";
   return "Média informada manualmente";
 }
 
@@ -900,14 +900,31 @@ function renderMarketPanel(document, marketState) {
   searchButton.disabled = marketState.status === "loading";
   searchButton.textContent = marketState.status === "loading" ? "Buscando produtos..." : "Pesquisar produto";
   selected.hidden = !marketState.selectedItem;
-  selected.innerHTML = marketState.selectedItem ? `<p class="eyebrow">Produto individual selecionado</p><h3>${escapeHtml(marketState.selectedItem.title)}</h3><strong>${dashboardMoney(marketState.selectedItem.price)}</strong><small>Marketplace: ${escapeHtml(marketState.marketplace || "Amazon")} · Provedor técnico: ${escapeHtml(marketState.provider || "Nexscope")}</small><button type="button" class="secondary-button" data-change-market-reference>Remover seleção</button>` : "";
+  const selectedItem = marketState.selectedItem;
+  const selectedRating = Number.isFinite(selectedItem?.rating)
+    ? ` · Nota ${selectedItem.rating.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}${Number.isInteger(selectedItem.reviews) ? ` (${selectedItem.reviews.toLocaleString("pt-BR")} avaliações)` : ""}`
+    : "";
+  selected.innerHTML = selectedItem ? `<p class="eyebrow">Produto individual selecionado</p><h3>${escapeHtml(selectedItem.title)}</h3><strong>${dashboardMoney(selectedItem.price)}</strong><small>Loja: ${escapeHtml(selectedItem.seller || selectedItem.source)}${escapeHtml(selectedRating)}</small><small>Google Shopping · consulta de ${escapeHtml(selectedItem.consultedAt ? new Date(selectedItem.consultedAt).toLocaleString("pt-BR") : "agora")}</small><button type="button" class="secondary-button" data-change-market-reference>Remover seleção</button>` : "";
   if (marketState.status === "loading") { status.textContent = "Consultando produtos…"; stats.innerHTML = ""; results.innerHTML = ""; return; }
-  if (marketState.status === "error") { status.textContent = marketState.error; stats.innerHTML = '<div class="market-error-alert" role="alert">Pesquisa indisponível. O cálculo técnico continua disponível.</div>'; results.innerHTML = ""; return; }
+  if (marketState.status === "error") {
+    status.textContent = "";
+    stats.innerHTML = `<div class="market-error-alert" role="alert"><span class="market-error-icon" aria-hidden="true">!</span><div><strong>Pesquisa indisponível</strong><p>${escapeHtml(marketState.error)}</p></div><button type="button" class="secondary-button" data-market-retry>Tentar novamente</button></div>`;
+    results.innerHTML = "";
+    return;
+  }
   if (marketState.status === "empty") { status.textContent = "Nenhum produto compatível foi encontrado."; stats.innerHTML = ""; results.innerHTML = ""; return; }
   if (!marketState.stats) { status.textContent = "A pesquisa de mercado é opcional."; stats.innerHTML = ""; results.innerHTML = ""; return; }
   status.textContent = `${marketState.stats.count} referência(s) encontrada(s).`;
   stats.innerHTML = `<p>Média: <strong>${dashboardMoney(marketState.stats.average)}</strong> · Mediana: <strong>${dashboardMoney(marketState.stats.median)}</strong> · Mín.: ${dashboardMoney(marketState.stats.min)} · Máx.: ${dashboardMoney(marketState.stats.max)}</p>`;
-  results.innerHTML = marketState.items.map((item) => `<article class="amazon-result${marketState.selectedItem?.id === item.id ? " selected" : ""}"><div><h4>${escapeHtml(item.title)}</h4><p>${escapeHtml(item.category || "Categoria não informada")} · ${escapeHtml(item.source)}</p><strong>${dashboardMoney(item.price)}</strong></div><div class="amazon-actions"><button type="button" data-market-select="${escapeHtml(item.id)}">Usar produto</button><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver referência</a></div></article>`).join("");
+  results.innerHTML = marketState.items.map((item) => {
+    const rating = Number.isFinite(item.rating)
+      ? `<span class="market-rating" aria-label="Nota ${escapeHtml(item.rating)} de 5">★ ${escapeHtml(item.rating.toLocaleString("pt-BR", { maximumFractionDigits: 1 }))}${Number.isInteger(item.reviews) ? ` <small>(${escapeHtml(item.reviews.toLocaleString("pt-BR"))})</small>` : ""}</span>`
+      : "";
+    const image = item.image
+      ? `<img src="${escapeHtml(item.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" />`
+      : '<div class="market-image-placeholder" aria-hidden="true">Sem imagem</div>';
+    return `<article class="market-result${marketState.selectedItem?.id === item.id ? " selected" : ""}">${image}<div class="market-result-content"><h4>${escapeHtml(item.title)}</h4><p>Loja: ${escapeHtml(item.seller || item.source)}</p><div class="market-result-price"><strong>${dashboardMoney(item.price)}</strong>${rating}</div></div><div class="market-actions"><button type="button" data-market-select="${escapeHtml(item.id)}">Usar produto</button><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver no Google Shopping</a></div></article>`;
+  }).join("");
 }
 
 function renderIncompleteDashboard(document, marketState, errors) {
@@ -931,7 +948,12 @@ function renderDashboard(document, result, marketState, fiscalAssessment) {
   document.querySelector("#baseCost").textContent = dashboardMoney(result.totalUnitCost);
   document.querySelector("#marketReferencePrice").textContent = dashboardMoney(market.price);
   document.querySelector("#marketTitle").textContent = marketLabel(market);
-  document.querySelector("#marketReferenceDetails").textContent = market.price ? `Fonte: ${market.source || "não informada"}` : "Referência opcional não informada";
+  const selectedReference = market.reference?.selectedProduct;
+  document.querySelector("#marketReferenceDetails").textContent = market.price
+    ? selectedReference
+      ? `${selectedReference.title} · Loja: ${selectedReference.seller || selectedReference.source} · ${selectedReference.consultedAt ? new Date(selectedReference.consultedAt).toLocaleDateString("pt-BR") : "consulta atual"}`
+      : `Fonte: ${market.source || "não informada"}`
+    : "Referência opcional não informada";
   document.querySelector("#marketPriceLabel").textContent = marketLabel(market);
   document.querySelector("#suggestedPrice").textContent = dashboardMoney(result.technicalPrice);
   document.querySelector("#profitPerSale").textContent = dashboardMoney(result.profitAmount);
@@ -971,7 +993,7 @@ function savedMarket(product) {
   }
   const market = product.calculationData?.market;
   const price = Number(market?.selectedProduct?.price ?? market?.marketPrice ?? market?.stats?.median);
-  if (!Number.isFinite(price) || price <= 0 || !["market-product", "amazon-product"].includes(market?.source)) return null;
+  if (!Number.isFinite(price) || price <= 0 || market?.source !== "market-product") return null;
   const relativeDifference = (product.suggestedPrice - price) / price;
   return {
     difference: `${Math.abs(relativeDifference * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% ${relativeDifference <= 0 ? "abaixo" : "acima"}`,
@@ -1470,8 +1492,8 @@ function marketReferenceFromState(inputs) {
   if (rule === "selected-product" && marketState.selectedItem) {
     return { price: marketState.selectedItem.price, source: marketState.selectedItem.source, rule, query: marketState.query, marketplace: marketState.marketplace, provider: marketState.provider, selectedProduct: marketState.selectedItem, stats: marketState.stats };
   }
-  if (rule === "amazon-average" && marketState.stats) return { price: marketState.stats.average, source: marketState.marketplace || "Amazon", rule, query: marketState.query, marketplace: marketState.marketplace, provider: marketState.provider, stats: marketState.stats };
-  if (rule === "amazon-median" && marketState.stats) return { price: marketState.stats.median, source: marketState.marketplace || "Amazon", rule, query: marketState.query, marketplace: marketState.marketplace, provider: marketState.provider, stats: marketState.stats };
+  if (rule === "market-average" && marketState.stats) return { price: marketState.stats.average, source: marketState.marketplace || "Google Shopping", rule, query: marketState.query, marketplace: marketState.marketplace, provider: marketState.provider, stats: marketState.stats };
+  if (rule === "market-median" && marketState.stats) return { price: marketState.stats.median, source: marketState.marketplace || "Google Shopping", rule, query: marketState.query, marketplace: marketState.marketplace, provider: marketState.provider, stats: marketState.stats };
   return null;
 }
 
@@ -1647,15 +1669,13 @@ function setMarketError(query, caughtError) {
   let error = "Não foi possível consultar o mercado agora.";
   if (caughtError instanceof ApiError && caughtError.status === 429) {
     error = "O provedor limitou temporariamente as consultas. Aguarde um pouco e tente novamente.";
-  } else if (caughtError instanceof ApiError && caughtError.code === "NEXSCOPE_NOT_CONFIGURED") {
+  } else if (caughtError instanceof ApiError && caughtError.code === "SEARCHAPI_NOT_CONFIGURED") {
     error = "Consulta de mercado temporariamente indisponível.";
-  } else if (caughtError instanceof ApiError && caughtError.code === "NEXSCOPE_UNAUTHORIZED") {
+  } else if (caughtError instanceof ApiError && caughtError.code === "SEARCHAPI_UNAUTHORIZED") {
     error = "Não foi possível autenticar a consulta de mercado.";
-  } else if (caughtError instanceof ApiError && caughtError.code === "NEXSCOPE_FORBIDDEN") {
-    error = "A conta do provedor não possui acesso à pesquisa Amazon.";
-  } else if (caughtError instanceof ApiError && caughtError.code === "NEXSCOPE_INSUFFICIENT_CREDITS") {
-    error = "A conta do provedor está sem créditos suficientes para esta consulta.";
-  } else if (caughtError instanceof ApiError && caughtError.code === "NEXSCOPE_TIMEOUT") {
+  } else if (caughtError instanceof ApiError && caughtError.code === "SEARCHAPI_FORBIDDEN") {
+    error = "A conta do provedor não possui acesso à pesquisa no Google Shopping.";
+  } else if (caughtError instanceof ApiError && caughtError.code === "SEARCHAPI_TIMEOUT") {
     error = "A consulta demorou mais que o esperado. Tente novamente.";
   }
 
@@ -1758,8 +1778,8 @@ function productPayloadFromCalculator() {
         query: marketState.query,
         stats: marketState.stats,
         selectedProduct: marketState.selectedItem,
-        marketplace: marketState.marketplace || "Amazon",
-        provider: marketState.provider || "Nexscope",
+        marketplace: marketState.marketplace || "Google Shopping",
+        provider: marketState.provider || "SearchAPI / Google Shopping",
       },
       fiscalValidation: focusState.status === "success" && focusState.ncm?.codigo === inputs.fiscalContext.ncmCode
         ? { status: "success", source: "Focus NFe", code: focusState.ncm.codigo, ncm: focusState.ncm, environment: focusState.environment, checkedAt: focusState.checkedAt }
@@ -1875,8 +1895,8 @@ function reuseProduct(product) {
     items: [],
     stats: reference?.stats || null,
     selectedItem: reference?.selectedProduct || null,
-    marketplace: reference?.marketplace || "Amazon",
-    provider: reference?.provider || "Nexscope",
+    marketplace: reference?.marketplace || "Google Shopping",
+    provider: reference?.provider || "SearchAPI / Google Shopping",
     error: "",
   };
   elements.marketReferenceRule.value = reference?.rule || "manual";

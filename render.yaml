@@ -26,9 +26,9 @@ services:
         value: "5000"
       - key: FOCUS_NFE_TOKEN
         sync: false
-      - key: NEXSCOPE_API_KEY
+      - key: SEARCHAPI_API_KEY
         sync: false
-      - key: NEXSCOPE_TIMEOUT_MS
+      - key: SEARCHAPI_TIMEOUT_MS
         value: "15000"
 
 databases:

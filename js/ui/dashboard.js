@@ -6,8 +6,8 @@ function dashboardMoney(value) { return value === null || value === undefined ? 
 function marketLabel(market) {
   if (!market?.price) return "Sem referência de mercado";
   if (market.rule === "selected-product") return "Produto individual selecionado";
-  if (market.rule === "amazon-average") return "Média da pesquisa Amazon";
-  if (market.rule === "amazon-median") return "Mediana da pesquisa Amazon";
+  if (market.rule === "market-average") return "Média da pesquisa Google Shopping";
+  if (market.rule === "market-median") return "Mediana da pesquisa Google Shopping";
   return "Média informada manualmente";
 }
 
@@ -58,14 +58,31 @@ function renderMarketPanel(document, marketState) {
   searchButton.disabled = marketState.status === "loading";
   searchButton.textContent = marketState.status === "loading" ? "Buscando produtos..." : "Pesquisar produto";
   selected.hidden = !marketState.selectedItem;
-  selected.innerHTML = marketState.selectedItem ? `<p class="eyebrow">Produto individual selecionado</p><h3>${escapeHtml(marketState.selectedItem.title)}</h3><strong>${dashboardMoney(marketState.selectedItem.price)}</strong><small>Marketplace: ${escapeHtml(marketState.marketplace || "Amazon")} · Provedor técnico: ${escapeHtml(marketState.provider || "Nexscope")}</small><button type="button" class="secondary-button" data-change-market-reference>Remover seleção</button>` : "";
+  const selectedItem = marketState.selectedItem;
+  const selectedRating = Number.isFinite(selectedItem?.rating)
+    ? ` · Nota ${selectedItem.rating.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}${Number.isInteger(selectedItem.reviews) ? ` (${selectedItem.reviews.toLocaleString("pt-BR")} avaliações)` : ""}`
+    : "";
+  selected.innerHTML = selectedItem ? `<p class="eyebrow">Produto individual selecionado</p><h3>${escapeHtml(selectedItem.title)}</h3><strong>${dashboardMoney(selectedItem.price)}</strong><small>Loja: ${escapeHtml(selectedItem.seller || selectedItem.source)}${escapeHtml(selectedRating)}</small><small>Google Shopping · consulta de ${escapeHtml(selectedItem.consultedAt ? new Date(selectedItem.consultedAt).toLocaleString("pt-BR") : "agora")}</small><button type="button" class="secondary-button" data-change-market-reference>Remover seleção</button>` : "";
   if (marketState.status === "loading") { status.textContent = "Consultando produtos…"; stats.innerHTML = ""; results.innerHTML = ""; return; }
-  if (marketState.status === "error") { status.textContent = marketState.error; stats.innerHTML = '<div class="market-error-alert" role="alert">Pesquisa indisponível. O cálculo técnico continua disponível.</div>'; results.innerHTML = ""; return; }
+  if (marketState.status === "error") {
+    status.textContent = "";
+    stats.innerHTML = `<div class="market-error-alert" role="alert"><span class="market-error-icon" aria-hidden="true">!</span><div><strong>Pesquisa indisponível</strong><p>${escapeHtml(marketState.error)}</p></div><button type="button" class="secondary-button" data-market-retry>Tentar novamente</button></div>`;
+    results.innerHTML = "";
+    return;
+  }
   if (marketState.status === "empty") { status.textContent = "Nenhum produto compatível foi encontrado."; stats.innerHTML = ""; results.innerHTML = ""; return; }
   if (!marketState.stats) { status.textContent = "A pesquisa de mercado é opcional."; stats.innerHTML = ""; results.innerHTML = ""; return; }
   status.textContent = `${marketState.stats.count} referência(s) encontrada(s).`;
   stats.innerHTML = `<p>Média: <strong>${dashboardMoney(marketState.stats.average)}</strong> · Mediana: <strong>${dashboardMoney(marketState.stats.median)}</strong> · Mín.: ${dashboardMoney(marketState.stats.min)} · Máx.: ${dashboardMoney(marketState.stats.max)}</p>`;
-  results.innerHTML = marketState.items.map((item) => `<article class="amazon-result${marketState.selectedItem?.id === item.id ? " selected" : ""}"><div><h4>${escapeHtml(item.title)}</h4><p>${escapeHtml(item.category || "Categoria não informada")} · ${escapeHtml(item.source)}</p><strong>${dashboardMoney(item.price)}</strong></div><div class="amazon-actions"><button type="button" data-market-select="${escapeHtml(item.id)}">Usar produto</button><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver referência</a></div></article>`).join("");
+  results.innerHTML = marketState.items.map((item) => {
+    const rating = Number.isFinite(item.rating)
+      ? `<span class="market-rating" aria-label="Nota ${escapeHtml(item.rating)} de 5">★ ${escapeHtml(item.rating.toLocaleString("pt-BR", { maximumFractionDigits: 1 }))}${Number.isInteger(item.reviews) ? ` <small>(${escapeHtml(item.reviews.toLocaleString("pt-BR"))})</small>` : ""}</span>`
+      : "";
+    const image = item.image
+      ? `<img src="${escapeHtml(item.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" />`
+      : '<div class="market-image-placeholder" aria-hidden="true">Sem imagem</div>';
+    return `<article class="market-result${marketState.selectedItem?.id === item.id ? " selected" : ""}">${image}<div class="market-result-content"><h4>${escapeHtml(item.title)}</h4><p>Loja: ${escapeHtml(item.seller || item.source)}</p><div class="market-result-price"><strong>${dashboardMoney(item.price)}</strong>${rating}</div></div><div class="market-actions"><button type="button" data-market-select="${escapeHtml(item.id)}">Usar produto</button><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver no Google Shopping</a></div></article>`;
+  }).join("");
 }
 
 export function renderIncompleteDashboard(document, marketState, errors) {
@@ -89,7 +106,12 @@ export function renderDashboard(document, result, marketState, fiscalAssessment)
   document.querySelector("#baseCost").textContent = dashboardMoney(result.totalUnitCost);
   document.querySelector("#marketReferencePrice").textContent = dashboardMoney(market.price);
   document.querySelector("#marketTitle").textContent = marketLabel(market);
-  document.querySelector("#marketReferenceDetails").textContent = market.price ? `Fonte: ${market.source || "não informada"}` : "Referência opcional não informada";
+  const selectedReference = market.reference?.selectedProduct;
+  document.querySelector("#marketReferenceDetails").textContent = market.price
+    ? selectedReference
+      ? `${selectedReference.title} · Loja: ${selectedReference.seller || selectedReference.source} · ${selectedReference.consultedAt ? new Date(selectedReference.consultedAt).toLocaleDateString("pt-BR") : "consulta atual"}`
+      : `Fonte: ${market.source || "não informada"}`
+    : "Referência opcional não informada";
   document.querySelector("#marketPriceLabel").textContent = marketLabel(market);
   document.querySelector("#suggestedPrice").textContent = dashboardMoney(result.technicalPrice);
   document.querySelector("#profitPerSale").textContent = dashboardMoney(result.profitAmount);

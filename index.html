@@ -379,12 +379,13 @@
 
             <article id="selectedMarketProduct" class="selected-market-product" aria-live="polite" hidden></article>
 
-            <section id="marketPanel" class="amazon-panel market-results-panel" aria-labelledby="market-results-title" hidden>
+              <section id="marketPanel" class="market-provider-panel market-results-panel" aria-labelledby="market-results-title" hidden>
               <div class="panel-heading compact">
                 <div><p class="eyebrow">Resultados encontrados</p><h3 id="market-results-title">Produtos no mercado</h3></div>
               </div>
-              <div id="marketStats" class="amazon-stats"></div>
-              <div id="marketResults" class="amazon-results"></div>
+              <div id="marketStats" class="market-stats"></div>
+              <div id="marketResults" class="market-results"></div>
+              <p class="market-provider-credit">Dados via Google Shopping.</p>
             </section>
 
             <section class="manual-market-fallback" aria-labelledby="manual-market-title">
@@ -412,7 +413,7 @@
               <p id="manualMarketStatus" class="helper-text">Mercado é opcional e nunca altera automaticamente o preço técnico.</p>
               <div class="sidebar-field">
                 <label for="marketReferenceRule">Referência usada na comparação</label>
-                <select id="marketReferenceRule"><option value="manual">Média informada manualmente</option><option value="selected-product">Produto individual selecionado</option><option value="amazon-average">Média da pesquisa Amazon</option><option value="amazon-median">Mediana da pesquisa Amazon</option></select>
+                <select id="marketReferenceRule"><option value="manual">Média informada manualmente</option><option value="selected-product">Produto individual selecionado</option><option value="market-average">Média da pesquisa Google Shopping</option><option value="market-median">Mediana da pesquisa Google Shopping</option></select>
               </div>
             </section>
 
@@ -541,7 +542,7 @@
               <p id="marketReferenceDetails" class="market-reference-details">Fonte: valor manual</p>
               <progress id="marketMeter" class="market-meter compact-meter" max="100" value="0" aria-label="Relação entre o preço calculado e o preço médio de mercado"></progress>
               <p id="marketStatus" class="summary-description"></p>
-              <div id="marketSummary" class="amazon-summary" hidden></div>
+              <div id="marketSummary" class="market-summary" hidden></div>
               <button type="button" class="detail-link" data-detail-view="price" data-detail-target="market-comparison">Ver detalhes <span aria-hidden="true">→</span></button>
             </article>
 

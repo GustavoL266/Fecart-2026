@@ -64,15 +64,17 @@ function normalizeItem(item) {
 
   return {
     id: String(item.id),
-    asin: String(item.asin || item.id),
     title: String(item.title),
     price,
     source: String(item.source || "Marketplace"),
+    seller: String(item.seller || item.source || "Marketplace"),
     currency: "BRL",
     category: String(item.category || ""),
     image: String(item.image || ""),
     url: String(item.url),
     consultedAt: String(item.consultedAt || ""),
+    ...(Number.isFinite(Number(item.rating)) ? { rating: Number(item.rating) } : {}),
+    ...(Number.isInteger(Number(item.reviews)) && Number(item.reviews) >= 0 ? { reviews: Number(item.reviews) } : {}),
   };
 }
 
@@ -98,7 +100,7 @@ export class MarketService {
     return {
       query: normalizedQuery,
       marketplace: response?.marketplace || "Marketplace",
-      provider: response?.provider || "Nexscope",
+      provider: response?.provider || "SearchAPI / Google Shopping",
       items,
       stats: calculateMarketStats(items),
     };

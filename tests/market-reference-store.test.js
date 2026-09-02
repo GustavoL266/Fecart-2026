@@ -16,20 +16,20 @@ test("preserva a referência de mercado durante reload e mantém o fallback manu
   const storage = memoryStorage();
   const selectedItem = {
     id: "B001TESTE",
-    asin: "B001TESTE",
     title: "Produto de teste 256 GB",
     price: 7499,
     currency: "BRL",
-    source: "Amazon",
+    source: "Loja Exemplo",
+    seller: "Loja Exemplo",
     category: "Smartphones",
-    url: "https://www.amazon.com.br/dp/B001TESTE",
+    url: "https://www.google.com/shopping/product/B001TESTE",
   };
 
   assert.equal(saveMarketReference(storage, { manualValue: 32, query: "produto teste", selectedItem }), true);
   assert.deepEqual(loadMarketReference(storage), {
     manualValue: 32,
     query: "produto teste",
-    selectedItem: { ...selectedItem, image: "", source: "Amazon", consultedAt: "" },
+    selectedItem: { ...selectedItem, image: "", consultedAt: "" },
   });
 
   clearMarketReference(storage);
@@ -45,7 +45,7 @@ test("ignora conteúdo inválido do armazenamento da sessão", () => {
 
 test("preserva referência externa quando o fallback manual ainda está vazio", () => {
   const storage = memoryStorage();
-  const selectedItem = { id: "B002TESTE", asin: "B002TESTE", title: "Produto sem fallback", price: 99.9, source: "Amazon" };
+  const selectedItem = { id: "B002TESTE", title: "Produto sem fallback", price: 99.9, source: "Loja Exemplo", seller: "Loja Exemplo" };
 
   assert.equal(saveMarketReference(storage, { manualValue: null, query: "produto", selectedItem }), true);
   assert.equal(loadMarketReference(storage).manualValue, null);

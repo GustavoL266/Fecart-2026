@@ -20,7 +20,7 @@ function savedMarket(product) {
   }
   const market = product.calculationData?.market;
   const price = Number(market?.selectedProduct?.price ?? market?.marketPrice ?? market?.stats?.median);
-  if (!Number.isFinite(price) || price <= 0 || !["market-product", "amazon-product"].includes(market?.source)) return null;
+  if (!Number.isFinite(price) || price <= 0 || market?.source !== "market-product") return null;
   const relativeDifference = (product.suggestedPrice - price) / price;
   return {
     difference: `${Math.abs(relativeDifference * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% ${relativeDifference <= 0 ? "abaixo" : "acima"}`,

@@ -45,12 +45,12 @@ test("ciclo financeiro respeita zero, ciclo negativo e juros compostos positivos
 
 test("mercado vazio permanece nulo; produto, média e mediana são referências distintas", () => {
   assert.equal(calculatePricing(base).market.price, null);
-  const product = calculatePricing(base, { price: 77, source: "Amazon", rule: "selected-product", selectedProduct: { id: "x" } });
-  const average = calculatePricing(base, { price: 70, source: "Amazon", rule: "amazon-average" });
-  const median = calculatePricing(base, { price: 68, source: "Amazon", rule: "amazon-median" });
+  const product = calculatePricing(base, { price: 77, source: "Loja Exemplo", rule: "selected-product", selectedProduct: { id: "x" } });
+  const average = calculatePricing(base, { price: 70, source: "Google Shopping", rule: "market-average" });
+  const median = calculatePricing(base, { price: 68, source: "Google Shopping", rule: "market-median" });
   assert.equal(product.market.rule, "selected-product");
-  assert.equal(average.market.rule, "amazon-average");
-  assert.equal(median.market.rule, "amazon-median");
+  assert.equal(average.market.rule, "market-average");
+  assert.equal(median.market.rule, "market-median");
   assert.equal(product.technicalPrice, average.technicalPrice);
 });
 

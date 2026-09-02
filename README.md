@@ -17,7 +17,7 @@ Aplicação web para calcular preço de venda sustentável, comparar referência
 - Histórico com busca por nome, ordenação por data, visualização, edição, exclusão e reutilização de uma precificação anterior.
 - Salvamento de todos os campos relevantes da consulta (entradas, memória do cálculo e referência de mercado) em `calculation_data`.
 - Consulta de NCM pela Focus NFe exclusivamente no backend, com memória de cálculo, origem dos dados e aviso explícito de pendências fiscais.
-- Consulta opcional de produtos e preços da Amazon Brasil pela Nexscope, sempre através do backend.
+- Consulta opcional de produtos e preços do Google Shopping pela SearchAPI.io, sempre através do backend.
 - Cálculo técnico canônico no mesmo módulo puro para navegador e servidor, com validação em ambos os lados e sem arredondamentos intermediários.
 - Validação no navegador e no servidor, limitação de tentativas de autenticação, cabeçalhos de segurança e respostas sem hashes/senhas.
 
@@ -57,20 +57,20 @@ Defina `FOCUS_NFE_TOKEN` somente no ambiente do processo. Em desenvolvimento, a 
 
 O assistente usa a Focus NFe apenas para consultar e validar a descrição de um NCM exato. A documentação não oferece um endpoint de cálculo tributário automático: a carga tributária continua sendo um dado informado/regra configurada e o resultado aparece como estimativa fiscal pendente. Consulte [docs/focus-nfe.md](docs/focus-nfe.md) para limites, dados exigidos do contador e avaliação de NF-e recebidas.
 
-### Nexscope
+### SearchAPI.io / Google Shopping
 
-A busca de mercado usa o endpoint oficial `Amazon Search` da Nexscope para a Amazon Brasil. O navegador chama apenas `GET /market/search`; autenticação Bearer, cache de pesquisa por cinco minutos, retry limitado e normalização ficam no backend. A interface mostra de três a cinco resultados relevantes quando a resposta contém dados compatíveis.
+A busca de mercado usa o endpoint oficial de Google Shopping da SearchAPI.io. O navegador chama apenas `GET /market/search`; autenticação Bearer, cache de pesquisa por cinco minutos, deduplicação de chamadas e normalização ficam no backend. A interface mostra até cinco resultados relevantes quando a resposta contém dados compatíveis.
 
 Configure somente no ambiente do servidor:
 
 ```text
-NEXSCOPE_API_KEY
-NEXSCOPE_TIMEOUT_MS=15000
+SEARCHAPI_API_KEY
+SEARCHAPI_TIMEOUT_MS=15000
 ```
 
-`NEXSCOPE_API_KEY` é a única credencial de mercado obrigatória e deve ser criada em **API Access** da Nexscope. Nunca a coloque no frontend. Sem ela, `/health` retorna apenas `market.configured: false` e a pesquisa fica indisponível; o simulador continua funcionando com o campo manual **Preço médio local dos concorrentes (R$)**.
+`SEARCHAPI_API_KEY` é a única credencial de mercado obrigatória e deve ser criada no painel da SearchAPI.io. Nunca a coloque no frontend. Sem ela, `/health` retorna apenas `market.configured: false` e a pesquisa fica indisponível; o simulador continua funcionando com o campo manual **Preço médio local dos concorrentes (R$)**.
 
-O endpoint diferencia configuração ausente (`503`), consulta inválida (`400`), credencial recusada ou sem permissão (`401/403`), limite (`429`), resposta externa inválida/erro do provedor (`502`), indisponibilidade (`503`) e timeout (`504`). Os logs registram apenas consulta, provedor, status, contagem e uso de cache — nunca a chave ou o cabeçalho de autorização. Consulte [docs/nexscope.md](docs/nexscope.md) para o contrato externo e o teste real.
+O endpoint diferencia configuração ausente (`503`), consulta inválida (`400`), credencial recusada ou sem permissão (`401/403`), limite (`429`), resposta externa inválida (`502`), falhas externas (`5xx`) e timeout (`504`). Os logs registram apenas consulta, provedor, status, contagem e uso de cache — nunca a chave ou o cabeçalho de autorização. Consulte [docs/searchapi.md](docs/searchapi.md) para o contrato externo e o teste real.
 
 ## Publicação a partir do GitHub
 
@@ -82,10 +82,10 @@ O repositório contém [`render.yaml`](render.yaml), que publica a aplicação c
 2. No Render, escolha **New → Blueprint**, conecte o repositório e confirme os recursos propostos.
 3. O serviço cria o PostgreSQL, injeta `DATABASE_URL`, gera `SESSION_SECRET`, executa `npm run migrate` antes de cada publicação e inicia `npm start`.
 4. Configure no Web Service um `FOCUS_NFE_TOKEN` de produção. O Blueprint já seleciona `https://api.focusnfe.com.br` e o backend registra apenas `configured=true/false`, nunca o token.
-5. Para habilitar a pesquisa de mercado, preencha manualmente `NEXSCOPE_API_KEY` no Web Service. O Blueprint define `NEXSCOPE_TIMEOUT_MS=15000`; a existência de `sync: false` não preenche o segredo.
+5. Para habilitar a pesquisa de mercado, preencha manualmente `SEARCHAPI_API_KEY` no Web Service. O Blueprint define `SEARCHAPI_TIMEOUT_MS=15000`; a existência de `sync: false` não preenche o segredo.
 6. Abra a URL `https://…onrender.com` fornecida pelo Render. Essa é a URL que deve ser compartilhada e usada para criar contas.
 
-Em um serviço Render já existente, abra **Environment**, adicione a key `NEXSCOPE_API_KEY` com a chave real fornecida pela Nexscope e escolha **Save Changes**. Em seguida execute **Manual Deploy → Deploy latest commit**. Nunca grave o valor no GitHub ou no frontend.
+Em um serviço Render já existente, abra **Environment**, adicione a key `SEARCHAPI_API_KEY` com a chave real fornecida pela SearchAPI.io e escolha **Save Changes**. Em seguida execute **Manual Deploy → Deploy latest commit**. Nunca grave o valor no GitHub ou no frontend.
 
 Não é preciso (nem correto) colocar credenciais no GitHub, no código ou no GitHub Pages. Se o Pages já estiver ativo no repositório, desative-o em **Settings → Pages** para evitar que usuários cheguem à cópia estática sem API.
 
@@ -96,8 +96,8 @@ O frontend e a API são servidos pelo mesmo processo; não há um segundo servid
 - `SESSION_SECRET não foi definida`: copie `.env.example` para `.env` e informe uma chave aleatória de pelo menos 32 caracteres.
 - `DATABASE_URL não foi definida` ou falha de conexão: inicie o PostgreSQL e confira host, porta, usuário, senha e nome do banco no `.env`.
 - `MIGRATIONS_PENDING`: execute `npm run migrate` (ou `pnpm migrate`) antes de iniciar a aplicação.
-- `market.configured: false` no `/health`: confira se `NEXSCOPE_API_KEY` foi configurada no backend. O endpoint nunca mostra a chave.
-- `market.configured: true` confirma somente que a variável existe. Depois de uma pesquisa, consulte os logs `[Nexscope] Status` e `[Nexscope] Error` para distinguir credencial inválida (`401`), falta de acesso ao Amazon Search (`403`), créditos insuficientes (`402`), limite (`429`) e falha upstream (`5xx`).
+- `market.configured: false` no `/health`: confira se `SEARCHAPI_API_KEY` foi configurada no backend. O endpoint nunca mostra a chave.
+- `market.configured: true` confirma somente que a variável existe. Depois de uma pesquisa, consulte os logs `[Market] Status` e `[Market] Results` para distinguir credencial inválida (`401`), falta de permissão (`403`), limite (`429`) e falha externa (`5xx`).
 
 Na inicialização, o servidor testa a conexão com o PostgreSQL e confirma que as tabelas exigidas existem. Assim, uma configuração incompleta aparece no terminal com a causa concreta, em vez de falhar apenas ao enviar o formulário.
 
@@ -129,7 +129,7 @@ pnpm migrate     # aplica migrations/*.sql pendentes
 pnpm build       # gera app.js a partir dos módulos em js/
 pnpm test        # executa os testes
 pnpm focus:check # consulta não destrutiva de NCM somente em homologação
-pnpm nexscope:check # executa as duas buscas reais de validação
+pnpm searchapi:check -- "iPhone 15 Pro Max" # executa uma busca real de validação
 ```
 
 `app.js` é gerado. Edite os módulos de `js/` e rode `pnpm build` antes de publicar alterações do frontend.
@@ -155,7 +155,7 @@ O relacionamento `products.user_id → users.id` usa chave estrangeira com `ON D
 | GET | `/products` | Obrigatória |
 | GET | `/products/:id` | Obrigatória + dono |
 | GET | `/fiscal/ncms/:codigo` | Obrigatória; proxy backend para Focus NFe |
-| GET | `/market/search?q=termos` | Obrigatória; proxy backend para Nexscope |
+| GET | `/market/search?q=termos` | Obrigatória; proxy backend para SearchAPI Google Shopping |
 | POST | `/products` | Obrigatória |
 | PATCH | `/products/:id` | Obrigatória + dono |
 | DELETE | `/products/:id` | Obrigatória + dono |

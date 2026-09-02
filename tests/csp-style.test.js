@@ -52,12 +52,11 @@ test("a CSP mantém estilos restritos à própria aplicação", async () => {
   assert.ok(!source.toLowerCase().includes(formerMarketplaceApiHost));
 });
 
-test("o bundle do navegador não contém a chave nem o endpoint autenticado da Nexscope", async () => {
+test("o bundle do navegador não contém a chave nem o endpoint autenticado da SearchAPI", async () => {
   const bundle = await readFile(resolve(projectRoot, "app.js"), "utf8");
 
-  assert.doesNotMatch(bundle, /AMAZON_CREATORS_CREDENTIAL_(?:ID|SECRET)\b|\bAMAZON_PARTNER_TAG\b/);
-  assert.doesNotMatch(bundle, /creatorsapi\.amazon|api\.amazon\.(?:com|co\.uk|co\.jp)\/auth\/o2\/token/);
-  assert.doesNotMatch(bundle, /NEXSCOPE_API_KEY|api\.nexscope\.ai/);
+  assert.doesNotMatch(bundle, /SEARCHAPI_API_KEY|searchapi\.io\/api\/v1\/search/);
+  assert.doesNotMatch(bundle, /Authorization:\s*[\`"']Bearer/i);
   assert.match(bundle, /\/market\/search\?q=/);
 });
 

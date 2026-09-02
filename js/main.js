@@ -188,8 +188,8 @@ function marketReferenceFromState(inputs) {
   if (rule === "selected-product" && marketState.selectedItem) {
     return { price: marketState.selectedItem.price, source: marketState.selectedItem.source, rule, query: marketState.query, marketplace: marketState.marketplace, provider: marketState.provider, selectedProduct: marketState.selectedItem, stats: marketState.stats };
   }
-  if (rule === "amazon-average" && marketState.stats) return { price: marketState.stats.average, source: marketState.marketplace || "Amazon", rule, query: marketState.query, marketplace: marketState.marketplace, provider: marketState.provider, stats: marketState.stats };
-  if (rule === "amazon-median" && marketState.stats) return { price: marketState.stats.median, source: marketState.marketplace || "Amazon", rule, query: marketState.query, marketplace: marketState.marketplace, provider: marketState.provider, stats: marketState.stats };
+  if (rule === "market-average" && marketState.stats) return { price: marketState.stats.average, source: marketState.marketplace || "Google Shopping", rule, query: marketState.query, marketplace: marketState.marketplace, provider: marketState.provider, stats: marketState.stats };
+  if (rule === "market-median" && marketState.stats) return { price: marketState.stats.median, source: marketState.marketplace || "Google Shopping", rule, query: marketState.query, marketplace: marketState.marketplace, provider: marketState.provider, stats: marketState.stats };
   return null;
 }
 
@@ -365,15 +365,13 @@ function setMarketError(query, caughtError) {
   let error = "Não foi possível consultar o mercado agora.";
   if (caughtError instanceof ApiError && caughtError.status === 429) {
     error = "O provedor limitou temporariamente as consultas. Aguarde um pouco e tente novamente.";
-  } else if (caughtError instanceof ApiError && caughtError.code === "NEXSCOPE_NOT_CONFIGURED") {
+  } else if (caughtError instanceof ApiError && caughtError.code === "SEARCHAPI_NOT_CONFIGURED") {
     error = "Consulta de mercado temporariamente indisponível.";
-  } else if (caughtError instanceof ApiError && caughtError.code === "NEXSCOPE_UNAUTHORIZED") {
+  } else if (caughtError instanceof ApiError && caughtError.code === "SEARCHAPI_UNAUTHORIZED") {
     error = "Não foi possível autenticar a consulta de mercado.";
-  } else if (caughtError instanceof ApiError && caughtError.code === "NEXSCOPE_FORBIDDEN") {
-    error = "A conta do provedor não possui acesso à pesquisa Amazon.";
-  } else if (caughtError instanceof ApiError && caughtError.code === "NEXSCOPE_INSUFFICIENT_CREDITS") {
-    error = "A conta do provedor está sem créditos suficientes para esta consulta.";
-  } else if (caughtError instanceof ApiError && caughtError.code === "NEXSCOPE_TIMEOUT") {
+  } else if (caughtError instanceof ApiError && caughtError.code === "SEARCHAPI_FORBIDDEN") {
+    error = "A conta do provedor não possui acesso à pesquisa no Google Shopping.";
+  } else if (caughtError instanceof ApiError && caughtError.code === "SEARCHAPI_TIMEOUT") {
     error = "A consulta demorou mais que o esperado. Tente novamente.";
   }
 
@@ -476,8 +474,8 @@ function productPayloadFromCalculator() {
         query: marketState.query,
         stats: marketState.stats,
         selectedProduct: marketState.selectedItem,
-        marketplace: marketState.marketplace || "Amazon",
-        provider: marketState.provider || "Nexscope",
+        marketplace: marketState.marketplace || "Google Shopping",
+        provider: marketState.provider || "SearchAPI / Google Shopping",
       },
       fiscalValidation: focusState.status === "success" && focusState.ncm?.codigo === inputs.fiscalContext.ncmCode
         ? { status: "success", source: "Focus NFe", code: focusState.ncm.codigo, ncm: focusState.ncm, environment: focusState.environment, checkedAt: focusState.checkedAt }
@@ -593,8 +591,8 @@ function reuseProduct(product) {
     items: [],
     stats: reference?.stats || null,
     selectedItem: reference?.selectedProduct || null,
-    marketplace: reference?.marketplace || "Amazon",
-    provider: reference?.provider || "Nexscope",
+    marketplace: reference?.marketplace || "Google Shopping",
+    provider: reference?.provider || "SearchAPI / Google Shopping",
     error: "",
   };
   elements.marketReferenceRule.value = reference?.rule || "manual";

@@ -11,7 +11,7 @@ function documentStub() {
 const inputs = { materialCost: 10, wasteRate: 0, packagingCost: 1, deliveryCost: 1, monthlyPayroll: 100, monthlyFixedCosts: 100, expectedMonthlyUnits: 100, taxRate: 0.06, paymentFeeRate: 0.02, commissionRate: 0.03, desiredNetMargin: 0.2, inventoryDays: 0, receivingDays: 0, paymentDays: 0, monthlyCapitalRate: 0, fiscalContext: {} };
 
 test("dashboard lê o resultado canônico e distingue produto individual", () => {
-  const result = calculatePricing(inputs, { price: 30, source: "Amazon", rule: "selected-product" });
+  const result = calculatePricing(inputs, { price: 30, source: "Loja Exemplo", rule: "selected-product" });
   const document = documentStub();
   renderDashboard(document, result, { status: "idle", items: [], stats: null, selectedItem: null }, new ConfiguredTaxRuleEngine().assess(inputs));
   assert.match(document.nodes.get("#suggestedPrice").textContent, /R\$/);
