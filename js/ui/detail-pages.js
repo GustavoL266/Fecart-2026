@@ -1,123 +1,52 @@
-import { clamp, currency, escapeHtml, percent } from "../utils/formatters.js";
+import { currency, escapeHtml, percent } from "../utils/formatters.js";
+
+function money(value) { return value === null || value === undefined ? "—" : currency.format(value); }
 
 export function priceCompositionFrom(result) {
-  if (!result.isValid || !result.minimumPriceCents) return [];
-
-  const components = [
-    { label: "Custos diretos líquidos", valueCents: result.costs.directCashCostCents },
-    { label: "Capital de giro", valueCents: result.costs.workingCapitalCostCents },
-    { label: "Rateio de custos fixos", valueCents: result.costs.fixedCostAllocationCents },
-    { label: "Impostos, taxas e comissão", valueCents: result.salesExpensesCents },
-    { label: "Lucro líquido", valueCents: result.profitPerSaleCents },
-  ].filter((item) => item.valueCents > 0);
-
-  const representedTotalCents = components.reduce((total, item) => total + item.valueCents, 0);
-  return components.map((item) => ({
-    ...item,
-    share: representedTotalCents > 0 ? item.valueCents / representedTotalCents : 0,
-  }));
-}
-
-export function priceComparisonFrom(inputs, result) {
-  const values = [
-    { label: "Custo-base", value: result.costs.baseCost },
-    { label: "Preço recomendado", value: result.minimumPrice || 0 },
-    { label: "Média do mercado", value: inputs.competitorAverage },
-  ];
-  const maximum = Math.max(...values.map((item) => item.value), 1);
-
-  return values.map((item) => ({
-    ...item,
-    width: clamp((item.value / maximum) * 100, 0, 100),
-  }));
+  return [
+    { label: "Custo direto", value: result.directCost },
+    { label: "Custo indireto", value: result.indirectCost },
+    { label: "Custo financeiro", value: result.financialCost },
+    { label: "Tributos, taxa e comissão", value: result.taxAmount + result.paymentFeeAmount + result.commissionAmount },
+    { label: "Lucro líquido", value: result.profitAmount },
+  ].filter((item) => item.value > 0);
 }
 
 function renderComposition(document, result) {
-  const donut = document.querySelector("#priceDonut");
-  const segments = document.querySelector("#priceDonutSegments");
-  const legend = document.querySelector("#priceCompositionLegend");
   const components = priceCompositionFrom(result);
-
-  if (components.length === 0) {
-    segments.innerHTML = "";
-    donut.setAttribute("aria-label", "Composição indisponível enquanto o cálculo estiver inválido.");
-    legend.innerHTML = '<li class="chart-empty">Revise os percentuais para visualizar a composição.</li>';
-    return;
-  }
-
-  let cursor = 0;
-  segments.innerHTML = components
-    .map((item, index) => {
-      const segmentSize = item.share * 100;
-      const offset = -cursor;
-      cursor += segmentSize;
-      return `<circle class="donut-segment donut-segment-${index + 1}" cx="60" cy="60" r="48" pathLength="100" stroke-dasharray="${segmentSize.toFixed(4)} ${(100 - segmentSize).toFixed(4)}" stroke-dashoffset="${offset.toFixed(4)}"></circle>`;
-    })
-    .join("");
-  donut.setAttribute(
-    "aria-label",
-    components.map((item) => `${item.label}: ${percent(item.share)}`).join(". "),
-  );
-  legend.innerHTML = components
-    .map(
-      (item, index) => `
-        <li>
-          <span class="chart-legend-color chart-legend-color-${index + 1}" aria-hidden="true"></span>
-          <span>${escapeHtml(item.label)}</span>
-          <strong>${currency.format(item.valueCents / 100)}</strong>
-          <small>${percent(item.share)}</small>
-        </li>`,
-    )
-    .join("");
+  const total = components.reduce((sum, item) => sum + item.value, 0);
+  document.querySelector("#priceDonutSegments").innerHTML = components.reduce(({ markup, cursor }, item, index) => {
+    const share = total ? item.value / total : 0;
+    const size = share * 100;
+    return { cursor: cursor + size, markup: `${markup}<circle class="donut-segment donut-segment-${index + 1}" cx="60" cy="60" r="48" pathLength="100" stroke-dasharray="${size.toFixed(4)} ${(100 - size).toFixed(4)}" stroke-dashoffset="${(-cursor).toFixed(4)}"></circle>` };
+  }, { markup: "", cursor: 0 }).markup;
+  document.querySelector("#priceCompositionLegend").innerHTML = components.map((item, index) => `<li><span class="chart-legend-color chart-legend-color-${index + 1}"></span><span>${escapeHtml(item.label)}</span><strong>${money(item.value)}</strong><small>${percent(total ? item.value / total : 0)}</small></li>`).join("");
 }
 
-function renderComparison(document, inputs, result, marketText) {
-  const comparison = priceComparisonFrom(inputs, result);
-  document.querySelector("#priceComparisonBars").innerHTML = comparison
-    .map(
-      (item, index) => `
-        <li>
-          <div><span>${escapeHtml(item.label)}</span><strong>${currency.format(item.value)}</strong></div>
-          <progress class="comparison-track comparison-fill-${index + 1}" max="100" value="${item.width.toFixed(2)}" aria-label="${escapeHtml(item.label)}: ${percent(item.width / 100)} da maior referência"></progress>
-        </li>`,
-    )
-    .join("");
-  document.querySelector("#detailMarketNarrative").textContent = marketText;
-}
-
-export function renderPriceDetails(document, inputs, result, marketText, alertCount) {
-  const validPrice = result.isValid ? currency.format(result.minimumPrice) : "Revise percentuais";
-  const validMargin = result.isValid ? percent(result.actualMargin) : "-";
-
-  document.querySelector("#detailSuggestedPrice").textContent = validPrice;
-  document.querySelector("#detailDonutPrice").textContent = result.isValid ? currency.format(result.minimumPrice) : "-";
-  document.querySelector("#detailBaseCost").textContent = currency.format(result.costs.baseCost);
-  document.querySelector("#detailSalesRate").textContent = percent(result.costs.salesRate);
-  document.querySelector("#detailProfit").textContent = result.isValid ? currency.format(result.profitPerSale) : "-";
-  document.querySelector("#detailMargin").textContent = validMargin;
-  document.querySelector("#detailMarketPrice").textContent = currency.format(inputs.competitorAverage);
-  document.querySelector("#detailMarketCostLimit").textContent = currency.format(result.marketCostLimit);
+export function renderPriceDetails(document, result, alertCount) {
+  document.querySelector("#detailSuggestedPrice").textContent = money(result.technicalPrice);
+  document.querySelector("#detailDonutPrice").textContent = money(result.technicalPrice);
+  document.querySelector("#detailBaseCost").textContent = money(result.totalUnitCost);
+  document.querySelector("#detailSalesRate").textContent = percent(result.saleExpenseRate);
+  document.querySelector("#detailProfit").textContent = money(result.profitAmount);
+  document.querySelector("#detailMargin").textContent = percent(result.actualNetMargin);
+  document.querySelector("#detailMarketPrice").textContent = money(result.market.price);
+  document.querySelector("#detailMarketCostLimit").textContent = result.market.difference === null ? "—" : money(result.market.difference);
   document.querySelector("#detailAlertCount").textContent = `${alertCount} ${alertCount === 1 ? "ponto de atenção" : "pontos de atenção"}`;
-
+  document.querySelector("#detailMarketNarrative").textContent = result.market.price
+    ? `Referência ${result.market.rule}: ${money(result.market.price)}. Diferença para o preço técnico: ${money(result.market.difference)} (${percent(result.market.differenceRate)}).`
+    : "Não há referência de mercado. Isso não bloqueia o preço técnico.";
+  document.querySelector("#priceComparisonBars").innerHTML = [
+    ["Custo total", result.totalUnitCost], ["Preço técnico", result.technicalPrice], ["Mercado", result.market.price],
+  ].filter(([, value]) => value !== null).map(([label, value]) => `<li><div><span>${label}</span><strong>${money(value)}</strong></div></li>`).join("");
   renderComposition(document, result);
-  renderComparison(document, inputs, result, marketText);
 }
 
 export function renderPriceDetailsUnavailable(document, invalidCount) {
-  [
-    "detailSuggestedPrice",
-    "detailDonutPrice",
-    "detailBaseCost",
-    "detailSalesRate",
-    "detailProfit",
-    "detailMargin",
-    "detailMarketPrice",
-    "detailMarketCostLimit",
-  ].forEach((id) => { document.querySelector(`#${id}`).textContent = "-"; });
+  ["detailSuggestedPrice", "detailDonutPrice", "detailBaseCost", "detailSalesRate", "detailProfit", "detailMargin", "detailMarketPrice", "detailMarketCostLimit"].forEach((id) => { document.querySelector(`#${id}`).textContent = "—"; });
   document.querySelector("#detailAlertCount").textContent = `${invalidCount} ${invalidCount === 1 ? "campo pendente" : "campos pendentes"}`;
   document.querySelector("#priceDonutSegments").innerHTML = "";
-  document.querySelector("#priceDonut").setAttribute("aria-label", "Composição indisponível enquanto o formulário estiver inválido.");
-  document.querySelector("#priceCompositionLegend").innerHTML = '<li class="chart-empty">Preencha os campos obrigatórios para visualizar a composição.</li>';
+  document.querySelector("#priceCompositionLegend").innerHTML = "<li>Preencha os campos obrigatórios.</li>";
   document.querySelector("#priceComparisonBars").innerHTML = "";
-  document.querySelector("#detailMarketNarrative").textContent = "A comparação será exibida depois que os dados da precificação forem validados.";
+  document.querySelector("#detailMarketNarrative").textContent = "A comparação é opcional e será mostrada quando houver uma referência válida.";
 }

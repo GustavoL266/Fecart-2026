@@ -1,126 +1,123 @@
-import { PERCENTAGE_FIELDS } from "../config/pricing.js";
+import { validatePricingInputs } from "../domain/pricing-calculator.js";
 
-const PRICING_FIELD_RULES = Object.freeze({
-  materialsCost: { requiredMessage: "Informe o custo dos insumos.", min: 0, minMessage: "O custo dos insumos não pode ser negativo." },
-  waste: { requiredMessage: "Informe a perda e desperdício.", min: 0, max: 100, minMessage: "A perda e desperdício não pode ser negativa.", maxMessage: "A perda e desperdício máxima permitida é 100%." },
-  packagingCost: { requiredMessage: "Informe o custo de embalagem.", min: 0, minMessage: "O custo de embalagem não pode ser negativo." },
-  deliveryCost: { requiredMessage: "Informe o frete ou custo de entrega.", min: 0, minMessage: "O frete ou custo de entrega não pode ser negativo." },
-  insuranceCost: { optional: true, min: 0, minMessage: "O seguro não pode ser negativo." },
-  discountAmount: { optional: true, min: 0, minMessage: "O desconto não pode ser negativo." },
-  otherExpenses: { optional: true, min: 0, minMessage: "As outras despesas não podem ser negativas." },
-  totalPayroll: { requiredMessage: "Informe a folha salarial mensal.", min: 0, minMessage: "A folha salarial não pode ser negativa." },
-  workerCount: { requiredMessage: "Informe o número de trabalhadores.", min: 1, integer: true, minMessage: "O número de trabalhadores deve ser pelo menos 1." },
-  outputPerWorkerHour: { requiredMessage: "Informe a produção por trabalhador/hora.", min: 0.01, minMessage: "A produção por trabalhador/hora deve ser pelo menos 0,01." },
-  monthlyFixedCosts: { requiredMessage: "Informe os custos fixos mensais.", min: 0, minMessage: "Os custos fixos não podem ser negativos." },
-  monthlyVolume: { requiredMessage: "Informe as operações previstas no mês.", min: 1, integer: true, minMessage: "As operações previstas devem ser pelo menos 1." },
-  taxRate: { requiredMessage: "Informe a carga tributária estimada.", min: 0, max: 60, minMessage: "A carga tributária não pode ser negativa.", maxMessage: "A carga tributária máxima permitida é 60%." },
-  paymentFeeRate: { requiredMessage: "Informe a taxa de pagamento.", min: 0, max: 30, minMessage: "A taxa de pagamento não pode ser negativa.", maxMessage: "A taxa de pagamento máxima permitida é 30%." },
-  commissionRate: { requiredMessage: "Informe a comissão.", min: 0, max: 50, minMessage: "A comissão não pode ser negativa.", maxMessage: "A comissão máxima permitida é 50%." },
-  margin: { requiredMessage: "Informe a margem líquida desejada.", min: 0.1, max: 60, minMessage: "A margem mínima permitida é 0,1%.", maxMessage: "A margem máxima permitida é 60%." },
-  competitorAverage: { requiredMessage: "Informe o preço médio local dos concorrentes.", min: 0.01, max: 1_000_000, minMessage: "O preço médio dos concorrentes deve ser pelo menos R$ 0,01.", maxMessage: "O preço médio dos concorrentes não pode ultrapassar R$ 1.000.000,00." },
-  receiveDays: { requiredMessage: "Informe o prazo de recebimento.", min: 0, integer: true, minMessage: "O prazo de recebimento não pode ser negativo." },
-  payDays: { requiredMessage: "Informe o prazo de pagamento.", min: 0, integer: true, minMessage: "O prazo de pagamento não pode ser negativo." },
-  capitalRate: { requiredMessage: "Informe o custo do capital.", min: 0, max: 8, minMessage: "O custo do capital não pode ser negativo.", maxMessage: "O custo do capital máximo permitido é 8% ao mês." },
+export const PERCENTAGE_FIELDS = new Set([
+  "wasteRate", "taxRate", "paymentFeeRate", "commissionRate", "desiredNetMargin", "monthlyCapitalRate", "discountRate",
+]);
+
+const FIELD_RULES = Object.freeze({
+  materialCost: { required: "Informe o custo da matéria-prima." },
+  wasteRate: { required: "Informe o desperdício." },
+  packagingCost: { required: "Informe o custo de embalagem." },
+  deliveryCost: { required: "Informe o frete ou entrega." },
+  insuranceCost: { optional: true },
+  otherDirectExpenses: { optional: true },
+  monthlyPayroll: { required: "Informe a folha salarial mensal." },
+  monthlyFixedCosts: { required: "Informe os custos fixos mensais." },
+  expectedMonthlyUnits: { required: "Informe a quantidade prevista por mês." },
+  taxRate: { required: "Informe a carga tributária estimada manualmente." },
+  paymentFeeRate: { required: "Informe a taxa de pagamento." },
+  commissionRate: { required: "Informe a comissão." },
+  desiredNetMargin: { required: "Informe a margem líquida desejada." },
+  inventoryDays: { required: "Informe o prazo de estoque/produção." },
+  receivingDays: { required: "Informe o prazo de recebimento." },
+  paymentDays: { required: "Informe o prazo de pagamento." },
+  monthlyCapitalRate: { required: "Informe o custo do capital ao mês." },
+  discountRate: { optional: true },
+  fixedDiscountAmount: { optional: true },
+  marketPrice: { optional: true },
 });
 
-export const PRICING_FIELD_IDS = Object.freeze(Object.keys(PRICING_FIELD_RULES));
+export const PRICING_FIELD_IDS = Object.freeze(Object.keys(FIELD_RULES));
+export const CAPACITY_FIELD_IDS = Object.freeze(["workerCount", "productiveHoursPerWorkerMonth", "unitsPerWorkerHour"]);
 
 export function parseBrazilianNumber(rawValue) {
   const value = String(rawValue ?? "").trim().replace(/\s/g, "");
   if (value === "") return { status: "empty", value: null };
-
   const commaCount = (value.match(/,/g) || []).length;
-  const normalizedValue = commaCount === 1
-    ? value.replace(/\./g, "").replace(",", ".")
-    : value;
-  if (commaCount > 1 || !/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalizedValue)) {
-    return { status: "invalid", value: null };
-  }
-
-  const numericValue = Number(normalizedValue);
-  return Number.isFinite(numericValue)
-    ? { status: "valid", value: numericValue }
-    : { status: "invalid", value: null };
+  const normalized = commaCount === 1 ? value.replace(/\./g, "").replace(",", ".") : value;
+  if (commaCount > 1 || !/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return { status: "invalid", value: null };
+  const numeric = Number(normalized);
+  return Number.isFinite(numeric) ? { status: "valid", value: numeric } : { status: "invalid", value: null };
 }
 
 function readFiscalContext(elements) {
   return {
-    ncmCode: String(elements.ncmCode.value || "").replace(/\D/g, ""),
-    taxRegime: elements.taxRegime.value,
-    originState: elements.originState.value.trim().toUpperCase(),
-    destinationState: elements.destinationState.value.trim().toUpperCase(),
-    cfop: String(elements.cfop.value || "").replace(/\D/g, ""),
-    taxSituation: elements.taxSituation.value.trim().toUpperCase(),
-    customerType: elements.customerType.value,
-    operationPurpose: elements.operationPurpose.value,
+    ncmCode: String(elements.ncmCode?.value || "").replace(/\D/g, ""),
+    taxRegime: String(elements.taxRegime?.value || ""),
+    originState: String(elements.originState?.value || "").trim().toUpperCase(),
+    destinationState: String(elements.destinationState?.value || "").trim().toUpperCase(),
+    cfop: String(elements.cfop?.value || "").replace(/\D/g, ""),
+    taxSituation: String(elements.taxSituation?.value || "").trim().toUpperCase(),
+    customerType: String(elements.customerType?.value || ""),
+    operationPurpose: String(elements.operationPurpose?.value || ""),
   };
+}
+
+function readCapacity(elements, errors) {
+  const capacity = {};
+  let provided = 0;
+  for (const fieldId of CAPACITY_FIELD_IDS) {
+    const parsed = parseBrazilianNumber(elements[fieldId]?.value);
+    if (parsed.status === "invalid") errors[fieldId] = "Informe um número válido.";
+    if (parsed.status === "valid") {
+      capacity[fieldId] = parsed.value;
+      provided += 1;
+    }
+  }
+  if (provided > 0 && provided < CAPACITY_FIELD_IDS.length) {
+    for (const fieldId of CAPACITY_FIELD_IDS) {
+      if (!(fieldId in capacity) && !errors[fieldId]) errors[fieldId] = "Complete a capacidade produtiva ou deixe a seção vazia.";
+    }
+  }
+  return provided === CAPACITY_FIELD_IDS.length ? capacity : null;
 }
 
 export function validatePricingForm(elements) {
   const errors = {};
-  const inputs = {};
+  const rawInputs = {};
   const emptyOptionalFields = [];
-
-  for (const [fieldId, rule] of Object.entries(PRICING_FIELD_RULES)) {
+  for (const [fieldId, rule] of Object.entries(FIELD_RULES)) {
     const parsed = parseBrazilianNumber(elements[fieldId]?.value);
     if (parsed.status === "empty") {
       if (rule.optional) {
-        inputs[fieldId] = 0;
+        rawInputs[fieldId] = fieldId === "marketPrice" ? null : 0;
         emptyOptionalFields.push(fieldId);
-      } else {
-        errors[fieldId] = rule.requiredMessage;
-      }
+      } else errors[fieldId] = rule.required;
       continue;
     }
     if (parsed.status === "invalid") {
-      errors[fieldId] = "Informe um número válido.";
+      errors[fieldId] = "Informe um número válido, sem notação científica.";
       continue;
     }
-    if (rule.integer && !Number.isInteger(parsed.value)) {
-      errors[fieldId] = "Informe um número inteiro.";
-      continue;
-    }
-    if (rule.min !== undefined && parsed.value < rule.min) {
-      errors[fieldId] = rule.minMessage;
-      continue;
-    }
-    if (rule.max !== undefined && parsed.value > rule.max) {
-      errors[fieldId] = rule.maxMessage;
-      continue;
-    }
-    inputs[fieldId] = PERCENTAGE_FIELDS.has(fieldId) ? parsed.value / 100 : parsed.value;
+    rawInputs[fieldId] = PERCENTAGE_FIELDS.has(fieldId) ? parsed.value / 100 : parsed.value;
   }
+  rawInputs.productionCapacity = readCapacity(elements, errors);
+  rawInputs.fiscalContext = readFiscalContext(elements);
+  if (Object.keys(errors).length > 0) return { isValid: false, errors, inputs: null, emptyOptionalFields };
 
-  const rateFields = ["taxRate", "paymentFeeRate", "commissionRate", "margin"];
-  if (rateFields.every((fieldId) => inputs[fieldId] !== undefined)) {
-    const totalRate = rateFields.reduce((total, fieldId) => total + inputs[fieldId], 0);
-    if (totalRate >= 1) errors.margin = "A soma de impostos, taxas, comissão e margem deve ser menor que 100%.";
-  }
-
-  const isValid = Object.keys(errors).length === 0;
+  const domainValidation = validatePricingInputs(rawInputs);
   return {
-    isValid,
-    errors,
+    isValid: domainValidation.isValid,
+    errors: domainValidation.errors,
+    inputs: domainValidation.isValid ? domainValidation.value : null,
     emptyOptionalFields,
-    inputs: isValid ? { ...inputs, fiscalContext: readFiscalContext(elements) } : null,
   };
 }
 
 export function renderPricingErrors(elements, errors, visibleFieldIds = null) {
-  for (const fieldId of PRICING_FIELD_IDS) {
+  for (const fieldId of [...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]) {
     const field = elements[fieldId];
     if (!field) continue;
     const error = errors[fieldId] || "";
-    const isVisible = Boolean(error) && (visibleFieldIds === null || visibleFieldIds.has(fieldId));
+    const visible = Boolean(error) && (visibleFieldIds === null || visibleFieldIds.has(fieldId));
     field.setCustomValidity?.(error);
-    field.setAttribute("aria-invalid", String(isVisible));
-
+    field.setAttribute("aria-invalid", String(visible));
     const container = field.closest?.(".sidebar-field");
     if (!container) continue;
-    container.classList.toggle("has-error", isVisible);
+    container.classList.toggle("has-error", visible);
     const errorId = `${fieldId}Error`;
-    let errorElement = field.ownerDocument.getElementById(errorId);
-    if (!errorElement) {
+    let errorElement = field.ownerDocument?.getElementById?.(errorId);
+    if (!errorElement && field.ownerDocument?.createElement) {
       errorElement = field.ownerDocument.createElement("p");
       errorElement.id = errorId;
       errorElement.className = "pricing-field-error";
@@ -130,30 +127,69 @@ export function renderPricingErrors(elements, errors, visibleFieldIds = null) {
       describedBy.add(errorId);
       field.setAttribute("aria-describedby", [...describedBy].join(" "));
     }
-    errorElement.textContent = isVisible ? error : "";
-    errorElement.hidden = !isVisible;
+    if (errorElement) {
+      errorElement.textContent = visible ? error : "";
+      errorElement.hidden = !visible;
+    }
   }
+}
+
+function displayNumber(value, percentage = false) {
+  const display = percentage ? value * 100 : value;
+  return String(Number(display.toFixed(8))).replace(".", ",");
+}
+
+export function clearPricingInputs(elements) {
+  for (const fieldId of [...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]) {
+    if (elements[fieldId]) elements[fieldId].value = "";
+  }
+  ["ncmCode", "taxRegime", "originState", "destinationState", "cfop", "taxSituation", "customerType", "operationPurpose"].forEach((fieldId) => {
+    if (elements[fieldId]) elements[fieldId].value = "";
+  });
 }
 
 export function applySavedInputs(savedInputs, elements, emptyOptionalFields = []) {
   if (!savedInputs || typeof savedInputs !== "object") return false;
-  const fieldsToKeepEmpty = new Set(Array.isArray(emptyOptionalFields) ? emptyOptionalFields : []);
-
-  Object.entries(savedInputs).forEach(([field, value]) => {
-    if (!elements[field] || !Number.isFinite(value)) return;
-    if (fieldsToKeepEmpty.has(field)) {
-      elements[field].value = "";
-      return;
-    }
-    const displayValue = PERCENTAGE_FIELDS.has(field) ? value * 100 : value;
-    elements[field].value = String(Number(displayValue.toFixed(4))).replace(".", ",");
-  });
-
-  if (savedInputs.fiscalContext && typeof savedInputs.fiscalContext === "object") {
-    Object.entries(savedInputs.fiscalContext).forEach(([field, value]) => {
-      if (elements[field] && typeof value === "string") elements[field].value = value;
-    });
+  const empty = new Set(emptyOptionalFields);
+  for (const fieldId of PRICING_FIELD_IDS) {
+    if (!elements[fieldId] || empty.has(fieldId)) continue;
+    const value = savedInputs[fieldId];
+    if (typeof value === "number" && Number.isFinite(value)) elements[fieldId].value = displayNumber(value, PERCENTAGE_FIELDS.has(fieldId));
   }
-
+  for (const fieldId of CAPACITY_FIELD_IDS) {
+    const value = savedInputs.productionCapacity?.[fieldId];
+    if (elements[fieldId] && typeof value === "number" && Number.isFinite(value)) elements[fieldId].value = displayNumber(value);
+  }
+  Object.entries(savedInputs.fiscalContext || {}).forEach(([fieldId, value]) => {
+    if (elements[fieldId] && typeof value === "string") elements[fieldId].value = value;
+  });
   return true;
+}
+
+/** Maps only semantically equivalent v5 values. Missing inventory days deliberately stay empty. */
+export function migrateLegacyV5Inputs(legacy = {}) {
+  const rate = (value) => typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return {
+    materialCost: legacy.materialsCost,
+    wasteRate: rate(legacy.waste),
+    packagingCost: legacy.packagingCost,
+    deliveryCost: legacy.deliveryCost,
+    insuranceCost: legacy.insuranceCost,
+    otherDirectExpenses: legacy.otherExpenses,
+    monthlyPayroll: legacy.totalPayroll,
+    monthlyFixedCosts: legacy.monthlyFixedCosts,
+    expectedMonthlyUnits: legacy.monthlyVolume,
+    taxRate: rate(legacy.taxRate),
+    paymentFeeRate: rate(legacy.paymentFeeRate),
+    commissionRate: rate(legacy.commissionRate),
+    desiredNetMargin: rate(legacy.margin),
+    receivingDays: legacy.receiveDays,
+    paymentDays: legacy.payDays,
+    monthlyCapitalRate: rate(legacy.capitalRate),
+    // inventoryDays and discount strategy have no safe v5 equivalent.
+    productionCapacity: legacy.workerCount !== undefined || legacy.outputPerWorkerHour !== undefined
+      ? { workerCount: legacy.workerCount, productiveHoursPerWorkerMonth: 176, unitsPerWorkerHour: legacy.outputPerWorkerHour }
+      : null,
+    fiscalContext: legacy.fiscalContext || {},
+  };
 }

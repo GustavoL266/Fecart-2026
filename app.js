@@ -11,15 +11,6 @@ const MARKET_RULES = {
   attentionGap: 0.18,
 };
 
-const PERCENTAGE_FIELDS = new Set([
-  "waste",
-  "taxRate",
-  "paymentFeeRate",
-  "commissionRate",
-  "margin",
-  "capitalRate",
-]);
-
 
 const currency = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -42,227 +33,338 @@ function escapeHtml(value) {
 }
 
 
+// Esta regra é deliberadamente independente do DOM e do banco. O navegador e
+// o servidor importam este mesmo módulo: não existe uma segunda fórmula no API.
+const PRICING_SCHEMA_VERSION = 6;
+const FORMULA_VERSION = "technical-pricing-v2";
 
-const RATE_SCALE = 1_000_000;
-
-function toCents(value) {
-  if (!Number.isFinite(value)) return 0;
-  return Math.round(value * 100);
+class PricingValidationError extends Error {
+  constructor(errors) {
+    super(Object.values(errors)[0] || "Dados de precificação inválidos.");
+    this.name = "PricingValidationError";
+    this.code = "INVALID_PRICING_INPUTS";
+    this.status = 400;
+    this.errors = errors;
+  }
 }
 
-function fromCents(value) {
-  return value / 100;
+const requiredNumbers = Object.freeze({
+  materialCost: { min: 0, label: "O custo da matéria-prima" },
+  wasteRate: { min: 0, maxExclusive: 1, label: "O desperdício" },
+  packagingCost: { min: 0, label: "O custo de embalagem" },
+  deliveryCost: { min: 0, label: "O frete ou entrega" },
+  monthlyPayroll: { min: 0, label: "A folha salarial mensal" },
+  monthlyFixedCosts: { min: 0, label: "Os custos fixos mensais" },
+  expectedMonthlyUnits: { minExclusive: 0, label: "A quantidade mensal prevista" },
+  taxRate: { min: 0, maxExclusive: 1, label: "A carga tributária estimada manualmente" },
+  paymentFeeRate: { min: 0, maxExclusive: 1, label: "A taxa de pagamento" },
+  commissionRate: { min: 0, maxExclusive: 1, label: "A comissão" },
+  desiredNetMargin: { min: 0, maxExclusive: 1, label: "A margem líquida desejada" },
+  inventoryDays: { min: 0, label: "O prazo de estoque/produção" },
+  receivingDays: { min: 0, label: "O prazo de recebimento" },
+  paymentDays: { min: 0, label: "O prazo de pagamento" },
+  monthlyCapitalRate: { min: 0, label: "O custo mensal do capital" },
+});
+
+const optionalNumbers = Object.freeze({
+  insuranceCost: { min: 0, label: "O seguro" },
+  otherDirectExpenses: { min: 0, label: "As outras despesas diretas" },
+  discountRate: { min: 0, maxExclusive: 1, label: "O desconto percentual" },
+  fixedDiscountAmount: { min: 0, label: "O desconto fixo" },
+  marketPrice: { minExclusive: 0, label: "A referência de mercado" },
+});
+
+function numericIssue(value, rule) {
+  if (value === null || value === undefined) return "required";
+  if (typeof value !== "number" || !Number.isFinite(value)) return "invalid";
+  if (rule.min !== undefined && value < rule.min) return "min";
+  if (rule.minExclusive !== undefined && value <= rule.minExclusive) return "minExclusive";
+  if (rule.maxExclusive !== undefined && value >= rule.maxExclusive) return "maxExclusive";
+  return null;
 }
 
-function toRateParts(value) {
-  return Math.round(value * RATE_SCALE);
+function numberMessage(rule, issue, optional = false) {
+  if (issue === "required") return optional ? "" : `Informe ${rule.label.toLocaleLowerCase("pt-BR")}.`;
+  if (issue === "invalid") return `${rule.label} deve ser um número finito.`;
+  if (issue === "min") return `${rule.label} não pode ser negativo.`;
+  if (issue === "minExclusive") return `${rule.label} deve ser maior que zero.`;
+  if (issue === "maxExclusive") return `${rule.label} deve ser menor que 100%.`;
+  return "Dados inválidos.";
 }
 
-function roundedRatio(numerator, denominator) {
-  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return 0;
-  return Math.round(numerator / denominator);
+function optionalValue(value) {
+  return value === null || value === undefined || value === "" ? null : value;
 }
 
-function multiplyCentsByRate(cents, rate) {
-  const numerator = BigInt(cents) * BigInt(toRateParts(rate));
-  return Number((numerator + BigInt(RATE_SCALE / 2)) / BigInt(RATE_SCALE));
+function normalizedCapacity(input, errors) {
+  const capacity = input.productionCapacity;
+  if (!capacity || typeof capacity !== "object") return null;
+  const keys = ["workerCount", "productiveHoursPerWorkerMonth", "unitsPerWorkerHour"];
+  const supplied = keys.filter((key) => optionalValue(capacity[key]) !== null);
+  if (supplied.length === 0) return null;
+  if (supplied.length !== keys.length) {
+    errors.productionCapacity = "Preencha todos os campos da capacidade produtiva ou deixe-os vazios.";
+    return null;
+  }
+  const normalized = {};
+  for (const key of keys) {
+    const value = capacity[key];
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      errors[`productionCapacity.${key}`] = "A capacidade produtiva aceita apenas números não negativos.";
+    } else {
+      normalized[key] = value;
+    }
+  }
+  return Object.keys(normalized).length === keys.length ? {
+    ...normalized,
+    monthlyCapacity: normalized.workerCount * normalized.productiveHoursPerWorkerMonth * normalized.unitsPerWorkerHour,
+  } : null;
 }
 
-function ceilPriceCents(baseCostCents, availableRateParts) {
-  const numerator = BigInt(baseCostCents) * BigInt(RATE_SCALE);
-  const denominator = BigInt(availableRateParts);
-  return Number((numerator + denominator - 1n) / denominator);
+/** Validate normalized, typed domain inputs. Rates are fractions, never percentages. */
+function validatePricingInputs(input = {}) {
+  input = input && typeof input === "object" ? input : {};
+  const errors = {};
+  const normalized = {};
+
+  for (const [key, rule] of Object.entries(requiredNumbers)) {
+    const issue = numericIssue(input[key], rule);
+    if (issue) errors[key] = numberMessage(rule, issue);
+    else normalized[key] = input[key];
+  }
+
+  for (const [key, rule] of Object.entries(optionalNumbers)) {
+    const value = optionalValue(input[key]);
+    if (value === null) {
+      normalized[key] = key === "marketPrice" ? null : 0;
+      continue;
+    }
+    const issue = numericIssue(value, rule);
+    if (issue) errors[key] = numberMessage(rule, issue, true);
+    else normalized[key] = value;
+  }
+
+  normalized.productionCapacity = normalizedCapacity(input, errors);
+  normalized.fiscalContext = input.fiscalContext && typeof input.fiscalContext === "object" ? input.fiscalContext : {};
+
+  const rateKeys = ["taxRate", "paymentFeeRate", "commissionRate", "desiredNetMargin"];
+  if (rateKeys.every((key) => typeof normalized[key] === "number")) {
+    const denominator = 1 - normalized.taxRate - normalized.paymentFeeRate - normalized.commissionRate - normalized.desiredNetMargin;
+    if (!(denominator > 1e-12)) errors.desiredNetMargin = "A soma de tributos, taxas, comissão e margem deve ser menor que 100%.";
+  }
+  if (normalized.discountRate > 0 && normalized.fixedDiscountAmount > 0) {
+    errors.discountRate = "Escolha desconto percentual ou valor fixo, não os dois.";
+    errors.fixedDiscountAmount = "Escolha desconto percentual ou valor fixo, não os dois.";
+  }
+
+  return { isValid: Object.keys(errors).length === 0, errors, value: Object.keys(errors).length === 0 ? normalized : null };
 }
 
-function moneyFields(cents) {
-  return Object.fromEntries(Object.entries(cents).map(([key, value]) => [key.replace(/Cents$/, ""), fromCents(value)]));
+function assertPricingInputs(input) {
+  const validation = validatePricingInputs(input);
+  if (!validation.isValid) throw new PricingValidationError(validation.errors);
+  return validation.value;
 }
 
-function calculateCosts(inputs) {
-  const materialsCostCents = toCents(inputs.materialsCost);
-  const materialsWithWasteCents = materialsCostCents + multiplyCentsByRate(materialsCostCents, inputs.waste);
-  const totalPayrollCents = toCents(inputs.totalPayroll);
-  const monthlyProductionCapacity = inputs.workerCount * inputs.outputPerWorkerHour * PRODUCTIVE_HOURS_PER_WORKER_MONTH;
-  const laborHourlyCostCents = roundedRatio(totalPayrollCents, inputs.workerCount * PRODUCTIVE_HOURS_PER_WORKER_MONTH);
-  const directLaborCents = roundedRatio(totalPayrollCents, monthlyProductionCapacity);
-  const packagingCostCents = toCents(inputs.packagingCost);
-  const deliveryCostCents = toCents(inputs.deliveryCost);
-  const insuranceCostCents = toCents(inputs.insuranceCost || 0);
-  const discountAmountCents = toCents(inputs.discountAmount || 0);
-  const otherExpensesCents = toCents(inputs.otherExpenses || 0);
-  const grossDirectCashCostCents = materialsWithWasteCents + packagingCostCents + deliveryCostCents + insuranceCostCents + otherExpensesCents + directLaborCents;
-  const directCashCostCents = Math.max(0, grossDirectCashCostCents - discountAmountCents);
-  const cashGapDays = Math.max(inputs.receiveDays - inputs.payDays, 0);
-  const workingCapitalCostCents = multiplyCentsByRate(directCashCostCents, inputs.capitalRate * (cashGapDays / 30));
-  const fixedCostAllocationCents = roundedRatio(toCents(inputs.monthlyFixedCosts), inputs.monthlyVolume);
-  const baseCostCents = directCashCostCents + workingCapitalCostCents + fixedCostAllocationCents;
-  const salesRateParts = toRateParts(inputs.taxRate) + toRateParts(inputs.paymentFeeRate) + toRateParts(inputs.commissionRate);
+function calculateAdjustedMaterialCost(materialCost, wasteRate) {
+  return materialCost / (1 - wasteRate);
+}
 
-  const cents = {
-    materialsCostCents,
-    materialsWithWasteCents,
-    laborHourlyCostCents,
-    directLaborCents,
-    packagingCostCents,
-    deliveryCostCents,
-    insuranceCostCents,
-    discountAmountCents,
-    otherExpensesCents,
-    directCashCostCents,
-    workingCapitalCostCents,
-    fixedCostAllocationCents,
-    baseCostCents,
-  };
+function calculateDirectCost(inputs) {
+  return inputs.adjustedMaterialCost + inputs.packagingCost + inputs.deliveryCost + inputs.insuranceCost + inputs.otherDirectExpenses;
+}
 
+function calculateIndirectCost(monthlyPayroll, monthlyFixedCosts, expectedMonthlyUnits) {
+  return (monthlyPayroll + monthlyFixedCosts) / expectedMonthlyUnits;
+}
+
+function calculateWorkingCapital(operatingCost, inventoryDays, receivingDays, paymentDays, monthlyCapitalRate) {
+  const financedDays = Math.max(inventoryDays + receivingDays - paymentDays, 0);
+  const periodCapitalRate = (1 + monthlyCapitalRate) ** (financedDays / 30) - 1;
   return {
-    ...moneyFields(cents),
-    ...cents,
-    monthlyProductionCapacity,
-    cashGapDays,
-    salesRate: salesRateParts / RATE_SCALE,
-    salesRateParts,
+    financedDays,
+    financedBase: operatingCost,
+    periodCapitalRate,
+    financialCost: financedDays === 0 ? 0 : operatingCost * periodCapitalRate,
   };
 }
 
-function calculatePrice(inputs) {
-  const costs = calculateCosts(inputs);
-  const marginRateParts = toRateParts(inputs.margin);
-  const availableRateParts = RATE_SCALE - costs.salesRateParts - marginRateParts;
-  const availableRate = availableRateParts / RATE_SCALE;
-  const isValid = availableRateParts > 0;
-  const minimumPriceCents = isValid ? ceilPriceCents(costs.baseCostCents, availableRateParts) : null;
-  const taxExpensesCents = isValid ? multiplyCentsByRate(minimumPriceCents, inputs.taxRate) : 0;
-  const paymentFeeCents = isValid ? multiplyCentsByRate(minimumPriceCents, inputs.paymentFeeRate) : 0;
-  const commissionCents = isValid ? multiplyCentsByRate(minimumPriceCents, inputs.commissionRate) : 0;
-  const salesExpensesCents = taxExpensesCents + paymentFeeCents + commissionCents;
-  const profitPerSaleCents = isValid ? minimumPriceCents - costs.baseCostCents - salesExpensesCents : 0;
-  const actualMargin = isValid && minimumPriceCents > 0 ? profitPerSaleCents / minimumPriceCents : 0;
-  const competitorAverageCents = toCents(inputs.competitorAverage);
-  const marketGap = isValid && competitorAverageCents > 0 ? (competitorAverageCents - minimumPriceCents) / competitorAverageCents : 0;
-  const marketCostLimitCents = Math.max(0, multiplyCentsByRate(competitorAverageCents, availableRate));
-  const requiredCostReductionCents = Math.max(0, costs.baseCostCents - marketCostLimitCents);
-
-  return {
-    costs,
-    availableRate,
-    availableRateParts,
-    isValid,
-    minimumPrice: minimumPriceCents === null ? null : fromCents(minimumPriceCents),
-    minimumPriceCents,
-    taxExpenses: fromCents(taxExpensesCents),
-    taxExpensesCents,
-    paymentFee: fromCents(paymentFeeCents),
-    paymentFeeCents,
-    commission: fromCents(commissionCents),
-    commissionCents,
-    salesExpenses: fromCents(salesExpensesCents),
-    salesExpensesCents,
-    profitPerSale: fromCents(profitPerSaleCents),
-    profitPerSaleCents,
-    actualMargin,
-    marketGap,
-    marketCostLimit: fromCents(marketCostLimitCents),
-    marketCostLimitCents,
-    requiredCostReduction: fromCents(requiredCostReductionCents),
-    requiredCostReductionCents,
-  };
+function calculateTechnicalPrice(totalUnitCost, saleExpenseRate, desiredNetMargin) {
+  const priceDenominator = 1 - saleExpenseRate - desiredNetMargin;
+  if (!(priceDenominator > 1e-12)) throw new PricingValidationError({ desiredNetMargin: "A soma de tributos, taxas, comissão e margem deve ser menor que 100%." });
+  const technicalPriceRaw = totalUnitCost / priceDenominator;
+  return { priceDenominator, technicalPriceRaw, technicalPrice: Math.ceil(technicalPriceRaw * 100) / 100 };
 }
+
+function calculateDiscountStrategy(technicalPrice, discountRate = 0, fixedDiscountAmount = 0) {
+  if (discountRate > 0) {
+    const advertisedPriceRaw = technicalPrice / (1 - discountRate);
+    return { type: "percentage", rate: discountRate, fixedAmount: 0, advertisedPriceRaw, advertisedPrice: Math.ceil(advertisedPriceRaw * 100) / 100, discountAmount: advertisedPriceRaw - technicalPrice, postDiscountPrice: technicalPrice, preservesTechnicalPrice: true };
+  }
+  if (fixedDiscountAmount > 0) {
+    const advertisedPriceRaw = technicalPrice + fixedDiscountAmount;
+    return { type: "fixed", rate: 0, fixedAmount: fixedDiscountAmount, advertisedPriceRaw, advertisedPrice: Math.ceil(advertisedPriceRaw * 100) / 100, discountAmount: fixedDiscountAmount, postDiscountPrice: technicalPrice, preservesTechnicalPrice: true };
+  }
+  return { type: "none", rate: 0, fixedAmount: 0, advertisedPriceRaw: technicalPrice, advertisedPrice: technicalPrice, discountAmount: 0, postDiscountPrice: technicalPrice, preservesTechnicalPrice: true };
+}
+
+function calculateMarketComparison(marketReference, technicalPrice) {
+  const price = marketReference?.price;
+  if (typeof price !== "number" || !Number.isFinite(price) || price <= 0) {
+    return { price: null, source: null, rule: null, difference: null, differenceRate: null, reference: null };
+  }
+  return { price, source: marketReference.source || "manual", rule: marketReference.rule || "manual", difference: price - technicalPrice, differenceRate: (price - technicalPrice) / price, reference: marketReference };
+}
+
+function presentation(result) {
+  const asMoney = (value) => Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
+  return Object.fromEntries(["adjustedMaterialCost", "directCost", "indirectCost", "operatingCost", "financedBase", "financialCost", "totalUnitCost", "technicalPriceRaw", "technicalPrice", "taxAmount", "paymentFeeAmount", "commissionAmount", "profitAmount"].map((key) => [key, asMoney(result[key])]));
+}
+
+function canonicalBreakdown(result) {
+  const items = [
+    { group: "Custo direto", key: "adjustedMaterialCost", label: "Matéria-prima ajustada por desperdício", value: result.adjustedMaterialCost, basis: "matéria-prima ÷ (1 − desperdício)", source: "Usuário" },
+    { group: "Custo direto", key: "packagingCost", label: "Embalagem e rotulagem", value: result.inputs.packagingCost, basis: "Por unidade/venda", source: "Usuário" },
+    { group: "Custo direto", key: "deliveryCost", label: "Frete e entrega", value: result.inputs.deliveryCost, basis: "Por unidade/venda", source: "Usuário" },
+    { group: "Custo direto", key: "insuranceCost", label: "Seguro", value: result.inputs.insuranceCost, basis: "Por unidade/venda", source: "Usuário" },
+    { group: "Custo direto", key: "otherDirectExpenses", label: "Outras despesas diretas", value: result.inputs.otherDirectExpenses, basis: "Por unidade/venda", source: "Usuário" },
+    { group: "Custo indireto", key: "indirectCost", label: "Rateio da folha e custos fixos", value: result.indirectCost, basis: "(folha + custos fixos) ÷ quantidade mensal", source: "Usuário" },
+    { group: "Capital de giro", key: "financialCost", label: "Custo financeiro", value: result.financialCost, basis: "custo operacional × taxa do período", source: "Regra técnica" },
+    { group: "Venda", key: "taxAmount", label: "Carga tributária estimada manualmente", value: result.taxAmount, basis: "preço técnico × carga manual", source: "Usuário" },
+    { group: "Venda", key: "paymentFeeAmount", label: "Taxa de pagamento", value: result.paymentFeeAmount, basis: "preço técnico × taxa", source: "Usuário" },
+    { group: "Venda", key: "commissionAmount", label: "Comissão", value: result.commissionAmount, basis: "preço técnico × comissão", source: "Usuário" },
+    { group: "Resultado", key: "profitAmount", label: "Lucro líquido", value: result.profitAmount, basis: "preço técnico − custos − despesas", source: "Regra técnica" },
+    { group: "Resultado", key: "technicalPrice", label: "Preço técnico recomendado", value: result.technicalPrice, basis: "custo total ÷ denominador, arredondado para cima ao centavo", source: "Regra técnica" },
+  ];
+  if (result.discount.type !== "none") {
+    items.push(
+      { group: "Estratégia comercial", key: "advertisedPrice", label: "Preço anunciado", value: result.discount.advertisedPrice, basis: "Preço técnico acrescido do desconto planejado", source: "Usuário" },
+      { group: "Estratégia comercial", key: "postDiscountPrice", label: "Preço após desconto", value: result.discount.postDiscountPrice, basis: "Mantém o preço técnico mínimo", source: "Regra técnica" },
+    );
+  }
+  return items;
+}
+
+function canonicalExplanation(result) {
+  return [
+    { key: "material", value: result.adjustedMaterialCost, detail: "A matéria-prima foi ajustada pelo rendimento usando desperdício." },
+    { key: "direct", value: result.directCost, detail: "O custo direto soma matéria-prima ajustada, embalagem, entrega, seguro e outras despesas diretas." },
+    { key: "indirect", value: result.indirectCost, detail: "A folha e os custos fixos foram rateados somente pela quantidade mensal prevista." },
+    { key: "workingCapital", value: result.financialCost, detail: "O ciclo financeiro aplica juros compostos somente sobre o custo operacional." },
+    { key: "price", value: result.technicalPrice, detail: "O preço técnico cobre custo total, despesas percentuais e margem desejada; somente ele é arredondado para cima ao centavo." },
+  ];
+}
+
+function calculatePricing(input, marketReference = null) {
+  const inputs = assertPricingInputs(input);
+  const adjustedMaterialCost = calculateAdjustedMaterialCost(inputs.materialCost, inputs.wasteRate);
+  const directCost = calculateDirectCost({ ...inputs, adjustedMaterialCost });
+  const indirectCost = calculateIndirectCost(inputs.monthlyPayroll, inputs.monthlyFixedCosts, inputs.expectedMonthlyUnits);
+  const operatingCost = directCost + indirectCost;
+  const workingCapital = calculateWorkingCapital(operatingCost, inputs.inventoryDays, inputs.receivingDays, inputs.paymentDays, inputs.monthlyCapitalRate);
+  const totalUnitCost = operatingCost + workingCapital.financialCost;
+  const saleExpenseRate = inputs.taxRate + inputs.paymentFeeRate + inputs.commissionRate;
+  const technical = calculateTechnicalPrice(totalUnitCost, saleExpenseRate, inputs.desiredNetMargin);
+  const taxAmountRaw = technical.technicalPriceRaw * inputs.taxRate;
+  const paymentFeeAmountRaw = technical.technicalPriceRaw * inputs.paymentFeeRate;
+  const commissionAmountRaw = technical.technicalPriceRaw * inputs.commissionRate;
+  const taxAmount = technical.technicalPrice * inputs.taxRate;
+  const paymentFeeAmount = technical.technicalPrice * inputs.paymentFeeRate;
+  const commissionAmount = technical.technicalPrice * inputs.commissionRate;
+  const profitAmountRaw = technical.technicalPriceRaw - totalUnitCost - taxAmountRaw - paymentFeeAmountRaw - commissionAmountRaw;
+  const profitAmount = technical.technicalPrice - totalUnitCost - taxAmount - paymentFeeAmount - commissionAmount;
+  const actualNetMargin = profitAmount / technical.technicalPrice;
+  const result = {
+    pricingSchemaVersion: PRICING_SCHEMA_VERSION,
+    formulaVersion: FORMULA_VERSION,
+    inputs,
+    adjustedMaterialCost,
+    directCost,
+    indirectCost,
+    operatingCost,
+    ...workingCapital,
+    totalUnitCost,
+    saleExpenseRate,
+    ...technical,
+    taxAmountRaw,
+    paymentFeeAmountRaw,
+    commissionAmountRaw,
+    profitAmountRaw,
+    taxAmount,
+    paymentFeeAmount,
+    commissionAmount,
+    profitAmount,
+    desiredNetMargin: inputs.desiredNetMargin,
+    actualNetMargin,
+    discount: calculateDiscountStrategy(technical.technicalPrice, inputs.discountRate, inputs.fixedDiscountAmount),
+    market: calculateMarketComparison(marketReference || (inputs.marketPrice ? { price: inputs.marketPrice, source: "manual", rule: "manual" } : null), technical.technicalPrice),
+  };
+  result.presentation = presentation(result);
+  result.breakdown = canonicalBreakdown(result);
+  result.explanation = canonicalExplanation(result);
+  return result;
+}
+
+const calculatePrice = calculatePricing;
 
 
 const REQUIRED_FISCAL_FIELDS = Object.freeze([
-  ["taxRegime", "regime tributário"],
-  ["originState", "UF de origem"],
-  ["destinationState", "UF de destino"],
-  ["cfop", "CFOP"],
-  ["taxSituation", "CST/CSOSN"],
-  ["customerType", "tipo de cliente"],
-  ["operationPurpose", "finalidade da operação"],
+  ["taxRegime", "regime tributário"], ["originState", "UF de origem"], ["destinationState", "UF de destino"],
+  ["cfop", "CFOP"], ["taxSituation", "CST/CSOSN"], ["customerType", "tipo de cliente"], ["operationPurpose", "finalidade da operação"],
 ]);
 
 const TAXES_REQUIRING_EXTERNAL_RULES = Object.freeze([
-  "ICMS",
-  "ICMS-ST",
-  "DIFAL",
-  "FCP",
-  "IPI",
-  "PIS/COFINS",
-  "IBS/CBS/IS e demais regras da reforma tributária",
+  "ICMS", "ICMS-ST", "DIFAL", "FCP", "IPI", "PIS/COFINS", "IBS/CBS/IS e demais regras da reforma tributária",
 ]);
 
 class TaxRuleEngine {
-  assess() {
-    throw new Error("O motor tributário deve implementar assess().");
-  }
+  assess() { throw new Error("O motor tributário deve implementar assess()."); }
 }
 
 class ConfiguredTaxRuleEngine extends TaxRuleEngine {
   assess(inputs, focusState = {}) {
     const fiscalContext = inputs.fiscalContext || {};
-    const missingFields = REQUIRED_FISCAL_FIELDS
-      .filter(([key]) => !String(fiscalContext[key] || "").trim())
-      .map(([, label]) => label);
-    const ncmVerified = focusState.status === "success" && focusState.ncm?.codigo === fiscalContext.ncmCode;
-    const focusUnavailable = focusState.unavailable === true;
-
+    const missingFields = REQUIRED_FISCAL_FIELDS.filter(([key]) => !String(fiscalContext[key] || "").trim()).map(([, label]) => label);
+    const code = String(fiscalContext.ncmCode || "");
+    const ncmVerified = focusState.status === "success" && focusState.source === "Focus NFe" && focusState.ncm?.codigo === code;
+    const ncm = ncmVerified ? focusState.ncm : code ? { codigo: code } : null;
     return {
       automaticCalculation: false,
       complete: false,
-      focusUnavailable,
+      focusUnavailable: focusState.unavailable === true,
       fiscalContext,
       missingFields,
-      ncm: focusState.ncm || (fiscalContext.ncmCode ? { codigo: fiscalContext.ncmCode } : null),
-      ncmSource: ncmVerified ? "Focus NFe" : fiscalContext.ncmCode ? "Usuário (não validado)" : "Não informado",
-      taxes: [
-        {
-          key: "aggregate",
-          label: "Carga tributária agregada estimada",
-          rate: inputs.taxRate,
-          source: "Usuário/regra configurada",
-        },
-      ],
+      ncm,
+      ncmSource: ncmVerified ? "Focus NFe" : code ? "Usuário (não validado nesta simulação)" : "Não informado",
+      ncmValidation: ncmVerified ? {
+        status: "success", source: "Focus NFe", environment: focusState.environment || "não informado", checkedAt: focusState.checkedAt || new Date().toISOString(), code,
+      } : { status: "unverified", source: code ? "Usuário" : null, environment: null, checkedAt: null, code: code || null },
+      taxes: [{ key: "aggregate", label: "Carga tributária estimada manualmente", rate: inputs.taxRate, source: "Usuário" }],
       unresolvedTaxes: TAXES_REQUIRING_EXTERNAL_RULES,
       warnings: [
-        "A Focus NFe confirma apenas a classificação NCM; ela não calcula os tributos desta venda.",
+        "A Focus NFe confirma somente a classificação NCM; ela não calcula os tributos desta venda.",
         "O NCM isolado não determina a tributação aplicável.",
-        "A carga tributária agregada deve ser validada por contador ou especialista fiscal antes do uso operacional.",
+        "A carga tributária estimada manualmente deve ser validada por contador ou especialista fiscal.",
       ],
     };
   }
 }
 
-function buildCalculationMemory(inputs, result, assessment) {
-  const priceCents = result.minimumPriceCents || 0;
-  const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-  const rateDescription = (rate) => `Base ${money.format(priceCents / 100)} | alíquota ${(rate * 100).toLocaleString("pt-BR", { maximumFractionDigits: 4 })}%`;
-
-  return [
-    { group: "Custo", label: "Custo do produto com perdas", valueCents: result.costs.materialsWithWasteCents, basis: "Custo informado + perda", source: "Usuário" },
-    { group: "Custo", label: "Embalagem", valueCents: result.costs.packagingCostCents, basis: "Valor por venda", source: "Usuário" },
-    { group: "Custo", label: "Frete/entrega", valueCents: result.costs.deliveryCostCents, basis: "Valor por venda", source: "Usuário" },
-    { group: "Custo", label: "Seguro", valueCents: result.costs.insuranceCostCents, basis: "Valor por venda", source: "Usuário" },
-    { group: "Custo", label: "Desconto", valueCents: -result.costs.discountAmountCents, basis: "Redução do custo", source: "Usuário" },
-    { group: "Custo", label: "Despesas adicionais", valueCents: result.costs.otherExpensesCents, basis: "Valor por venda", source: "Usuário" },
-    { group: "Custo", label: "Mão de obra direta", valueCents: result.costs.directLaborCents, basis: "176 h produtivas/mês", source: "Regra configurada" },
-    { group: "Custo", label: "Capital de giro", valueCents: result.costs.workingCapitalCostCents, basis: "Prazos informados", source: "Usuário + regra configurada" },
-    { group: "Custo", label: "Rateio de custos fixos", valueCents: result.costs.fixedCostAllocationCents, basis: "Volume mensal informado", source: "Usuário + regra configurada" },
-    { group: "Tributo", label: assessment.taxes[0].label, valueCents: result.taxExpensesCents, basis: rateDescription(inputs.taxRate), baseCents: priceCents, rate: inputs.taxRate, source: assessment.taxes[0].source },
-    { group: "Venda", label: "Taxa de pagamento", valueCents: result.paymentFeeCents, basis: rateDescription(inputs.paymentFeeRate), baseCents: priceCents, rate: inputs.paymentFeeRate, source: "Usuário" },
-    { group: "Venda", label: "Comissão", valueCents: result.commissionCents, basis: rateDescription(inputs.commissionRate), baseCents: priceCents, rate: inputs.commissionRate, source: "Usuário" },
-    { group: "Margem", label: "Margem líquida", valueCents: result.profitPerSaleCents, basis: rateDescription(inputs.margin), baseCents: priceCents, rate: inputs.margin, source: "Usuário" },
-    { group: "Resultado", label: "Preço sugerido", valueCents: priceCents, basis: "Custo-base ÷ percentual disponível", source: "Regra configurada" },
-  ];
+// Memória, tabela e gráficos recebem exatamente os valores que o cálculo produziu.
+function buildCalculationMemory(result, assessment) {
+  return result.breakdown.map((item) => ({ ...item, fiscalSource: item.key === "taxAmount" ? assessment.taxes[0].source : item.source }));
 }
 
 function fiscalDataForStorage(assessment, memory) {
   return {
-    automaticCalculation: assessment.automaticCalculation,
-    complete: assessment.complete,
+    automaticCalculation: false,
+    complete: false,
     context: assessment.fiscalContext,
-    missingFields: assessment.missingFields,
     ncm: assessment.ncm,
     ncmSource: assessment.ncmSource,
+    ncmValidation: assessment.ncmValidation,
     unresolvedTaxes: assessment.unresolvedTaxes,
-    memory: memory.map((item) => ({ ...item, value: item.valueCents / 100, base: item.baseCents === undefined ? undefined : item.baseCents / 100 })),
+    memory,
   };
 }
 
@@ -492,127 +594,124 @@ function clearMarketReference(storage) {
 
 
 
-const PRICING_FIELD_RULES = Object.freeze({
-  materialsCost: { requiredMessage: "Informe o custo dos insumos.", min: 0, minMessage: "O custo dos insumos não pode ser negativo." },
-  waste: { requiredMessage: "Informe a perda e desperdício.", min: 0, max: 100, minMessage: "A perda e desperdício não pode ser negativa.", maxMessage: "A perda e desperdício máxima permitida é 100%." },
-  packagingCost: { requiredMessage: "Informe o custo de embalagem.", min: 0, minMessage: "O custo de embalagem não pode ser negativo." },
-  deliveryCost: { requiredMessage: "Informe o frete ou custo de entrega.", min: 0, minMessage: "O frete ou custo de entrega não pode ser negativo." },
-  insuranceCost: { optional: true, min: 0, minMessage: "O seguro não pode ser negativo." },
-  discountAmount: { optional: true, min: 0, minMessage: "O desconto não pode ser negativo." },
-  otherExpenses: { optional: true, min: 0, minMessage: "As outras despesas não podem ser negativas." },
-  totalPayroll: { requiredMessage: "Informe a folha salarial mensal.", min: 0, minMessage: "A folha salarial não pode ser negativa." },
-  workerCount: { requiredMessage: "Informe o número de trabalhadores.", min: 1, integer: true, minMessage: "O número de trabalhadores deve ser pelo menos 1." },
-  outputPerWorkerHour: { requiredMessage: "Informe a produção por trabalhador/hora.", min: 0.01, minMessage: "A produção por trabalhador/hora deve ser pelo menos 0,01." },
-  monthlyFixedCosts: { requiredMessage: "Informe os custos fixos mensais.", min: 0, minMessage: "Os custos fixos não podem ser negativos." },
-  monthlyVolume: { requiredMessage: "Informe as operações previstas no mês.", min: 1, integer: true, minMessage: "As operações previstas devem ser pelo menos 1." },
-  taxRate: { requiredMessage: "Informe a carga tributária estimada.", min: 0, max: 60, minMessage: "A carga tributária não pode ser negativa.", maxMessage: "A carga tributária máxima permitida é 60%." },
-  paymentFeeRate: { requiredMessage: "Informe a taxa de pagamento.", min: 0, max: 30, minMessage: "A taxa de pagamento não pode ser negativa.", maxMessage: "A taxa de pagamento máxima permitida é 30%." },
-  commissionRate: { requiredMessage: "Informe a comissão.", min: 0, max: 50, minMessage: "A comissão não pode ser negativa.", maxMessage: "A comissão máxima permitida é 50%." },
-  margin: { requiredMessage: "Informe a margem líquida desejada.", min: 0.1, max: 60, minMessage: "A margem mínima permitida é 0,1%.", maxMessage: "A margem máxima permitida é 60%." },
-  competitorAverage: { requiredMessage: "Informe o preço médio local dos concorrentes.", min: 0.01, max: 1_000_000, minMessage: "O preço médio dos concorrentes deve ser pelo menos R$ 0,01.", maxMessage: "O preço médio dos concorrentes não pode ultrapassar R$ 1.000.000,00." },
-  receiveDays: { requiredMessage: "Informe o prazo de recebimento.", min: 0, integer: true, minMessage: "O prazo de recebimento não pode ser negativo." },
-  payDays: { requiredMessage: "Informe o prazo de pagamento.", min: 0, integer: true, minMessage: "O prazo de pagamento não pode ser negativo." },
-  capitalRate: { requiredMessage: "Informe o custo do capital.", min: 0, max: 8, minMessage: "O custo do capital não pode ser negativo.", maxMessage: "O custo do capital máximo permitido é 8% ao mês." },
+const PERCENTAGE_FIELDS = new Set([
+  "wasteRate", "taxRate", "paymentFeeRate", "commissionRate", "desiredNetMargin", "monthlyCapitalRate", "discountRate",
+]);
+
+const FIELD_RULES = Object.freeze({
+  materialCost: { required: "Informe o custo da matéria-prima." },
+  wasteRate: { required: "Informe o desperdício." },
+  packagingCost: { required: "Informe o custo de embalagem." },
+  deliveryCost: { required: "Informe o frete ou entrega." },
+  insuranceCost: { optional: true },
+  otherDirectExpenses: { optional: true },
+  monthlyPayroll: { required: "Informe a folha salarial mensal." },
+  monthlyFixedCosts: { required: "Informe os custos fixos mensais." },
+  expectedMonthlyUnits: { required: "Informe a quantidade prevista por mês." },
+  taxRate: { required: "Informe a carga tributária estimada manualmente." },
+  paymentFeeRate: { required: "Informe a taxa de pagamento." },
+  commissionRate: { required: "Informe a comissão." },
+  desiredNetMargin: { required: "Informe a margem líquida desejada." },
+  inventoryDays: { required: "Informe o prazo de estoque/produção." },
+  receivingDays: { required: "Informe o prazo de recebimento." },
+  paymentDays: { required: "Informe o prazo de pagamento." },
+  monthlyCapitalRate: { required: "Informe o custo do capital ao mês." },
+  discountRate: { optional: true },
+  fixedDiscountAmount: { optional: true },
+  marketPrice: { optional: true },
 });
 
-const PRICING_FIELD_IDS = Object.freeze(Object.keys(PRICING_FIELD_RULES));
+const PRICING_FIELD_IDS = Object.freeze(Object.keys(FIELD_RULES));
+const CAPACITY_FIELD_IDS = Object.freeze(["workerCount", "productiveHoursPerWorkerMonth", "unitsPerWorkerHour"]);
 
 function parseBrazilianNumber(rawValue) {
   const value = String(rawValue ?? "").trim().replace(/\s/g, "");
   if (value === "") return { status: "empty", value: null };
-
   const commaCount = (value.match(/,/g) || []).length;
-  const normalizedValue = commaCount === 1
-    ? value.replace(/\./g, "").replace(",", ".")
-    : value;
-  if (commaCount > 1 || !/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalizedValue)) {
-    return { status: "invalid", value: null };
-  }
-
-  const numericValue = Number(normalizedValue);
-  return Number.isFinite(numericValue)
-    ? { status: "valid", value: numericValue }
-    : { status: "invalid", value: null };
+  const normalized = commaCount === 1 ? value.replace(/\./g, "").replace(",", ".") : value;
+  if (commaCount > 1 || !/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return { status: "invalid", value: null };
+  const numeric = Number(normalized);
+  return Number.isFinite(numeric) ? { status: "valid", value: numeric } : { status: "invalid", value: null };
 }
 
 function readFiscalContext(elements) {
   return {
-    ncmCode: String(elements.ncmCode.value || "").replace(/\D/g, ""),
-    taxRegime: elements.taxRegime.value,
-    originState: elements.originState.value.trim().toUpperCase(),
-    destinationState: elements.destinationState.value.trim().toUpperCase(),
-    cfop: String(elements.cfop.value || "").replace(/\D/g, ""),
-    taxSituation: elements.taxSituation.value.trim().toUpperCase(),
-    customerType: elements.customerType.value,
-    operationPurpose: elements.operationPurpose.value,
+    ncmCode: String(elements.ncmCode?.value || "").replace(/\D/g, ""),
+    taxRegime: String(elements.taxRegime?.value || ""),
+    originState: String(elements.originState?.value || "").trim().toUpperCase(),
+    destinationState: String(elements.destinationState?.value || "").trim().toUpperCase(),
+    cfop: String(elements.cfop?.value || "").replace(/\D/g, ""),
+    taxSituation: String(elements.taxSituation?.value || "").trim().toUpperCase(),
+    customerType: String(elements.customerType?.value || ""),
+    operationPurpose: String(elements.operationPurpose?.value || ""),
   };
+}
+
+function readCapacity(elements, errors) {
+  const capacity = {};
+  let provided = 0;
+  for (const fieldId of CAPACITY_FIELD_IDS) {
+    const parsed = parseBrazilianNumber(elements[fieldId]?.value);
+    if (parsed.status === "invalid") errors[fieldId] = "Informe um número válido.";
+    if (parsed.status === "valid") {
+      capacity[fieldId] = parsed.value;
+      provided += 1;
+    }
+  }
+  if (provided > 0 && provided < CAPACITY_FIELD_IDS.length) {
+    for (const fieldId of CAPACITY_FIELD_IDS) {
+      if (!(fieldId in capacity) && !errors[fieldId]) errors[fieldId] = "Complete a capacidade produtiva ou deixe a seção vazia.";
+    }
+  }
+  return provided === CAPACITY_FIELD_IDS.length ? capacity : null;
 }
 
 function validatePricingForm(elements) {
   const errors = {};
-  const inputs = {};
+  const rawInputs = {};
   const emptyOptionalFields = [];
-
-  for (const [fieldId, rule] of Object.entries(PRICING_FIELD_RULES)) {
+  for (const [fieldId, rule] of Object.entries(FIELD_RULES)) {
     const parsed = parseBrazilianNumber(elements[fieldId]?.value);
     if (parsed.status === "empty") {
       if (rule.optional) {
-        inputs[fieldId] = 0;
+        rawInputs[fieldId] = fieldId === "marketPrice" ? null : 0;
         emptyOptionalFields.push(fieldId);
-      } else {
-        errors[fieldId] = rule.requiredMessage;
-      }
+      } else errors[fieldId] = rule.required;
       continue;
     }
     if (parsed.status === "invalid") {
-      errors[fieldId] = "Informe um número válido.";
+      errors[fieldId] = "Informe um número válido, sem notação científica.";
       continue;
     }
-    if (rule.integer && !Number.isInteger(parsed.value)) {
-      errors[fieldId] = "Informe um número inteiro.";
-      continue;
-    }
-    if (rule.min !== undefined && parsed.value < rule.min) {
-      errors[fieldId] = rule.minMessage;
-      continue;
-    }
-    if (rule.max !== undefined && parsed.value > rule.max) {
-      errors[fieldId] = rule.maxMessage;
-      continue;
-    }
-    inputs[fieldId] = PERCENTAGE_FIELDS.has(fieldId) ? parsed.value / 100 : parsed.value;
+    rawInputs[fieldId] = PERCENTAGE_FIELDS.has(fieldId) ? parsed.value / 100 : parsed.value;
   }
+  rawInputs.productionCapacity = readCapacity(elements, errors);
+  rawInputs.fiscalContext = readFiscalContext(elements);
+  if (Object.keys(errors).length > 0) return { isValid: false, errors, inputs: null, emptyOptionalFields };
 
-  const rateFields = ["taxRate", "paymentFeeRate", "commissionRate", "margin"];
-  if (rateFields.every((fieldId) => inputs[fieldId] !== undefined)) {
-    const totalRate = rateFields.reduce((total, fieldId) => total + inputs[fieldId], 0);
-    if (totalRate >= 1) errors.margin = "A soma de impostos, taxas, comissão e margem deve ser menor que 100%.";
-  }
-
-  const isValid = Object.keys(errors).length === 0;
+  const domainValidation = validatePricingInputs(rawInputs);
   return {
-    isValid,
-    errors,
+    isValid: domainValidation.isValid,
+    errors: domainValidation.errors,
+    inputs: domainValidation.isValid ? domainValidation.value : null,
     emptyOptionalFields,
-    inputs: isValid ? { ...inputs, fiscalContext: readFiscalContext(elements) } : null,
   };
 }
 
 function renderPricingErrors(elements, errors, visibleFieldIds = null) {
-  for (const fieldId of PRICING_FIELD_IDS) {
+  for (const fieldId of [...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]) {
     const field = elements[fieldId];
     if (!field) continue;
     const error = errors[fieldId] || "";
-    const isVisible = Boolean(error) && (visibleFieldIds === null || visibleFieldIds.has(fieldId));
+    const visible = Boolean(error) && (visibleFieldIds === null || visibleFieldIds.has(fieldId));
     field.setCustomValidity?.(error);
-    field.setAttribute("aria-invalid", String(isVisible));
-
+    field.setAttribute("aria-invalid", String(visible));
     const container = field.closest?.(".sidebar-field");
     if (!container) continue;
-    container.classList.toggle("has-error", isVisible);
+    container.classList.toggle("has-error", visible);
     const errorId = `${fieldId}Error`;
-    let errorElement = field.ownerDocument.getElementById(errorId);
-    if (!errorElement) {
+    let errorElement = field.ownerDocument?.getElementById?.(errorId);
+    if (!errorElement && field.ownerDocument?.createElement) {
       errorElement = field.ownerDocument.createElement("p");
       errorElement.id = errorId;
       errorElement.className = "pricing-field-error";
@@ -622,438 +721,232 @@ function renderPricingErrors(elements, errors, visibleFieldIds = null) {
       describedBy.add(errorId);
       field.setAttribute("aria-describedby", [...describedBy].join(" "));
     }
-    errorElement.textContent = isVisible ? error : "";
-    errorElement.hidden = !isVisible;
+    if (errorElement) {
+      errorElement.textContent = visible ? error : "";
+      errorElement.hidden = !visible;
+    }
   }
+}
+
+function displayNumber(value, percentage = false) {
+  const display = percentage ? value * 100 : value;
+  return String(Number(display.toFixed(8))).replace(".", ",");
+}
+
+function clearPricingInputs(elements) {
+  for (const fieldId of [...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]) {
+    if (elements[fieldId]) elements[fieldId].value = "";
+  }
+  ["ncmCode", "taxRegime", "originState", "destinationState", "cfop", "taxSituation", "customerType", "operationPurpose"].forEach((fieldId) => {
+    if (elements[fieldId]) elements[fieldId].value = "";
+  });
 }
 
 function applySavedInputs(savedInputs, elements, emptyOptionalFields = []) {
   if (!savedInputs || typeof savedInputs !== "object") return false;
-  const fieldsToKeepEmpty = new Set(Array.isArray(emptyOptionalFields) ? emptyOptionalFields : []);
-
-  Object.entries(savedInputs).forEach(([field, value]) => {
-    if (!elements[field] || !Number.isFinite(value)) return;
-    if (fieldsToKeepEmpty.has(field)) {
-      elements[field].value = "";
-      return;
-    }
-    const displayValue = PERCENTAGE_FIELDS.has(field) ? value * 100 : value;
-    elements[field].value = String(Number(displayValue.toFixed(4))).replace(".", ",");
-  });
-
-  if (savedInputs.fiscalContext && typeof savedInputs.fiscalContext === "object") {
-    Object.entries(savedInputs.fiscalContext).forEach(([field, value]) => {
-      if (elements[field] && typeof value === "string") elements[field].value = value;
-    });
+  const empty = new Set(emptyOptionalFields);
+  for (const fieldId of PRICING_FIELD_IDS) {
+    if (!elements[fieldId] || empty.has(fieldId)) continue;
+    const value = savedInputs[fieldId];
+    if (typeof value === "number" && Number.isFinite(value)) elements[fieldId].value = displayNumber(value, PERCENTAGE_FIELDS.has(fieldId));
   }
-
+  for (const fieldId of CAPACITY_FIELD_IDS) {
+    const value = savedInputs.productionCapacity?.[fieldId];
+    if (elements[fieldId] && typeof value === "number" && Number.isFinite(value)) elements[fieldId].value = displayNumber(value);
+  }
+  Object.entries(savedInputs.fiscalContext || {}).forEach(([fieldId, value]) => {
+    if (elements[fieldId] && typeof value === "string") elements[fieldId].value = value;
+  });
   return true;
 }
 
-
-
-function priceCompositionFrom(result) {
-  if (!result.isValid || !result.minimumPriceCents) return [];
-
-  const components = [
-    { label: "Custos diretos líquidos", valueCents: result.costs.directCashCostCents },
-    { label: "Capital de giro", valueCents: result.costs.workingCapitalCostCents },
-    { label: "Rateio de custos fixos", valueCents: result.costs.fixedCostAllocationCents },
-    { label: "Impostos, taxas e comissão", valueCents: result.salesExpensesCents },
-    { label: "Lucro líquido", valueCents: result.profitPerSaleCents },
-  ].filter((item) => item.valueCents > 0);
-
-  const representedTotalCents = components.reduce((total, item) => total + item.valueCents, 0);
-  return components.map((item) => ({
-    ...item,
-    share: representedTotalCents > 0 ? item.valueCents / representedTotalCents : 0,
-  }));
+/** Maps only semantically equivalent v5 values. Missing inventory days deliberately stay empty. */
+function migrateLegacyV5Inputs(legacy = {}) {
+  const rate = (value) => typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return {
+    materialCost: legacy.materialsCost,
+    wasteRate: rate(legacy.waste),
+    packagingCost: legacy.packagingCost,
+    deliveryCost: legacy.deliveryCost,
+    insuranceCost: legacy.insuranceCost,
+    otherDirectExpenses: legacy.otherExpenses,
+    monthlyPayroll: legacy.totalPayroll,
+    monthlyFixedCosts: legacy.monthlyFixedCosts,
+    expectedMonthlyUnits: legacy.monthlyVolume,
+    taxRate: rate(legacy.taxRate),
+    paymentFeeRate: rate(legacy.paymentFeeRate),
+    commissionRate: rate(legacy.commissionRate),
+    desiredNetMargin: rate(legacy.margin),
+    receivingDays: legacy.receiveDays,
+    paymentDays: legacy.payDays,
+    monthlyCapitalRate: rate(legacy.capitalRate),
+    // inventoryDays and discount strategy have no safe v5 equivalent.
+    productionCapacity: legacy.workerCount !== undefined || legacy.outputPerWorkerHour !== undefined
+      ? { workerCount: legacy.workerCount, productiveHoursPerWorkerMonth: 176, unitsPerWorkerHour: legacy.outputPerWorkerHour }
+      : null,
+    fiscalContext: legacy.fiscalContext || {},
+  };
 }
 
-function priceComparisonFrom(inputs, result) {
-  const values = [
-    { label: "Custo-base", value: result.costs.baseCost },
-    { label: "Preço recomendado", value: result.minimumPrice || 0 },
-    { label: "Média do mercado", value: inputs.competitorAverage },
-  ];
-  const maximum = Math.max(...values.map((item) => item.value), 1);
 
-  return values.map((item) => ({
-    ...item,
-    width: clamp((item.value / maximum) * 100, 0, 100),
-  }));
+
+function money(value) { return value === null || value === undefined ? "—" : currency.format(value); }
+
+function priceCompositionFrom(result) {
+  return [
+    { label: "Custo direto", value: result.directCost },
+    { label: "Custo indireto", value: result.indirectCost },
+    { label: "Custo financeiro", value: result.financialCost },
+    { label: "Tributos, taxa e comissão", value: result.taxAmount + result.paymentFeeAmount + result.commissionAmount },
+    { label: "Lucro líquido", value: result.profitAmount },
+  ].filter((item) => item.value > 0);
 }
 
 function renderComposition(document, result) {
-  const donut = document.querySelector("#priceDonut");
-  const segments = document.querySelector("#priceDonutSegments");
-  const legend = document.querySelector("#priceCompositionLegend");
   const components = priceCompositionFrom(result);
-
-  if (components.length === 0) {
-    segments.innerHTML = "";
-    donut.setAttribute("aria-label", "Composição indisponível enquanto o cálculo estiver inválido.");
-    legend.innerHTML = '<li class="chart-empty">Revise os percentuais para visualizar a composição.</li>';
-    return;
-  }
-
-  let cursor = 0;
-  segments.innerHTML = components
-    .map((item, index) => {
-      const segmentSize = item.share * 100;
-      const offset = -cursor;
-      cursor += segmentSize;
-      return `<circle class="donut-segment donut-segment-${index + 1}" cx="60" cy="60" r="48" pathLength="100" stroke-dasharray="${segmentSize.toFixed(4)} ${(100 - segmentSize).toFixed(4)}" stroke-dashoffset="${offset.toFixed(4)}"></circle>`;
-    })
-    .join("");
-  donut.setAttribute(
-    "aria-label",
-    components.map((item) => `${item.label}: ${percent(item.share)}`).join(". "),
-  );
-  legend.innerHTML = components
-    .map(
-      (item, index) => `
-        <li>
-          <span class="chart-legend-color chart-legend-color-${index + 1}" aria-hidden="true"></span>
-          <span>${escapeHtml(item.label)}</span>
-          <strong>${currency.format(item.valueCents / 100)}</strong>
-          <small>${percent(item.share)}</small>
-        </li>`,
-    )
-    .join("");
+  const total = components.reduce((sum, item) => sum + item.value, 0);
+  document.querySelector("#priceDonutSegments").innerHTML = components.reduce(({ markup, cursor }, item, index) => {
+    const share = total ? item.value / total : 0;
+    const size = share * 100;
+    return { cursor: cursor + size, markup: `${markup}<circle class="donut-segment donut-segment-${index + 1}" cx="60" cy="60" r="48" pathLength="100" stroke-dasharray="${size.toFixed(4)} ${(100 - size).toFixed(4)}" stroke-dashoffset="${(-cursor).toFixed(4)}"></circle>` };
+  }, { markup: "", cursor: 0 }).markup;
+  document.querySelector("#priceCompositionLegend").innerHTML = components.map((item, index) => `<li><span class="chart-legend-color chart-legend-color-${index + 1}"></span><span>${escapeHtml(item.label)}</span><strong>${money(item.value)}</strong><small>${percent(total ? item.value / total : 0)}</small></li>`).join("");
 }
 
-function renderComparison(document, inputs, result, marketText) {
-  const comparison = priceComparisonFrom(inputs, result);
-  document.querySelector("#priceComparisonBars").innerHTML = comparison
-    .map(
-      (item, index) => `
-        <li>
-          <div><span>${escapeHtml(item.label)}</span><strong>${currency.format(item.value)}</strong></div>
-          <progress class="comparison-track comparison-fill-${index + 1}" max="100" value="${item.width.toFixed(2)}" aria-label="${escapeHtml(item.label)}: ${percent(item.width / 100)} da maior referência"></progress>
-        </li>`,
-    )
-    .join("");
-  document.querySelector("#detailMarketNarrative").textContent = marketText;
-}
-
-function renderPriceDetails(document, inputs, result, marketText, alertCount) {
-  const validPrice = result.isValid ? currency.format(result.minimumPrice) : "Revise percentuais";
-  const validMargin = result.isValid ? percent(result.actualMargin) : "-";
-
-  document.querySelector("#detailSuggestedPrice").textContent = validPrice;
-  document.querySelector("#detailDonutPrice").textContent = result.isValid ? currency.format(result.minimumPrice) : "-";
-  document.querySelector("#detailBaseCost").textContent = currency.format(result.costs.baseCost);
-  document.querySelector("#detailSalesRate").textContent = percent(result.costs.salesRate);
-  document.querySelector("#detailProfit").textContent = result.isValid ? currency.format(result.profitPerSale) : "-";
-  document.querySelector("#detailMargin").textContent = validMargin;
-  document.querySelector("#detailMarketPrice").textContent = currency.format(inputs.competitorAverage);
-  document.querySelector("#detailMarketCostLimit").textContent = currency.format(result.marketCostLimit);
+function renderPriceDetails(document, result, alertCount) {
+  document.querySelector("#detailSuggestedPrice").textContent = money(result.technicalPrice);
+  document.querySelector("#detailDonutPrice").textContent = money(result.technicalPrice);
+  document.querySelector("#detailBaseCost").textContent = money(result.totalUnitCost);
+  document.querySelector("#detailSalesRate").textContent = percent(result.saleExpenseRate);
+  document.querySelector("#detailProfit").textContent = money(result.profitAmount);
+  document.querySelector("#detailMargin").textContent = percent(result.actualNetMargin);
+  document.querySelector("#detailMarketPrice").textContent = money(result.market.price);
+  document.querySelector("#detailMarketCostLimit").textContent = result.market.difference === null ? "—" : money(result.market.difference);
   document.querySelector("#detailAlertCount").textContent = `${alertCount} ${alertCount === 1 ? "ponto de atenção" : "pontos de atenção"}`;
-
+  document.querySelector("#detailMarketNarrative").textContent = result.market.price
+    ? `Referência ${result.market.rule}: ${money(result.market.price)}. Diferença para o preço técnico: ${money(result.market.difference)} (${percent(result.market.differenceRate)}).`
+    : "Não há referência de mercado. Isso não bloqueia o preço técnico.";
+  document.querySelector("#priceComparisonBars").innerHTML = [
+    ["Custo total", result.totalUnitCost], ["Preço técnico", result.technicalPrice], ["Mercado", result.market.price],
+  ].filter(([, value]) => value !== null).map(([label, value]) => `<li><div><span>${label}</span><strong>${money(value)}</strong></div></li>`).join("");
   renderComposition(document, result);
-  renderComparison(document, inputs, result, marketText);
 }
 
 function renderPriceDetailsUnavailable(document, invalidCount) {
-  [
-    "detailSuggestedPrice",
-    "detailDonutPrice",
-    "detailBaseCost",
-    "detailSalesRate",
-    "detailProfit",
-    "detailMargin",
-    "detailMarketPrice",
-    "detailMarketCostLimit",
-  ].forEach((id) => { document.querySelector(`#${id}`).textContent = "-"; });
+  ["detailSuggestedPrice", "detailDonutPrice", "detailBaseCost", "detailSalesRate", "detailProfit", "detailMargin", "detailMarketPrice", "detailMarketCostLimit"].forEach((id) => { document.querySelector(`#${id}`).textContent = "—"; });
   document.querySelector("#detailAlertCount").textContent = `${invalidCount} ${invalidCount === 1 ? "campo pendente" : "campos pendentes"}`;
   document.querySelector("#priceDonutSegments").innerHTML = "";
-  document.querySelector("#priceDonut").setAttribute("aria-label", "Composição indisponível enquanto o formulário estiver inválido.");
-  document.querySelector("#priceCompositionLegend").innerHTML = '<li class="chart-empty">Preencha os campos obrigatórios para visualizar a composição.</li>';
+  document.querySelector("#priceCompositionLegend").innerHTML = "<li>Preencha os campos obrigatórios.</li>";
   document.querySelector("#priceComparisonBars").innerHTML = "";
-  document.querySelector("#detailMarketNarrative").textContent = "A comparação será exibida depois que os dados da precificação forem validados.";
+  document.querySelector("#detailMarketNarrative").textContent = "A comparação é opcional e será mostrada quando houver uma referência válida.";
 }
 
 
 
-function marketComparisonText(inputs, result, marketStats, marketSource) {
-  const difference = Math.abs(inputs.competitorAverage - result.minimumPrice);
-  const relativeGap = Math.abs(result.marketGap);
-  const confidenceNote = marketStats && marketStats.count < AMAZON_MARKET_CONFIG.minComparableResults ? " A amostra é pequena, então use como sinal preliminar." : "";
+function dashboardMoney(value) { return value === null || value === undefined ? "—" : currency.format(value); }
 
-  if (relativeGap <= 0.08) return `Seu preço está próximo do mercado, com diferença de ${percent(relativeGap)}.${confidenceNote}`;
-  if (result.marketGap >= 0) return `Seu preço está ${percent(relativeGap)} abaixo do mercado. Diferença: ${currency.format(difference)}.${confidenceNote}`;
-
-  return `Seu preço está ${percent(relativeGap)} acima do mercado. Diferença: ${currency.format(difference)}.${confidenceNote}`;
+function marketLabel(market) {
+  if (!market?.price) return "Sem referência de mercado";
+  if (market.rule === "selected-product") return "Produto individual selecionado";
+  if (market.rule === "amazon-average") return "Média da pesquisa Amazon";
+  if (market.rule === "amazon-median") return "Mediana da pesquisa Amazon";
+  return "Média informada manualmente";
 }
 
-function renderExplanation(document, inputs, result, fiscalAssessment) {
-  const { costs } = result;
-  const items = [
-    `Insumos e matéria-prima, já com ${percent(inputs.waste)} de perda: ${currency.format(costs.materialsWithWaste)}.`,
-    `Mão de obra direta: ${currency.format(costs.directLabor)} por unidade, usando ${inputs.workerCount} trabalhador(es), folha total de ${currency.format(inputs.totalPayroll)} e ${inputs.outputPerWorkerHour.toLocaleString("pt-BR")} unidade(s) por trabalhador/hora.`,
-    `Capacidade mensal de produção: ${costs.monthlyProductionCapacity.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} unidades, considerando ${PRODUCTIVE_HOURS_PER_WORKER_MONTH} horas produtivas por trabalhador no mês.`,
-    `Rateio de custos fixos: ${currency.format(costs.fixedCostAllocation)} por venda, usando ${inputs.monthlyVolume.toLocaleString("pt-BR")} operações previstas no mês.`,
-    `A carga tributária agregada informada, a taxa de pagamento e a comissão somam ${percent(costs.salesRate)} e incidem sobre o preço final.`,
-    "Fórmula aplicada: custo-base ÷ (1 − despesas sobre a venda − margem líquida).",
-    "A Focus NFe é usada para validar o NCM, não para calcular impostos. A composição tributária precisa de regras fiscais externas.",
+function renderExplanation(document, result) {
+  const explanations = [
+    `Matéria-prima ajustada: ${dashboardMoney(result.adjustedMaterialCost)} (${percent(result.inputs.wasteRate)} de desperdício).`,
+    `Custo direto: ${dashboardMoney(result.directCost)}; custo indireto: ${dashboardMoney(result.indirectCost)}, rateado por ${result.inputs.expectedMonthlyUnits.toLocaleString("pt-BR")} unidade(s)/mês.`,
+    `Ciclo financeiro: ${result.financedDays.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} dia(s); base financiada: ${dashboardMoney(result.financedBase)}; taxa do período: ${percent(result.periodCapitalRate)}; custo financeiro: ${dashboardMoney(result.financialCost)}.`,
+    `Despesas percentuais: ${percent(result.saleExpenseRate)}; margem desejada: ${percent(result.desiredNetMargin)}; preço bruto: ${dashboardMoney(result.technicalPriceRaw)}; preço técnico arredondado para cima: ${dashboardMoney(result.technicalPrice)}.`,
   ];
-
-  if (fiscalAssessment.missingFields.length > 0) {
-    items.push(`Contexto fiscal ainda incompleto: ${fiscalAssessment.missingFields.join(", ")}.`);
-  }
-
-  document.querySelector("#explanationList").innerHTML = items.map((item) => `<li>${item}</li>`).join("");
+  if (result.market.price) explanations.push(`${marketLabel(result.market)}: ${dashboardMoney(result.market.price)}; diferença para o preço técnico: ${dashboardMoney(result.market.difference)} (${percent(result.market.differenceRate)}).`);
+  if (result.discount.type !== "none") explanations.push(`Estratégia de desconto ${result.discount.type === "percentage" ? "percentual" : "fixo"}: preço anunciado ${dashboardMoney(result.discount.advertisedPrice)}, desconto ${dashboardMoney(result.discount.discountAmount)} e preço após desconto ${dashboardMoney(result.discount.postDiscountPrice)}.`);
+  document.querySelector("#explanationList").innerHTML = explanations.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
 }
 
-function renderCostTable(document, memory) {
-  document.querySelector("#costRows").innerHTML = memory
-    .map(
-      (item) => `
-        <tr>
-          <td><small>${escapeHtml(item.group)}</small><br>${escapeHtml(item.label)}</td>
-          <td>${currency.format(item.valueCents / 100)}</td>
-          <td>${escapeHtml(item.basis)}</td>
-          <td>${escapeHtml(item.source)}</td>
-        </tr>`,
-    )
-    .join("");
+function renderCostTable(document, result) {
+  document.querySelector("#costRows").innerHTML = result.breakdown.map((item) => `
+    <tr><td><small>${escapeHtml(item.group)}</small><br>${escapeHtml(item.label)}</td><td>${dashboardMoney(item.value)}</td><td>${escapeHtml(item.basis)}</td><td>${escapeHtml(item.fiscalSource || item.source)}</td></tr>`).join("");
 }
 
-function dashboardAlerts(inputs, result, fiscalAssessment) {
+function renderAlerts(document, result, assessment) {
   const alerts = [];
-  const { costs } = result;
-
-  if (!result.isValid) alerts.push(["risk", "A soma de impostos, taxas, comissão e margem não pode chegar a 100% do preço."]);
-  if (result.isValid && result.marketGap < 0) alerts.push(["risk", `Para caber na média do mercado mantendo as taxas e a margem, o custo-base precisa cair ${currency.format(result.requiredCostReduction)} por venda.`]);
-  if (costs.cashGapDays > 0) alerts.push(["warning", `Você recebe ${costs.cashGapDays} dia(s) depois de pagar. O custo do capital acrescentou ${currency.format(costs.workingCapitalCost)} por venda.`]);
-  if (costs.salesRate > 0.2) alerts.push(["warning", `Impostos, taxas e comissão consomem ${percent(costs.salesRate)} do preço final.`]);
-  if (fiscalAssessment.focusUnavailable) alerts.push(["warning", "A Focus NFe está indisponível. O cálculo financeiro foi preservado, mas o NCM não está validado."]);
-  alerts.push(["warning", "Estimativa fiscal pendente: a carga tributária agregada não substitui o cálculo de ICMS, ICMS-ST, DIFAL, FCP, IPI, PIS/COFINS ou IBS/CBS/IS."]);
-  if (alerts.length === 0) alerts.push(["ok", "Preço sustentável: custos, despesas sobre a venda e margem foram cobertos sem ultrapassar a média informada."]);
-
-  return alerts;
-}
-
-function renderAlerts(document, alerts) {
-  document.querySelector("#alerts").innerHTML = alerts.map(([type, text]) => `<div class="${type}">${text}</div>`).join("");
+  if (result.financedDays > 0) alerts.push(["warning", `O ciclo financeiro acrescenta ${dashboardMoney(result.financialCost)} por unidade.`]);
+  if (result.inputs.productionCapacity && result.inputs.productionCapacity.monthlyCapacity < result.inputs.expectedMonthlyUnits) alerts.push(["warning", "A capacidade produtiva informada é menor que a quantidade mensal usada no rateio. O preço não foi alterado por isso."]);
+  if (result.market.price && result.market.difference < 0) alerts.push(["risk", `O preço técnico está ${dashboardMoney(Math.abs(result.market.difference))} acima da referência de mercado. A referência não altera o preço técnico.`]);
+  if (assessment.focusUnavailable) alerts.push(["warning", "A Focus NFe está indisponível; a carga tributária continua manual e não foi alterada."]);
+  alerts.push(["warning", "A carga tributária é estimada manualmente. A Focus NFe valida NCM, mas não calcula alíquotas."]);
+  document.querySelector("#alerts").innerHTML = alerts.map(([type, text]) => `<div class="${type}">${escapeHtml(text)}</div>`).join("");
+  document.querySelector("#alertCount").textContent = `${alerts.length} ${alerts.length === 1 ? "ponto de atenção" : "pontos de atenção"}`;
+  document.querySelector("#alertSummary").textContent = alerts[0][1];
+  return alerts.length;
 }
 
 function renderFiscalSummary(document, assessment) {
-  const ncmDescription = assessment.ncm?.descricao_completa ? ` — ${assessment.ncm.descricao_completa}` : "";
-  const contextStatus = assessment.missingFields.length === 0
-    ? "Contexto básico preenchido; ainda requer regra tributária especializada."
-    : `Faltam: ${assessment.missingFields.join(", ")}.`;
-
-  document.querySelector("#fiscalSummary").innerHTML = `
-    <p><strong>NCM:</strong> ${escapeHtml(assessment.ncm?.codigo || "não informado")}${escapeHtml(ncmDescription)} <small>(${escapeHtml(assessment.ncmSource)})</small></p>
-    <p><strong>Status:</strong> ${escapeHtml(contextStatus)}</p>
-    <p><strong>Tributos não determinados pela Focus NFe:</strong> ${escapeHtml(assessment.unresolvedTaxes.join(", "))}.</p>
-    <p><strong>Resultado:</strong> estimativa financeira; não é uma validação fiscal da operação.</p>`;
+  const ncm = assessment.ncm?.codigo || "não informado";
+  const status = assessment.ncmValidation.status === "success" ? `validado pela Focus NFe em ${assessment.ncmValidation.environment}` : "não validado nesta simulação";
+  document.querySelector("#fiscalSummary").innerHTML = `<p><strong>NCM:</strong> ${escapeHtml(ncm)} (${escapeHtml(status)})</p><p><strong>Carga usada:</strong> estimada manualmente; a Focus NFe não calculou qualquer alíquota.</p><p><strong>Tributos ainda dependentes de regra externa:</strong> ${escapeHtml(assessment.unresolvedTaxes.join(", "))}.</p>`;
 }
 
-function renderMarketPanel(document, result, marketState) {
+function renderMarketPanel(document, marketState) {
   const panel = document.querySelector("#marketPanel");
-  const summary = document.querySelector("#marketSummary");
-  const statsContainer = document.querySelector("#marketStats");
-  const resultsContainer = document.querySelector("#marketResults");
+  const stats = document.querySelector("#marketStats");
+  const results = document.querySelector("#marketResults");
+  const status = document.querySelector("#marketSearchStatus");
+  const selected = document.querySelector("#selectedMarketProduct");
   const searchButton = document.querySelector("#marketSearchButton");
-  const searchStatus = document.querySelector("#marketSearchStatus");
-  const selectedContainer = document.querySelector("#selectedMarketProduct");
-
   panel.hidden = marketState.status === "idle";
-  summary.hidden = !marketState.selectedItem;
   searchButton.disabled = marketState.status === "loading";
   searchButton.textContent = marketState.status === "loading" ? "Buscando produtos..." : "Pesquisar produto";
-  selectedContainer.hidden = !marketState.selectedItem;
-  selectedContainer.innerHTML = marketState.selectedItem
-    ? `<p class="eyebrow">Referência selecionada</p><h3>${escapeHtml(marketState.selectedItem.title)}</h3><strong>${currency.format(marketState.selectedItem.price)}</strong><span>Fonte: ${escapeHtml(marketState.selectedItem.source)}</span><small>Tributação pendente; nenhuma alíquota ou NCM foi presumido.</small><button type="button" class="secondary-button" data-change-market-reference>Trocar produto</button>`
-    : "";
-
-  if (marketState.status === "loading") {
-    searchStatus.textContent = "Buscando produtos...";
-    statsContainer.innerHTML = '<div class="market-loading"><span aria-hidden="true"></span><p>Consultando produtos no mercado...</p></div>';
-    resultsContainer.innerHTML = "";
-    return;
-  }
-
-  if (marketState.status === "error") {
-    searchStatus.textContent = "Não foi possível concluir a pesquisa.";
-    statsContainer.innerHTML = `
-      <div class="market-error-alert" role="alert">
-        <span class="market-error-icon" aria-hidden="true">!</span>
-        <div><strong>Não foi possível consultar o mercado agora.</strong><p>${escapeHtml(marketState.error)}</p></div>
-        <button type="button" class="secondary-button" data-market-retry>Tentar novamente</button>
-      </div>`;
-    resultsContainer.innerHTML = "";
-    return;
-  }
-
-  if (marketState.status === "empty") {
-    searchStatus.textContent = "Não encontramos produtos compatíveis.";
-    statsContainer.innerHTML = '<p class="helper-text">Tente informar marca, modelo, capacidade, tamanho ou voltagem com mais precisão.</p>';
-    resultsContainer.innerHTML = "";
-    return;
-  }
-
-  if (!marketState.stats) {
-    searchStatus.textContent = "A pesquisa é opcional. O valor manual só muda quando você escolher um produto.";
-    statsContainer.innerHTML = "";
-    resultsContainer.innerHTML = "";
-    return;
-  }
-
-  const { stats } = marketState;
-  searchStatus.textContent = `${stats.count} produto(s) encontrado(s). Escolha uma referência para atualizar o dashboard.`;
-  summary.innerHTML = marketState.selectedItem
-    ? `<span>Fonte: ${escapeHtml(marketState.selectedItem.source)}</span><strong>${currency.format(marketState.selectedItem.price)}</strong><small>${escapeHtml(marketState.selectedItem.title)}</small>`
-    : "";
-  statsContainer.innerHTML = "";
-  resultsContainer.innerHTML = marketState.items
-    .map((item) => `
-        <article class="amazon-result${marketState.selectedItem?.id === item.id ? " selected" : ""}">
-          ${item.image ? `<img src="${escapeHtml(item.image)}" alt="">` : '<div class="amazon-image-placeholder"></div>'}
-          <div>
-            <h4>${escapeHtml(item.title)}</h4>
-            <p>${escapeHtml(item.category || "Categoria não informada")} · Fonte: ${escapeHtml(item.source)}</p>
-            <strong>${currency.format(item.price)}</strong>
-          </div>
-          <div class="amazon-actions">
-            <button type="button" data-market-select="${escapeHtml(item.id)}">${marketState.selectedItem?.id === item.id ? "Referência ativa" : "Usar como referência"}</button>
-            <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver na ${escapeHtml(item.source)}</a>
-          </div>
-        </article>`)
-    .join("");
+  selected.hidden = !marketState.selectedItem;
+  selected.innerHTML = marketState.selectedItem ? `<p class="eyebrow">Produto individual selecionado</p><h3>${escapeHtml(marketState.selectedItem.title)}</h3><strong>${dashboardMoney(marketState.selectedItem.price)}</strong><small>Marketplace: ${escapeHtml(marketState.marketplace || "Amazon")} · Provedor técnico: ${escapeHtml(marketState.provider || "Nexscope")}</small><button type="button" class="secondary-button" data-change-market-reference>Remover seleção</button>` : "";
+  if (marketState.status === "loading") { status.textContent = "Consultando produtos…"; stats.innerHTML = ""; results.innerHTML = ""; return; }
+  if (marketState.status === "error") { status.textContent = marketState.error; stats.innerHTML = '<div class="market-error-alert" role="alert">Pesquisa indisponível. O cálculo técnico continua disponível.</div>'; results.innerHTML = ""; return; }
+  if (marketState.status === "empty") { status.textContent = "Nenhum produto compatível foi encontrado."; stats.innerHTML = ""; results.innerHTML = ""; return; }
+  if (!marketState.stats) { status.textContent = "A pesquisa de mercado é opcional."; stats.innerHTML = ""; results.innerHTML = ""; return; }
+  status.textContent = `${marketState.stats.count} referência(s) encontrada(s).`;
+  stats.innerHTML = `<p>Média: <strong>${dashboardMoney(marketState.stats.average)}</strong> · Mediana: <strong>${dashboardMoney(marketState.stats.median)}</strong> · Mín.: ${dashboardMoney(marketState.stats.min)} · Máx.: ${dashboardMoney(marketState.stats.max)}</p>`;
+  results.innerHTML = marketState.items.map((item) => `<article class="amazon-result${marketState.selectedItem?.id === item.id ? " selected" : ""}"><div><h4>${escapeHtml(item.title)}</h4><p>${escapeHtml(item.category || "Categoria não informada")} · ${escapeHtml(item.source)}</p><strong>${dashboardMoney(item.price)}</strong></div><div class="amazon-actions"><button type="button" data-market-select="${escapeHtml(item.id)}">Usar produto</button><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver referência</a></div></article>`).join("");
 }
 
 function renderIncompleteDashboard(document, marketState, errors) {
-  const invalidCount = Object.keys(errors).length;
-  const selectedMarketProduct = marketState.selectedItem;
-  const generalMessage = invalidCount === 1
-    ? "Corrija o campo indicado para liberar o cálculo."
-    : "Preencha ou corrija os campos indicados para liberar o cálculo.";
-
-  document.querySelector("#baseCost").textContent = "-";
-  document.querySelector("#marketPrice").textContent = selectedMarketProduct ? currency.format(selectedMarketProduct.price) : "-";
-  document.querySelector("#marketTitle").textContent = selectedMarketProduct ? selectedMarketProduct.title : "Preço médio informado";
-  document.querySelector("#marketReferenceDetails").textContent = selectedMarketProduct ? `Fonte: ${selectedMarketProduct.source}` : "Aguardando valor válido";
-  document.querySelector("#marketPriceLabel").textContent = selectedMarketProduct ? "Produto selecionado" : "Referência manual";
-
-  const primaryMarketValue = document.querySelector("#primaryMarketValue");
-  const primaryTaxImpact = document.querySelector("#primaryTaxImpact");
-  document.querySelector("#primaryPriceCard").classList.toggle("has-market-reference", Boolean(selectedMarketProduct));
-  primaryMarketValue.hidden = !selectedMarketProduct;
-  primaryTaxImpact.hidden = !selectedMarketProduct;
-  document.querySelector("#primaryMarketPrice").textContent = selectedMarketProduct ? currency.format(selectedMarketProduct.price) : "-";
-  document.querySelector("#primaryMarketSource").textContent = selectedMarketProduct ? `Fonte: ${selectedMarketProduct.source}` : "Fonte: mercado";
-  document.querySelector("#primaryTaxAdjustedPrice").textContent = "Tributação pendente";
-  document.querySelector("#primaryTaxStatus").textContent = "Complete a precificação antes de avaliar o impacto fiscal.";
-  primaryTaxImpact.classList.add("is-pending");
-
-  document.querySelector("#suggestedPrice").textContent = "-";
-  document.querySelector("#profitPerSale").textContent = "-";
-  document.querySelector("#estimatedMargin").textContent = "-";
-  const priceStatus = document.querySelector("#priceStatus");
-  priceStatus.textContent = "Aguardando dados válidos";
-  priceStatus.classList.remove("risk-badge", "warning-badge");
-  document.querySelector("#recommendationText").textContent = generalMessage;
-  document.querySelector("#marketStatus").textContent = "O mercado será comparado somente depois que todos os dados necessários forem válidos.";
-  const marketMeter = document.querySelector("#marketMeter");
-  marketMeter.value = 0;
-  marketMeter.setAttribute("aria-valuetext", "Cálculo ainda não realizado");
-  marketMeter.classList.remove("over");
-
-  document.querySelector("#alertCount").textContent = `${invalidCount} ${invalidCount === 1 ? "campo pendente" : "campos pendentes"}`;
-  document.querySelector("#alertSummary").textContent = generalMessage;
-  document.querySelector("#explanationList").innerHTML = `<li>${generalMessage}</li>`;
-  document.querySelector("#costRows").innerHTML = '<tr><td colspan="4">Os custos serão detalhados após a validação do formulário.</td></tr>';
-  renderAlerts(document, [["warning", generalMessage]]);
-  document.querySelector("#fiscalSummary").innerHTML = "<p>O resumo fiscal será exibido depois que os dados financeiros obrigatórios forem validados.</p>";
-
-  renderMarketPanel(document, null, marketState);
-  renderPriceDetailsUnavailable(document, invalidCount);
+  const count = Object.keys(errors).length;
+  ["baseCost", "marketReferencePrice", "suggestedPrice", "profitPerSale", "estimatedMargin", "detailSuggestedPrice", "detailBaseCost", "detailSalesRate", "detailProfit", "detailMargin"].forEach((id) => { const node = document.querySelector(`#${id}`); if (node) node.textContent = "—"; });
+  document.querySelector("#priceStatus").textContent = "Aguardando dados válidos";
+  document.querySelector("#recommendationText").textContent = "Corrija os campos indicados para calcular e salvar.";
+  document.querySelector("#marketStatus").textContent = "Mercado é opcional e será comparado quando houver referência válida.";
+  document.querySelector("#alertCount").textContent = `${count} ${count === 1 ? "campo pendente" : "campos pendentes"}`;
+  document.querySelector("#alertSummary").textContent = "O cálculo e o salvamento estão bloqueados.";
+  document.querySelector("#explanationList").innerHTML = "<li>Preencha os campos obrigatórios sem corrigir valores silenciosamente.</li>";
+  document.querySelector("#costRows").innerHTML = '<tr><td colspan="4">O detalhamento usa o resultado canônico após a validação.</td></tr>';
+  document.querySelector("#alerts").innerHTML = "<div class=\"warning\">Corrija os campos indicados.</div>";
+  document.querySelector("#fiscalSummary").innerHTML = "<p>O contexto fiscal será preservado sem inventar alíquotas.</p>";
+  renderMarketPanel(document, marketState);
+  renderPriceDetailsUnavailable(document, count);
 }
 
-function renderDashboard(document, inputs, result, marketState, marketSource, fiscalAssessment, memory) {
-  const { costs } = result;
-  const activeMarketStats = marketSource === "market-median" ? marketState.stats : null;
-  const selectedMarketProduct = marketSource === "market-product" ? marketState.selectedItem : null;
-  const alerts = dashboardAlerts(inputs, result, fiscalAssessment);
-
-  document.querySelector("#baseCost").textContent = currency.format(costs.baseCost);
-  document.querySelector("#marketPrice").textContent = currency.format(inputs.competitorAverage);
-  document.querySelector("#marketTitle").textContent = selectedMarketProduct ? selectedMarketProduct.title : "Preço médio informado";
-  document.querySelector("#marketReferenceDetails").textContent = selectedMarketProduct
-    ? `Fonte: ${selectedMarketProduct.source}`
-    : "Fonte: valor manual";
-  document.querySelector("#marketPriceLabel").textContent = selectedMarketProduct
-    ? "Produto selecionado"
-    : "Referência manual";
-
-  const primaryMarketValue = document.querySelector("#primaryMarketValue");
-  const primaryTaxImpact = document.querySelector("#primaryTaxImpact");
-  document.querySelector("#primaryPriceCard").classList.toggle("has-market-reference", Boolean(selectedMarketProduct));
-  primaryMarketValue.hidden = !selectedMarketProduct;
-  primaryTaxImpact.hidden = !selectedMarketProduct;
-  document.querySelector("#primaryMarketPrice").textContent = currency.format(selectedMarketProduct?.price || 0);
-  document.querySelector("#primaryMarketSource").textContent = selectedMarketProduct ? `Fonte: ${selectedMarketProduct.source}` : "Fonte: mercado";
-  const hasRealTaxImpact = fiscalAssessment.automaticCalculation
-    && fiscalAssessment.complete
-    && Number.isFinite(fiscalAssessment.marketAdjustedPrice);
-  document.querySelector("#primaryTaxAdjustedPrice").textContent = hasRealTaxImpact
-    ? currency.format(fiscalAssessment.marketAdjustedPrice)
-    : "Tributação pendente";
-  document.querySelector("#primaryTaxStatus").textContent = hasRealTaxImpact
-    ? "Valor calculado pelo provedor fiscal configurado."
-    : "Nenhum TaxProvider de cálculo está configurado.";
-  primaryTaxImpact.classList.toggle("is-pending", !hasRealTaxImpact);
-
-  const suggestedPrice = document.querySelector("#suggestedPrice");
-  const profitPerSale = document.querySelector("#profitPerSale");
-  const estimatedMargin = document.querySelector("#estimatedMargin");
-  const priceStatus = document.querySelector("#priceStatus");
-  const recommendationText = document.querySelector("#recommendationText");
-  const marketStatus = document.querySelector("#marketStatus");
-  const marketMeter = document.querySelector("#marketMeter");
-  let marketText;
-
-  if (result.isValid) {
-    suggestedPrice.textContent = currency.format(result.minimumPrice);
-    profitPerSale.textContent = currency.format(result.profitPerSale);
-    estimatedMargin.textContent = percent(result.actualMargin);
-    priceStatus.textContent = "Estimativa fiscal pendente";
-    priceStatus.classList.remove("risk-badge");
-    priceStatus.classList.add("warning-badge");
-    recommendationText.textContent = "Preço mínimo financeiro para cobrir custos, despesas de venda e margem. Valide a composição tributária com seu contador antes de usar como preço fiscal.";
-    marketText = marketComparisonText(inputs, result, activeMarketStats, marketSource);
-    marketStatus.textContent = marketText;
-    marketMeter.value = clamp((result.minimumPrice / inputs.competitorAverage) * 100, 0, 100);
-    marketMeter.setAttribute("aria-valuetext", `${percent(marketMeter.value / 100)} do preço médio de mercado`);
-    marketMeter.classList.toggle("over", result.marketGap < 0);
-  } else {
-    suggestedPrice.textContent = "Revise percentuais";
-    profitPerSale.textContent = "-";
-    estimatedMargin.textContent = "-";
-    priceStatus.textContent = "Cálculo inviável";
-    priceStatus.classList.add("risk-badge");
-    priceStatus.classList.remove("warning-badge");
-    recommendationText.textContent = "Impostos, taxas, comissão e margem somam 100% ou mais do preço. Reduza algum percentual para calcular.";
-    marketText = "Não é possível validar o mercado enquanto os percentuais consumirem todo o preço.";
-    marketStatus.textContent = marketText;
-    marketMeter.value = 100;
-    marketMeter.setAttribute("aria-valuetext", "Cálculo inviável");
-    marketMeter.classList.add("over");
-  }
-
-  document.querySelector("#alertCount").textContent = `${alerts.length} ${alerts.length === 1 ? "alerta importante" : "alertas importantes"}`;
-  document.querySelector("#alertSummary").textContent = alerts[0][1];
-
-  renderExplanation(document, inputs, result, fiscalAssessment);
-  renderCostTable(document, memory);
-  renderAlerts(document, alerts);
+function renderDashboard(document, result, marketState, fiscalAssessment) {
+  const market = result.market;
+  document.querySelector("#baseCost").textContent = dashboardMoney(result.totalUnitCost);
+  document.querySelector("#marketReferencePrice").textContent = dashboardMoney(market.price);
+  document.querySelector("#marketTitle").textContent = marketLabel(market);
+  document.querySelector("#marketReferenceDetails").textContent = market.price ? `Fonte: ${market.source || "não informada"}` : "Referência opcional não informada";
+  document.querySelector("#marketPriceLabel").textContent = marketLabel(market);
+  document.querySelector("#suggestedPrice").textContent = dashboardMoney(result.technicalPrice);
+  document.querySelector("#profitPerSale").textContent = dashboardMoney(result.profitAmount);
+  document.querySelector("#estimatedMargin").textContent = percent(result.actualNetMargin);
+  document.querySelector("#priceStatus").textContent = "Preço técnico";
+  document.querySelector("#recommendationText").textContent = "Preço mínimo sustentável, calculado sem usar mercado ou desconto como custo.";
+  document.querySelector("#marketStatus").textContent = market.price ? `Diferença: ${dashboardMoney(market.difference)} (${percent(market.differenceRate)}).` : "Sem referência de mercado; o cálculo técnico não é bloqueado.";
+  const meter = document.querySelector("#marketMeter");
+  meter.value = market.price ? Math.min((result.technicalPrice / market.price) * 100, 100) : 0;
+  const count = renderAlerts(document, result, fiscalAssessment);
+  renderExplanation(document, result);
+  renderCostTable(document, result);
   renderFiscalSummary(document, fiscalAssessment);
-  renderMarketPanel(document, result, marketState);
-  renderPriceDetails(document, inputs, result, marketText, alerts.length);
+  renderMarketPanel(document, marketState);
+  renderPriceDetails(document, result, count);
 }
 
 
@@ -1067,6 +960,15 @@ function detail(label, value, extraClass = "") {
 }
 
 function savedMarket(product) {
+  const canonical = product.calculationData?.pricingResult?.market;
+  if (canonical?.price) {
+    return {
+      difference: `${Math.abs(canonical.differenceRate * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% ${canonical.difference <= 0 ? "abaixo" : "acima"}`,
+      price: canonical.price,
+      productTitle: canonical.reference?.selectedProduct?.title || canonical.reference?.query || canonical.rule,
+      source: canonical.source || "não informada",
+    };
+  }
   const market = product.calculationData?.market;
   const price = Number(market?.selectedProduct?.price ?? market?.marketPrice ?? market?.stats?.median);
   if (!Number.isFinite(price) || price <= 0 || !["market-product", "amazon-product"].includes(market?.source)) return null;
@@ -1115,6 +1017,8 @@ function renderProductsList(container, products) {
 function renderProductDetails(container, product) {
   const description = product.description || "Sem descrição informada.";
   const fiscal = product.calculationData?.fiscal;
+  const canonical = product.calculationData?.pricingResult;
+  const isLegacy = product.calculationData?.version === 5 || product.calculationData?.pricingSchemaVersion === 5;
   const market = savedMarket(product);
   const fiscalDetails = fiscal
     ? `
@@ -1126,10 +1030,12 @@ function renderProductDetails(container, product) {
     <dl class="product-details">
       ${detail("Categoria", product.category)}
       ${detail("Plataforma", product.marketplace)}
-      ${detail("Preço de custo", currency.format(product.costPrice))}
-      ${detail("Custos adicionais", currency.format(product.additionalCosts))}
+      ${detail(canonical ? "Custo direto unitário" : "Preço de custo", currency.format(canonical?.directCost ?? product.costPrice))}
+      ${detail(canonical ? "Custo indireto + financeiro" : "Custos adicionais", currency.format(canonical ? canonical.indirectCost + canonical.financialCost : product.additionalCosts))}
       ${detail("Margem desejada", `${Number(product.profitMargin).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`)}
-      ${detail("Preço sugerido", currency.format(product.suggestedPrice))}
+      ${detail(canonical ? "Preço técnico recomendado" : "Preço sugerido", currency.format(product.suggestedPrice))}
+      ${canonical ? `${detail("Custo total unitário", currency.format(canonical.totalUnitCost))}${detail("Margem efetiva", `${(canonical.actualNetMargin * 100).toLocaleString("pt-BR", { maximumFractionDigits: 4 })}%`)}` : ""}
+      ${isLegacy ? detail("Memória", "Cálculo legado v5 preservado; não foi recalculado.") : ""}
       ${market ? `${detail("Produto de mercado", market.productTitle)}${detail("Mercado na data", currency.format(market.price))}${detail("Diferença", market.difference)}${detail("Fonte de mercado", market.source)}` : ""}
       ${detail("Data da consulta", formatDate(product.consultationDate))}
       ${detail("Última atualização", formatDate(product.updatedAt))}
@@ -1147,12 +1053,12 @@ function renderProductDetails(container, product) {
 const sectionFields = Object.freeze({
   product: ["productName"],
   fiscal: ["taxRegime", "originState", "destinationState", "customerType"],
-  direct: ["materialsCost", "waste", "packagingCost", "deliveryCost", "insuranceCost", "discountAmount", "otherExpenses"],
-  indirect: ["totalPayroll", "monthlyFixedCosts"],
-  production: ["workerCount", "outputPerWorkerHour", "monthlyVolume"],
+  direct: ["materialCost", "wasteRate", "packagingCost", "deliveryCost"],
+  indirect: ["monthlyPayroll", "monthlyFixedCosts"],
+  production: ["expectedMonthlyUnits"],
   sales: ["taxRate", "paymentFeeRate", "commissionRate"],
-  market: ["margin", "competitorAverage"],
-  terms: ["receiveDays", "payDays", "capitalRate"],
+  market: ["desiredNetMargin"],
+  terms: ["inventoryDays", "receivingDays", "paymentDays", "monthlyCapitalRate"],
 });
 
 function fieldHasValidValue(field) {
@@ -1399,6 +1305,7 @@ const formFieldIds = [
   "taxSituation",
   "customerType",
   "operationPurpose",
+  "marketReferenceRule",
   ...PRICING_FIELD_IDS,
 ];
 const elements = Object.fromEntries(formFieldIds.map((id) => [id, $(`#${id}`)]));
@@ -1410,11 +1317,12 @@ const state = {
   selectedProduct: null,
 };
 
-let marketSource = "manual";
 let focusState = {
   status: "idle",
   ncm: null,
+  source: "",
   environment: "",
+  checkedAt: "",
   error: "",
   unavailable: false,
 };
@@ -1426,7 +1334,7 @@ let marketState = {
   selectedItem: null,
   error: "",
 };
-let manualMarketValue = elements.competitorAverage.value;
+let manualMarketValue = elements.marketPrice.value;
 let productSearchTimer;
 let pendingDetailTarget = "";
 let revealAllPricingErrors = false;
@@ -1555,14 +1463,24 @@ function currentPricingValidation() {
   return validation;
 }
 
+function marketReferenceFromState(inputs) {
+  const rule = elements.marketReferenceRule.value || "manual";
+  if (rule === "manual") return inputs.marketPrice ? { price: inputs.marketPrice, source: "manual", rule } : null;
+  if (rule === "selected-product" && marketState.selectedItem) {
+    return { price: marketState.selectedItem.price, source: marketState.selectedItem.source, rule, query: marketState.query, marketplace: marketState.marketplace, provider: marketState.provider, selectedProduct: marketState.selectedItem, stats: marketState.stats };
+  }
+  if (rule === "amazon-average" && marketState.stats) return { price: marketState.stats.average, source: marketState.marketplace || "Amazon", rule, query: marketState.query, marketplace: marketState.marketplace, provider: marketState.provider, stats: marketState.stats };
+  if (rule === "amazon-median" && marketState.stats) return { price: marketState.stats.median, source: marketState.marketplace || "Amazon", rule, query: marketState.query, marketplace: marketState.marketplace, provider: marketState.provider, stats: marketState.stats };
+  return null;
+}
+
 function render() {
   const validation = currentPricingValidation();
   if (validation.isValid) {
     const inputs = validation.inputs;
-    const result = calculatePrice(inputs);
+    const result = calculatePricing(inputs, marketReferenceFromState(inputs));
     const fiscalAssessment = taxRuleEngine.assess(inputs, focusState);
-    const memory = buildCalculationMemory(inputs, result, fiscalAssessment);
-    renderDashboard(document, inputs, result, marketState, marketSource, fiscalAssessment, memory);
+    renderDashboard(document, result, marketState, fiscalAssessment);
   } else {
     renderIncompleteDashboard(document, marketState, validation.errors);
   }
@@ -1591,21 +1509,21 @@ async function lookupNcm() {
   const code = String(elements.ncmCode.value || "").replace(/\D/g, "");
   elements.ncmCode.value = code;
   if (!/^\d{8}$/.test(code)) {
-    focusState = { status: "error", ncm: null, environment: "", error: "Informe um NCM com exatamente 8 dígitos.", unavailable: false };
+    focusState = { status: "error", ncm: null, source: "", environment: "", checkedAt: "", error: "Informe um NCM com exatamente 8 dígitos.", unavailable: false };
     render();
     return;
   }
 
-  focusState = { status: "loading", ncm: null, environment: "", error: "", unavailable: false };
+  focusState = { status: "loading", ncm: null, source: "", environment: "", checkedAt: "", error: "", unavailable: false };
   render();
   try {
     const response = await api.get(`/fiscal/ncms/${encodeURIComponent(code)}`, { handleUnauthorized: false });
-    focusState = { status: "success", ncm: response.ncm, environment: response.environment, error: "", unavailable: false };
+    focusState = { status: "success", ncm: response.ncm, source: "Focus NFe", environment: response.environment, checkedAt: new Date().toISOString(), error: "", unavailable: false };
   } catch (error) {
     focusState = {
       status: "error",
       ncm: null,
-      environment: "",
+      source: "", environment: "", checkedAt: "",
       error: `${messageFor(error)} O cálculo financeiro foi mantido, mas não está fiscalmente validado.`,
       unavailable: true,
     };
@@ -1781,21 +1699,17 @@ function selectMarketProduct(id) {
   const selected = marketState.items.find((candidate) => candidate.id === id);
   const item = selected ? { ...selected, consultedAt: selected.consultedAt || new Date().toISOString() } : null;
   if (!item) return;
-  if (marketSource !== "market-product") manualMarketValue = elements.competitorAverage.value;
+  if (elements.marketReferenceRule.value !== "selected-product") manualMarketValue = elements.marketPrice.value;
   marketState = { ...marketState, selectedItem: item };
-  elements.competitorAverage.value = item.price.toFixed(2);
-  touchedPricingFields.add("competitorAverage");
-  marketSource = "market-product";
-  const parsedManualValue = parseBrazilianNumber(manualMarketValue);
-  const storedManualValue = parsedManualValue.status === "valid" && parsedManualValue.value > 0 ? parsedManualValue.value : null;
-  saveMarketReference(window.sessionStorage, { manualValue: storedManualValue, query: marketState.query, selectedItem: item });
+  elements.marketReferenceRule.value = "selected-product";
+  saveMarketReference(window.sessionStorage, { manualValue: manualMarketValue || null, query: marketState.query, selectedItem: item });
   render();
 }
 
 function restoreManualMarket({ focusSearch = false } = {}) {
-  elements.competitorAverage.value = manualMarketValue === null ? "" : String(manualMarketValue);
-  touchedPricingFields.add("competitorAverage");
-  marketSource = "manual";
+  elements.marketPrice.value = manualMarketValue === null ? "" : String(manualMarketValue);
+  touchedPricingFields.add("marketPrice");
+  elements.marketReferenceRule.value = "manual";
   marketState = { ...marketState, selectedItem: null };
   clearMarketReference(window.sessionStorage);
   render();
@@ -1810,8 +1724,7 @@ function restoreMarketReferenceFromSession() {
   if (!saved) return;
   manualMarketValue = saved.manualValue === null ? "" : String(saved.manualValue).replace(".", ",");
   marketState = { ...marketState, query: saved.query, selectedItem: saved.selectedItem };
-  marketSource = "market-product";
-  elements.competitorAverage.value = saved.selectedItem.price.toFixed(2);
+  elements.marketReferenceRule.value = "selected-product";
   $("#marketQuery").value = saved.query;
 }
 
@@ -1829,43 +1742,27 @@ function productPayloadFromCalculator() {
     throw new ApiError("Corrija os campos indicados antes de salvar.", 400);
   }
   const inputs = validation.inputs;
-  const result = calculatePrice(inputs);
-  const fiscalAssessment = taxRuleEngine.assess(inputs, focusState);
-  const memory = buildCalculationMemory(inputs, result, fiscalAssessment);
 
   if (!name) throw new ApiError("Informe o nome do produto antes de salvar.", 400);
-  if (!result.isValid || result.minimumPrice === null) throw new ApiError("Revise os percentuais antes de salvar um cálculo inviável.", 400);
 
   return {
     name,
     description,
     category: "Não categorizado",
-    costPrice: inputs.materialsCost,
-    additionalCosts: Math.max(0, result.costs.baseCost - inputs.materialsCost),
-    profitMargin: inputs.margin * 100,
-    suggestedPrice: result.minimumPrice,
-    marketplace: marketSource === "market-product" ? marketState.selectedItem?.source || "Marketplace" : "Manual",
-    consultationDate: new Date().toISOString(),
-    calculationData: {
-      version: 5,
+    pricing: {
       inputs,
       emptyOptionalFields: validation.emptyOptionalFields,
-      result,
-      fiscal: fiscalDataForStorage(fiscalAssessment, memory),
       market: {
-        source: marketSource,
+        rule: elements.marketReferenceRule.value,
         query: marketState.query,
         stats: marketState.stats,
         selectedProduct: marketState.selectedItem,
-        manualValue: (() => {
-          const parsed = parseBrazilianNumber(manualMarketValue);
-          return parsed.status === "valid" && parsed.value > 0 ? parsed.value : null;
-        })(),
-        marketPrice: inputs.competitorAverage,
-        taxAdjustedPrice: fiscalAssessment.automaticCalculation && fiscalAssessment.complete
-          ? fiscalAssessment.marketAdjustedPrice || null
-          : null,
+        marketplace: marketState.marketplace || "Amazon",
+        provider: marketState.provider || "Nexscope",
       },
+      fiscalValidation: focusState.status === "success" && focusState.ncm?.codigo === inputs.fiscalContext.ncmCode
+        ? { status: "success", source: "Focus NFe", code: focusState.ncm.codigo, ncm: focusState.ncm, environment: focusState.environment, checkedAt: focusState.checkedAt }
+        : null,
     },
   };
 }
@@ -1877,8 +1774,10 @@ async function saveProduct() {
     const payload = productPayloadFromCalculator();
     button.disabled = true;
     setMessage(status, "Salvando consulta…");
-    await api.post("/products", payload);
-    setMessage(status, "Produto salvo no seu histórico.", true);
+    const response = await api.post("/products", payload);
+    // O servidor recalcula e devolve o snapshot que passa a ser a versão salva.
+    state.selectedProduct = response.product;
+    setMessage(status, `Produto salvo no histórico com o preço técnico de ${response.product.suggestedPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`, true);
   } catch (error) {
     setMessage(status, messageFor(error));
   } finally {
@@ -1931,6 +1830,10 @@ function showProductEditor(product) {
   $("#editProfitMargin").value = product.profitMargin;
   $("#editSuggestedPrice").value = product.suggestedPrice;
   $("#editMarketplace").value = product.marketplace;
+  ["editCostPrice", "editAdditionalCosts", "editProfitMargin", "editSuggestedPrice", "editMarketplace"].forEach((id) => {
+    const field = $(`#${id}`);
+    if (field) field.readOnly = true;
+  });
   openDialog($("#productDialog"));
 }
 
@@ -1940,7 +1843,13 @@ async function getProduct(id) {
 }
 
 function reuseProduct(product) {
-  const savedInputs = product.calculationData?.inputs;
+  // Nunca deixa valores da simulação anterior sobreviverem a campos ausentes.
+  clearPricingInputs(elements);
+  $("#productName").value = "";
+  $("#productDescription").value = "";
+  const data = product.calculationData || {};
+  const isLegacy = data.version === 5 || data.pricingSchemaVersion === 5;
+  const savedInputs = isLegacy ? migrateLegacyV5Inputs(data.inputs) : data.inputs;
   if (!applySavedInputs(savedInputs, elements, product.calculationData?.emptyOptionalFields)) {
     setMessage($("#historyMessage"), "Esta consulta não possui os dados necessários para ser reutilizada.");
     return;
@@ -1948,40 +1857,35 @@ function reuseProduct(product) {
 
   $("#productName").value = product.name;
   $("#productDescription").value = product.description || "";
-  const savedNcm = product.calculationData?.fiscal?.ncm;
-  focusState = savedNcm?.codigo
-    ? { status: "success", ncm: savedNcm, environment: "consulta salva", error: "", unavailable: false }
-    : { status: "idle", ncm: null, environment: "", error: "", unavailable: false };
-  const savedMarket = product.calculationData?.market;
-  marketSource = ["market-product", "amazon-product"].includes(savedMarket?.source) ? "market-product" : "manual";
-  const hasSavedManualValue = savedMarket && Object.prototype.hasOwnProperty.call(savedMarket, "manualValue");
-  const savedManualValue = hasSavedManualValue ? savedMarket.manualValue : savedInputs?.competitorAverage;
-  manualMarketValue = Number.isFinite(savedManualValue) && savedManualValue > 0
-    ? String(savedManualValue).replace(".", ",")
-    : "";
+  // Um v5 não possuía prova de validação; ele nunca é promovido para Focus validado.
+  const savedValidation = !isLegacy ? data.fiscal?.ncmValidation : null;
+  const savedNcm = data.fiscal?.ncm;
+  focusState = savedValidation?.status === "success" && savedValidation.code === savedInputs?.fiscalContext?.ncmCode
+    ? { status: "success", ncm: savedNcm, source: "Focus NFe", environment: savedValidation.environment, checkedAt: savedValidation.checkedAt, error: "", unavailable: false }
+    : { status: "idle", ncm: null, source: "", environment: "", checkedAt: "", error: "", unavailable: false };
+  const savedMarket = data.market;
+  const reference = data.pricingResult?.market?.reference || savedMarket;
+  const savedManualValue = savedInputs?.marketPrice;
+  manualMarketValue = Number.isFinite(savedManualValue) && savedManualValue > 0 ? String(savedManualValue).replace(".", ",") : "";
   marketState = {
     ...marketState,
     status: "idle",
-    query: marketSource === "market-product" ? savedMarket?.query || "" : "",
+    query: reference?.query || "",
     items: [],
-    stats: marketSource === "market-product" ? savedMarket?.stats || null : null,
-    selectedItem: marketSource === "market-product" ? savedMarket?.selectedProduct || null : null,
+    stats: reference?.stats || null,
+    selectedItem: reference?.selectedProduct || null,
+    marketplace: reference?.marketplace || "Amazon",
+    provider: reference?.provider || "Nexscope",
     error: "",
   };
-  if (marketSource === "market-product" && marketState.selectedItem) {
-    saveMarketReference(window.sessionStorage, {
-      manualValue: manualMarketValue,
-      query: marketState.query,
-      selectedItem: marketState.selectedItem,
-    });
-  } else {
-    clearMarketReference(window.sessionStorage);
-  }
+  elements.marketReferenceRule.value = reference?.rule || "manual";
+  if (marketState.selectedItem) saveMarketReference(window.sessionStorage, { manualValue: manualMarketValue || null, query: marketState.query, selectedItem: marketState.selectedItem });
+  else clearMarketReference(window.sessionStorage);
   $("#marketQuery").value = marketState.query;
   $("#productDialog").close();
   render();
   navigate("assistant");
-  setMessage($("#saveProductStatus"), "Consulta anterior carregada. Ajuste o que quiser e salve uma nova versão.", true);
+  setMessage($("#saveProductStatus"), isLegacy ? "Cálculo legado carregado: confirme estoque/produção e revise os campos antes de salvar uma nova versão." : "Consulta carregada. Ajuste os inputs e salve uma nova versão.", true);
 }
 
 async function deleteProduct(id) {
@@ -2007,13 +1911,6 @@ async function editCurrentProduct(event) {
     name: $("#editProductName").value.trim(),
     description: $("#editProductDescription").value.trim(),
     category: $("#editProductCategory").value.trim(),
-    costPrice: Number($("#editCostPrice").value),
-    additionalCosts: Number($("#editAdditionalCosts").value),
-    profitMargin: Number($("#editProfitMargin").value),
-    suggestedPrice: Number($("#editSuggestedPrice").value),
-    marketplace: $("#editMarketplace").value.trim(),
-    consultationDate: product.consultationDate,
-    calculationData: product.calculationData || {},
   };
 
   try {
@@ -2114,8 +2011,8 @@ async function submitRegistration(event) {
   }
 }
 
-PRICING_FIELD_IDS
-  .filter((fieldId) => fieldId !== "competitorAverage")
+ [...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]
+  .filter((fieldId) => fieldId !== "marketPrice")
   .forEach((fieldId) => elements[fieldId].addEventListener("input", () => {
     touchedPricingFields.add(fieldId);
     render();
@@ -2136,7 +2033,7 @@ PRICING_FIELD_IDS
 
 elements.ncmCode.addEventListener("input", () => {
   const currentCode = String(elements.ncmCode.value || "").replace(/\D/g, "");
-  if (focusState.ncm?.codigo !== currentCode) focusState = { status: "idle", ncm: null, environment: "", error: "", unavailable: false };
+  if (focusState.ncm?.codigo !== currentCode) focusState = { status: "idle", ncm: null, source: "", environment: "", checkedAt: "", error: "", unavailable: false };
   render();
 });
 
@@ -2147,14 +2044,16 @@ elements.ncmCode.addEventListener("keydown", (event) => {
   void lookupNcm();
 });
 
-elements.competitorAverage.addEventListener("input", () => {
-  touchedPricingFields.add("competitorAverage");
-  marketSource = "manual";
+elements.marketPrice.addEventListener("input", () => {
+  touchedPricingFields.add("marketPrice");
   marketState = { ...marketState, selectedItem: null };
-  manualMarketValue = elements.competitorAverage.value;
+  manualMarketValue = elements.marketPrice.value;
+  elements.marketReferenceRule.value = "manual";
   clearMarketReference(window.sessionStorage);
   render();
 });
+
+elements.marketReferenceRule.addEventListener("change", render);
 
 $("#marketSearchButton").addEventListener("click", searchMarket);
 $("#marketQuery").addEventListener("keydown", (event) => {

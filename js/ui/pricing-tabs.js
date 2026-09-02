@@ -1,12 +1,12 @@
 const sectionFields = Object.freeze({
   product: ["productName"],
   fiscal: ["taxRegime", "originState", "destinationState", "customerType"],
-  direct: ["materialsCost", "waste", "packagingCost", "deliveryCost", "insuranceCost", "discountAmount", "otherExpenses"],
-  indirect: ["totalPayroll", "monthlyFixedCosts"],
-  production: ["workerCount", "outputPerWorkerHour", "monthlyVolume"],
+  direct: ["materialCost", "wasteRate", "packagingCost", "deliveryCost"],
+  indirect: ["monthlyPayroll", "monthlyFixedCosts"],
+  production: ["expectedMonthlyUnits"],
   sales: ["taxRate", "paymentFeeRate", "commissionRate"],
-  market: ["margin", "competitorAverage"],
-  terms: ["receiveDays", "payDays", "capitalRate"],
+  market: ["desiredNetMargin"],
+  terms: ["inventoryDays", "receivingDays", "paymentDays", "monthlyCapitalRate"],
 });
 
 function fieldHasValidValue(field) {

@@ -9,6 +9,15 @@ function detail(label, value, extraClass = "") {
 }
 
 function savedMarket(product) {
+  const canonical = product.calculationData?.pricingResult?.market;
+  if (canonical?.price) {
+    return {
+      difference: `${Math.abs(canonical.differenceRate * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% ${canonical.difference <= 0 ? "abaixo" : "acima"}`,
+      price: canonical.price,
+      productTitle: canonical.reference?.selectedProduct?.title || canonical.reference?.query || canonical.rule,
+      source: canonical.source || "não informada",
+    };
+  }
   const market = product.calculationData?.market;
   const price = Number(market?.selectedProduct?.price ?? market?.marketPrice ?? market?.stats?.median);
   if (!Number.isFinite(price) || price <= 0 || !["market-product", "amazon-product"].includes(market?.source)) return null;
@@ -57,6 +66,8 @@ export function renderProductsList(container, products) {
 export function renderProductDetails(container, product) {
   const description = product.description || "Sem descrição informada.";
   const fiscal = product.calculationData?.fiscal;
+  const canonical = product.calculationData?.pricingResult;
+  const isLegacy = product.calculationData?.version === 5 || product.calculationData?.pricingSchemaVersion === 5;
   const market = savedMarket(product);
   const fiscalDetails = fiscal
     ? `
@@ -68,10 +79,12 @@ export function renderProductDetails(container, product) {
     <dl class="product-details">
       ${detail("Categoria", product.category)}
       ${detail("Plataforma", product.marketplace)}
-      ${detail("Preço de custo", currency.format(product.costPrice))}
-      ${detail("Custos adicionais", currency.format(product.additionalCosts))}
+      ${detail(canonical ? "Custo direto unitário" : "Preço de custo", currency.format(canonical?.directCost ?? product.costPrice))}
+      ${detail(canonical ? "Custo indireto + financeiro" : "Custos adicionais", currency.format(canonical ? canonical.indirectCost + canonical.financialCost : product.additionalCosts))}
       ${detail("Margem desejada", `${Number(product.profitMargin).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`)}
-      ${detail("Preço sugerido", currency.format(product.suggestedPrice))}
+      ${detail(canonical ? "Preço técnico recomendado" : "Preço sugerido", currency.format(product.suggestedPrice))}
+      ${canonical ? `${detail("Custo total unitário", currency.format(canonical.totalUnitCost))}${detail("Margem efetiva", `${(canonical.actualNetMargin * 100).toLocaleString("pt-BR", { maximumFractionDigits: 4 })}%`)}` : ""}
+      ${isLegacy ? detail("Memória", "Cálculo legado v5 preservado; não foi recalculado.") : ""}
       ${market ? `${detail("Produto de mercado", market.productTitle)}${detail("Mercado na data", currency.format(market.price))}${detail("Diferença", market.difference)}${detail("Fonte de mercado", market.source)}` : ""}
       ${detail("Data da consulta", formatDate(product.consultationDate))}
       ${detail("Última atualização", formatDate(product.updatedAt))}

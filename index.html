@@ -211,16 +211,16 @@
           </div>
           <div class="field-grid">
             <div class="sidebar-field">
-              <label for="materialsCost">Insumos e matéria-prima</label>
+              <label for="materialCost">Insumos e matéria-prima por unidade</label>
               <div class="sidebar-input-wrap has-prefix">
                 <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                <input id="materialsCost" type="text" inputmode="decimal" placeholder="Ex.: 12,50" autocomplete="off" />
+                <input id="materialCost" type="text" inputmode="decimal" placeholder="Ex.: 12,50" autocomplete="off" />
               </div>
             </div>
             <div class="sidebar-field">
-              <label for="waste">Perda e desperdício</label>
+              <label for="wasteRate">Perda e desperdício</label>
               <div class="sidebar-input-wrap has-suffix">
-                <input id="waste" type="text" inputmode="decimal" placeholder="Ex.: 8" autocomplete="off" />
+                <input id="wasteRate" type="text" inputmode="decimal" placeholder="Ex.: 8" autocomplete="off" />
                 <span class="input-affix input-suffix" aria-hidden="true">%</span>
               </div>
             </div>
@@ -246,19 +246,12 @@
                   <input id="insuranceCost" type="text" inputmode="decimal" placeholder="Ex.: 1,00" autocomplete="off" />
                 </div>
               </div>
-              <div class="sidebar-field">
-                  <label for="discountAmount">Desconto <span>(opcional)</span></label>
-                <div class="sidebar-input-wrap has-prefix">
-                  <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                  <input id="discountAmount" type="text" inputmode="decimal" placeholder="Ex.: 2,00" autocomplete="off" />
-                </div>
-              </div>
             </div>
             <div class="sidebar-field">
-              <label for="otherExpenses">Outras despesas adicionais <span>(opcional)</span></label>
+              <label for="otherDirectExpenses">Outras despesas diretas <span>(opcional)</span></label>
               <div class="sidebar-input-wrap has-prefix">
                 <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                <input id="otherExpenses" type="text" inputmode="decimal" placeholder="Ex.: 3,00" autocomplete="off" />
+                <input id="otherDirectExpenses" type="text" inputmode="decimal" placeholder="Ex.: 3,00" autocomplete="off" />
               </div>
             </div>
           </div>
@@ -275,10 +268,10 @@
           </div>
           <div class="field-grid">
             <div class="sidebar-field">
-              <label for="totalPayroll">Folha salarial mensal</label>
+              <label for="monthlyPayroll">Folha salarial mensal</label>
               <div class="sidebar-input-wrap has-prefix">
                 <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                <input id="totalPayroll" type="text" inputmode="decimal" placeholder="Ex.: 12.600,00" autocomplete="off" />
+                <input id="monthlyPayroll" type="text" inputmode="decimal" placeholder="Ex.: 12.600,00" autocomplete="off" />
               </div>
             </div>
             <div class="sidebar-field">
@@ -297,8 +290,8 @@
 
         <section id="pricing-panel-production" class="control-section pricing-tab-panel" role="tabpanel" aria-labelledby="pricing-tab-production" data-pricing-panel="production" hidden>
           <div class="tab-panel-heading">
-            <p class="section-title">Produção</p>
-            <p class="section-description">Informe a capacidade usada para distribuir mão de obra e estrutura.</p>
+            <p class="section-title">Produção e capacidade</p>
+            <p class="section-description">A quantidade mensal é a única base do rateio. A capacidade é opcional e não altera o preço.</p>
           </div>
           <div class="field-grid">
             <div class="sidebar-grid sidebar-grid--two">
@@ -307,13 +300,17 @@
                 <input id="workerCount" type="text" inputmode="numeric" placeholder="Ex.: 6" autocomplete="off" />
               </div>
               <div class="sidebar-field">
-                <label for="outputPerWorkerHour">Produção por trabalhador/hora</label>
-                <input id="outputPerWorkerHour" type="text" inputmode="decimal" placeholder="Ex.: 12" autocomplete="off" />
+                <label for="productiveHoursPerWorkerMonth">Horas produtivas por trabalhador/mês <span>(opcional)</span></label>
+                <input id="productiveHoursPerWorkerMonth" type="text" inputmode="decimal" placeholder="Ex.: 176" autocomplete="off" />
               </div>
             </div>
             <div class="sidebar-field">
-              <label for="monthlyVolume">Operações previstas/mês</label>
-              <input id="monthlyVolume" type="text" inputmode="numeric" placeholder="Ex.: 4000" autocomplete="off" />
+              <label for="unitsPerWorkerHour">Unidades por trabalhador/hora <span>(opcional)</span></label>
+              <input id="unitsPerWorkerHour" type="text" inputmode="decimal" placeholder="Ex.: 12" autocomplete="off" />
+            </div>
+            <div class="sidebar-field">
+              <label for="expectedMonthlyUnits">Quantidade prevista de unidades por mês</label>
+              <input id="expectedMonthlyUnits" type="text" inputmode="decimal" placeholder="Ex.: 4000" autocomplete="off" />
             </div>
           </div>
           <footer class="pricing-step-actions">
@@ -398,21 +395,25 @@
               </div>
               <div class="sidebar-grid sidebar-grid--two">
                 <div class="sidebar-field">
-                  <label for="competitorAverage">Preço médio informado (R$)</label>
+                  <label for="marketPrice">Preço médio informado (R$) <span>(opcional)</span></label>
                   <div class="sidebar-input-wrap has-prefix">
                     <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                    <input id="competitorAverage" type="text" inputmode="decimal" placeholder="Ex.: 32,00" autocomplete="off" />
+                    <input id="marketPrice" type="text" inputmode="decimal" placeholder="Ex.: 32,00" autocomplete="off" />
                   </div>
                 </div>
                 <div class="sidebar-field">
-                  <label for="margin">Margem líquida desejada</label>
+                  <label for="desiredNetMargin">Margem líquida desejada</label>
                   <div class="sidebar-input-wrap has-suffix">
-                    <input id="margin" type="text" inputmode="decimal" placeholder="Ex.: 18" autocomplete="off" />
+                    <input id="desiredNetMargin" type="text" inputmode="decimal" placeholder="Ex.: 18" autocomplete="off" />
                     <span class="input-affix input-suffix" aria-hidden="true">%</span>
                   </div>
                 </div>
               </div>
-              <p id="manualMarketStatus" class="helper-text">Fallback ativo. O valor é preservado quando você escolhe um produto do mercado.</p>
+              <p id="manualMarketStatus" class="helper-text">Mercado é opcional e nunca altera automaticamente o preço técnico.</p>
+              <div class="sidebar-field">
+                <label for="marketReferenceRule">Referência usada na comparação</label>
+                <select id="marketReferenceRule"><option value="manual">Média informada manualmente</option><option value="selected-product">Produto individual selecionado</option><option value="amazon-average">Média da pesquisa Amazon</option><option value="amazon-median">Mediana da pesquisa Amazon</option></select>
+              </div>
             </section>
 
           </div>
@@ -430,27 +431,39 @@
           <div class="field-grid">
             <div class="sidebar-grid sidebar-grid--two">
               <div class="sidebar-field">
-                <label for="receiveDays">Recebimento</label>
+                <label for="inventoryDays">Estoque/produção</label>
                 <div class="sidebar-input-wrap has-suffix">
-                  <input id="receiveDays" type="text" inputmode="numeric" placeholder="Ex.: 7" autocomplete="off" />
+                  <input id="inventoryDays" type="text" inputmode="decimal" placeholder="Ex.: 10" autocomplete="off" />
                   <span class="input-affix input-suffix" aria-hidden="true">dias</span>
                 </div>
               </div>
               <div class="sidebar-field">
-                <label for="payDays">Pagamento</label>
+                <label for="receivingDays">Recebimento</label>
                 <div class="sidebar-input-wrap has-suffix">
-                  <input id="payDays" type="text" inputmode="numeric" placeholder="Ex.: 14" autocomplete="off" />
+                  <input id="receivingDays" type="text" inputmode="decimal" placeholder="Ex.: 7" autocomplete="off" />
                   <span class="input-affix input-suffix" aria-hidden="true">dias</span>
                 </div>
               </div>
             </div>
             <div class="sidebar-field">
-              <label for="capitalRate">Custo do capital/mês</label>
+              <label for="paymentDays">Pagamento</label>
               <div class="sidebar-input-wrap has-suffix">
-                <input id="capitalRate" type="text" inputmode="decimal" placeholder="Ex.: 2,5" autocomplete="off" />
+                <input id="paymentDays" type="text" inputmode="decimal" placeholder="Ex.: 30" autocomplete="off" />
+                <span class="input-affix input-suffix" aria-hidden="true">dias</span>
+              </div>
+            </div>
+            <div class="sidebar-field">
+              <label for="monthlyCapitalRate">Custo do capital/mês</label>
+              <div class="sidebar-input-wrap has-suffix">
+                <input id="monthlyCapitalRate" type="text" inputmode="decimal" placeholder="Ex.: 2,5" autocomplete="off" />
                 <span class="input-affix input-suffix" aria-hidden="true">%</span>
               </div>
             </div>
+            <div class="sidebar-grid sidebar-grid--two">
+              <div class="sidebar-field"><label for="discountRate">Desconto planejado percentual <span>(opcional)</span></label><div class="sidebar-input-wrap has-suffix"><input id="discountRate" type="text" inputmode="decimal" placeholder="Ex.: 10" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">%</span></div></div>
+              <div class="sidebar-field"><label for="fixedDiscountAmount">Ou desconto fixo <span>(opcional)</span></label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="fixedDiscountAmount" type="text" inputmode="decimal" placeholder="Ex.: 5,00" autocomplete="off" /></div></div>
+            </div>
+            <p class="helper-text">O desconto é comercial: não reduz custos nem a margem desejada. Escolha somente uma forma.</p>
           </div>
           <footer class="pricing-step-actions is-last">
             <button class="pricing-step-button secondary-button" type="button" data-pricing-go="market"><span aria-hidden="true">←</span> Anterior</button>
@@ -524,7 +537,7 @@
                 <div><p class="eyebrow">Mercado</p><h3 id="marketTitle">Preço médio informado</h3></div>
               </div>
               <span id="marketPriceLabel" class="summary-label">Referência manual</span>
-              <strong id="marketPrice" class="summary-value compact">R$ 0,00</strong>
+              <strong id="marketReferencePrice" class="summary-value compact">R$ 0,00</strong>
               <p id="marketReferenceDetails" class="market-reference-details">Fonte: valor manual</p>
               <progress id="marketMeter" class="market-meter compact-meter" max="100" value="0" aria-label="Relação entre o preço calculado e o preço médio de mercado"></progress>
               <p id="marketStatus" class="summary-description"></p>

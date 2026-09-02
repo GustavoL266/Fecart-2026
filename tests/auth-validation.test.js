@@ -42,17 +42,13 @@ test("rejeita senha sem letra, sem número ou confirmação diferente", () => {
   assert.equal(registerSchema.safeParse({ ...baseRegistration, passwordConfirmation: "senha-outra-123" }).success, false);
 });
 
-test("rejeita produto com margem fora dos limites", () => {
+test("contrato de produto rejeita derivados do navegador e exige o pacote de inputs", () => {
   const baseProduct = {
     name: "Produto teste",
     category: "Outros",
-    costPrice: 10,
-    additionalCosts: 5,
-    profitMargin: 20,
-    suggestedPrice: 20,
-    marketplace: "Manual",
+    pricing: { inputs: {}, market: {} },
   };
 
   assert.equal(productSchema.safeParse(baseProduct).success, true);
-  assert.equal(productSchema.safeParse({ ...baseProduct, profitMargin: 101 }).success, false);
+  assert.equal(productSchema.safeParse({ ...baseProduct, pricing: { inputs: "não é objeto" } }).success, false);
 });

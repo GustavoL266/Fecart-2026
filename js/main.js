@@ -1,9 +1,9 @@
-import { calculatePrice } from "./domain/pricing-calculator.js";
-import { buildCalculationMemory, ConfiguredTaxRuleEngine, fiscalDataForStorage } from "./domain/tax-rule-engine.js";
+import { calculatePricing } from "./domain/pricing-calculator.js";
+import { ConfiguredTaxRuleEngine } from "./domain/tax-rule-engine.js";
 import { MarketService } from "./services/market-service.js";
 import { ApiError, api } from "./services/api-client.js";
 import { clearMarketReference, loadMarketReference, saveMarketReference } from "./services/market-reference-store.js";
-import { applySavedInputs, parseBrazilianNumber, PRICING_FIELD_IDS, renderPricingErrors, validatePricingForm } from "./ui/form.js";
+import { applySavedInputs, CAPACITY_FIELD_IDS, clearPricingInputs, migrateLegacyV5Inputs, PRICING_FIELD_IDS, renderPricingErrors, validatePricingForm } from "./ui/form.js";
 import { renderDashboard, renderIncompleteDashboard } from "./ui/dashboard.js";
 import { renderProductDetails, renderProductsList } from "./ui/history.js";
 import { createPricingTabs } from "./ui/pricing-tabs.js";
@@ -23,6 +23,7 @@ const formFieldIds = [
   "taxSituation",
   "customerType",
   "operationPurpose",
+  "marketReferenceRule",
   ...PRICING_FIELD_IDS,
 ];
 const elements = Object.fromEntries(formFieldIds.map((id) => [id, $(`#${id}`)]));
@@ -34,11 +35,12 @@ const state = {
   selectedProduct: null,
 };
 
-let marketSource = "manual";
 let focusState = {
   status: "idle",
   ncm: null,
+  source: "",
   environment: "",
+  checkedAt: "",
   error: "",
   unavailable: false,
 };
@@ -50,7 +52,7 @@ let marketState = {
   selectedItem: null,
   error: "",
 };
-let manualMarketValue = elements.competitorAverage.value;
+let manualMarketValue = elements.marketPrice.value;
 let productSearchTimer;
 let pendingDetailTarget = "";
 let revealAllPricingErrors = false;
@@ -179,14 +181,24 @@ function currentPricingValidation() {
   return validation;
 }
 
+function marketReferenceFromState(inputs) {
+  const rule = elements.marketReferenceRule.value || "manual";
+  if (rule === "manual") return inputs.marketPrice ? { price: inputs.marketPrice, source: "manual", rule } : null;
+  if (rule === "selected-product" && marketState.selectedItem) {
+    return { price: marketState.selectedItem.price, source: marketState.selectedItem.source, rule, query: marketState.query, marketplace: marketState.marketplace, provider: marketState.provider, selectedProduct: marketState.selectedItem, stats: marketState.stats };
+  }
+  if (rule === "amazon-average" && marketState.stats) return { price: marketState.stats.average, source: marketState.marketplace || "Amazon", rule, query: marketState.query, marketplace: marketState.marketplace, provider: marketState.provider, stats: marketState.stats };
+  if (rule === "amazon-median" && marketState.stats) return { price: marketState.stats.median, source: marketState.marketplace || "Amazon", rule, query: marketState.query, marketplace: marketState.marketplace, provider: marketState.provider, stats: marketState.stats };
+  return null;
+}
+
 function render() {
   const validation = currentPricingValidation();
   if (validation.isValid) {
     const inputs = validation.inputs;
-    const result = calculatePrice(inputs);
+    const result = calculatePricing(inputs, marketReferenceFromState(inputs));
     const fiscalAssessment = taxRuleEngine.assess(inputs, focusState);
-    const memory = buildCalculationMemory(inputs, result, fiscalAssessment);
-    renderDashboard(document, inputs, result, marketState, marketSource, fiscalAssessment, memory);
+    renderDashboard(document, result, marketState, fiscalAssessment);
   } else {
     renderIncompleteDashboard(document, marketState, validation.errors);
   }
@@ -215,21 +227,21 @@ async function lookupNcm() {
   const code = String(elements.ncmCode.value || "").replace(/\D/g, "");
   elements.ncmCode.value = code;
   if (!/^\d{8}$/.test(code)) {
-    focusState = { status: "error", ncm: null, environment: "", error: "Informe um NCM com exatamente 8 dígitos.", unavailable: false };
+    focusState = { status: "error", ncm: null, source: "", environment: "", checkedAt: "", error: "Informe um NCM com exatamente 8 dígitos.", unavailable: false };
     render();
     return;
   }
 
-  focusState = { status: "loading", ncm: null, environment: "", error: "", unavailable: false };
+  focusState = { status: "loading", ncm: null, source: "", environment: "", checkedAt: "", error: "", unavailable: false };
   render();
   try {
     const response = await api.get(`/fiscal/ncms/${encodeURIComponent(code)}`, { handleUnauthorized: false });
-    focusState = { status: "success", ncm: response.ncm, environment: response.environment, error: "", unavailable: false };
+    focusState = { status: "success", ncm: response.ncm, source: "Focus NFe", environment: response.environment, checkedAt: new Date().toISOString(), error: "", unavailable: false };
   } catch (error) {
     focusState = {
       status: "error",
       ncm: null,
-      environment: "",
+      source: "", environment: "", checkedAt: "",
       error: `${messageFor(error)} O cálculo financeiro foi mantido, mas não está fiscalmente validado.`,
       unavailable: true,
     };
@@ -405,21 +417,17 @@ function selectMarketProduct(id) {
   const selected = marketState.items.find((candidate) => candidate.id === id);
   const item = selected ? { ...selected, consultedAt: selected.consultedAt || new Date().toISOString() } : null;
   if (!item) return;
-  if (marketSource !== "market-product") manualMarketValue = elements.competitorAverage.value;
+  if (elements.marketReferenceRule.value !== "selected-product") manualMarketValue = elements.marketPrice.value;
   marketState = { ...marketState, selectedItem: item };
-  elements.competitorAverage.value = item.price.toFixed(2);
-  touchedPricingFields.add("competitorAverage");
-  marketSource = "market-product";
-  const parsedManualValue = parseBrazilianNumber(manualMarketValue);
-  const storedManualValue = parsedManualValue.status === "valid" && parsedManualValue.value > 0 ? parsedManualValue.value : null;
-  saveMarketReference(window.sessionStorage, { manualValue: storedManualValue, query: marketState.query, selectedItem: item });
+  elements.marketReferenceRule.value = "selected-product";
+  saveMarketReference(window.sessionStorage, { manualValue: manualMarketValue || null, query: marketState.query, selectedItem: item });
   render();
 }
 
 function restoreManualMarket({ focusSearch = false } = {}) {
-  elements.competitorAverage.value = manualMarketValue === null ? "" : String(manualMarketValue);
-  touchedPricingFields.add("competitorAverage");
-  marketSource = "manual";
+  elements.marketPrice.value = manualMarketValue === null ? "" : String(manualMarketValue);
+  touchedPricingFields.add("marketPrice");
+  elements.marketReferenceRule.value = "manual";
   marketState = { ...marketState, selectedItem: null };
   clearMarketReference(window.sessionStorage);
   render();
@@ -434,8 +442,7 @@ function restoreMarketReferenceFromSession() {
   if (!saved) return;
   manualMarketValue = saved.manualValue === null ? "" : String(saved.manualValue).replace(".", ",");
   marketState = { ...marketState, query: saved.query, selectedItem: saved.selectedItem };
-  marketSource = "market-product";
-  elements.competitorAverage.value = saved.selectedItem.price.toFixed(2);
+  elements.marketReferenceRule.value = "selected-product";
   $("#marketQuery").value = saved.query;
 }
 
@@ -453,43 +460,27 @@ function productPayloadFromCalculator() {
     throw new ApiError("Corrija os campos indicados antes de salvar.", 400);
   }
   const inputs = validation.inputs;
-  const result = calculatePrice(inputs);
-  const fiscalAssessment = taxRuleEngine.assess(inputs, focusState);
-  const memory = buildCalculationMemory(inputs, result, fiscalAssessment);
 
   if (!name) throw new ApiError("Informe o nome do produto antes de salvar.", 400);
-  if (!result.isValid || result.minimumPrice === null) throw new ApiError("Revise os percentuais antes de salvar um cálculo inviável.", 400);
 
   return {
     name,
     description,
     category: "Não categorizado",
-    costPrice: inputs.materialsCost,
-    additionalCosts: Math.max(0, result.costs.baseCost - inputs.materialsCost),
-    profitMargin: inputs.margin * 100,
-    suggestedPrice: result.minimumPrice,
-    marketplace: marketSource === "market-product" ? marketState.selectedItem?.source || "Marketplace" : "Manual",
-    consultationDate: new Date().toISOString(),
-    calculationData: {
-      version: 5,
+    pricing: {
       inputs,
       emptyOptionalFields: validation.emptyOptionalFields,
-      result,
-      fiscal: fiscalDataForStorage(fiscalAssessment, memory),
       market: {
-        source: marketSource,
+        rule: elements.marketReferenceRule.value,
         query: marketState.query,
         stats: marketState.stats,
         selectedProduct: marketState.selectedItem,
-        manualValue: (() => {
-          const parsed = parseBrazilianNumber(manualMarketValue);
-          return parsed.status === "valid" && parsed.value > 0 ? parsed.value : null;
-        })(),
-        marketPrice: inputs.competitorAverage,
-        taxAdjustedPrice: fiscalAssessment.automaticCalculation && fiscalAssessment.complete
-          ? fiscalAssessment.marketAdjustedPrice || null
-          : null,
+        marketplace: marketState.marketplace || "Amazon",
+        provider: marketState.provider || "Nexscope",
       },
+      fiscalValidation: focusState.status === "success" && focusState.ncm?.codigo === inputs.fiscalContext.ncmCode
+        ? { status: "success", source: "Focus NFe", code: focusState.ncm.codigo, ncm: focusState.ncm, environment: focusState.environment, checkedAt: focusState.checkedAt }
+        : null,
     },
   };
 }
@@ -501,8 +492,10 @@ async function saveProduct() {
     const payload = productPayloadFromCalculator();
     button.disabled = true;
     setMessage(status, "Salvando consulta…");
-    await api.post("/products", payload);
-    setMessage(status, "Produto salvo no seu histórico.", true);
+    const response = await api.post("/products", payload);
+    // O servidor recalcula e devolve o snapshot que passa a ser a versão salva.
+    state.selectedProduct = response.product;
+    setMessage(status, `Produto salvo no histórico com o preço técnico de ${response.product.suggestedPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`, true);
   } catch (error) {
     setMessage(status, messageFor(error));
   } finally {
@@ -555,6 +548,10 @@ function showProductEditor(product) {
   $("#editProfitMargin").value = product.profitMargin;
   $("#editSuggestedPrice").value = product.suggestedPrice;
   $("#editMarketplace").value = product.marketplace;
+  ["editCostPrice", "editAdditionalCosts", "editProfitMargin", "editSuggestedPrice", "editMarketplace"].forEach((id) => {
+    const field = $(`#${id}`);
+    if (field) field.readOnly = true;
+  });
   openDialog($("#productDialog"));
 }
 
@@ -564,7 +561,13 @@ async function getProduct(id) {
 }
 
 function reuseProduct(product) {
-  const savedInputs = product.calculationData?.inputs;
+  // Nunca deixa valores da simulação anterior sobreviverem a campos ausentes.
+  clearPricingInputs(elements);
+  $("#productName").value = "";
+  $("#productDescription").value = "";
+  const data = product.calculationData || {};
+  const isLegacy = data.version === 5 || data.pricingSchemaVersion === 5;
+  const savedInputs = isLegacy ? migrateLegacyV5Inputs(data.inputs) : data.inputs;
   if (!applySavedInputs(savedInputs, elements, product.calculationData?.emptyOptionalFields)) {
     setMessage($("#historyMessage"), "Esta consulta não possui os dados necessários para ser reutilizada.");
     return;
@@ -572,40 +575,35 @@ function reuseProduct(product) {
 
   $("#productName").value = product.name;
   $("#productDescription").value = product.description || "";
-  const savedNcm = product.calculationData?.fiscal?.ncm;
-  focusState = savedNcm?.codigo
-    ? { status: "success", ncm: savedNcm, environment: "consulta salva", error: "", unavailable: false }
-    : { status: "idle", ncm: null, environment: "", error: "", unavailable: false };
-  const savedMarket = product.calculationData?.market;
-  marketSource = ["market-product", "amazon-product"].includes(savedMarket?.source) ? "market-product" : "manual";
-  const hasSavedManualValue = savedMarket && Object.prototype.hasOwnProperty.call(savedMarket, "manualValue");
-  const savedManualValue = hasSavedManualValue ? savedMarket.manualValue : savedInputs?.competitorAverage;
-  manualMarketValue = Number.isFinite(savedManualValue) && savedManualValue > 0
-    ? String(savedManualValue).replace(".", ",")
-    : "";
+  // Um v5 não possuía prova de validação; ele nunca é promovido para Focus validado.
+  const savedValidation = !isLegacy ? data.fiscal?.ncmValidation : null;
+  const savedNcm = data.fiscal?.ncm;
+  focusState = savedValidation?.status === "success" && savedValidation.code === savedInputs?.fiscalContext?.ncmCode
+    ? { status: "success", ncm: savedNcm, source: "Focus NFe", environment: savedValidation.environment, checkedAt: savedValidation.checkedAt, error: "", unavailable: false }
+    : { status: "idle", ncm: null, source: "", environment: "", checkedAt: "", error: "", unavailable: false };
+  const savedMarket = data.market;
+  const reference = data.pricingResult?.market?.reference || savedMarket;
+  const savedManualValue = savedInputs?.marketPrice;
+  manualMarketValue = Number.isFinite(savedManualValue) && savedManualValue > 0 ? String(savedManualValue).replace(".", ",") : "";
   marketState = {
     ...marketState,
     status: "idle",
-    query: marketSource === "market-product" ? savedMarket?.query || "" : "",
+    query: reference?.query || "",
     items: [],
-    stats: marketSource === "market-product" ? savedMarket?.stats || null : null,
-    selectedItem: marketSource === "market-product" ? savedMarket?.selectedProduct || null : null,
+    stats: reference?.stats || null,
+    selectedItem: reference?.selectedProduct || null,
+    marketplace: reference?.marketplace || "Amazon",
+    provider: reference?.provider || "Nexscope",
     error: "",
   };
-  if (marketSource === "market-product" && marketState.selectedItem) {
-    saveMarketReference(window.sessionStorage, {
-      manualValue: manualMarketValue,
-      query: marketState.query,
-      selectedItem: marketState.selectedItem,
-    });
-  } else {
-    clearMarketReference(window.sessionStorage);
-  }
+  elements.marketReferenceRule.value = reference?.rule || "manual";
+  if (marketState.selectedItem) saveMarketReference(window.sessionStorage, { manualValue: manualMarketValue || null, query: marketState.query, selectedItem: marketState.selectedItem });
+  else clearMarketReference(window.sessionStorage);
   $("#marketQuery").value = marketState.query;
   $("#productDialog").close();
   render();
   navigate("assistant");
-  setMessage($("#saveProductStatus"), "Consulta anterior carregada. Ajuste o que quiser e salve uma nova versão.", true);
+  setMessage($("#saveProductStatus"), isLegacy ? "Cálculo legado carregado: confirme estoque/produção e revise os campos antes de salvar uma nova versão." : "Consulta carregada. Ajuste os inputs e salve uma nova versão.", true);
 }
 
 async function deleteProduct(id) {
@@ -631,13 +629,6 @@ async function editCurrentProduct(event) {
     name: $("#editProductName").value.trim(),
     description: $("#editProductDescription").value.trim(),
     category: $("#editProductCategory").value.trim(),
-    costPrice: Number($("#editCostPrice").value),
-    additionalCosts: Number($("#editAdditionalCosts").value),
-    profitMargin: Number($("#editProfitMargin").value),
-    suggestedPrice: Number($("#editSuggestedPrice").value),
-    marketplace: $("#editMarketplace").value.trim(),
-    consultationDate: product.consultationDate,
-    calculationData: product.calculationData || {},
   };
 
   try {
@@ -738,8 +729,8 @@ async function submitRegistration(event) {
   }
 }
 
-PRICING_FIELD_IDS
-  .filter((fieldId) => fieldId !== "competitorAverage")
+ [...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]
+  .filter((fieldId) => fieldId !== "marketPrice")
   .forEach((fieldId) => elements[fieldId].addEventListener("input", () => {
     touchedPricingFields.add(fieldId);
     render();
@@ -760,7 +751,7 @@ PRICING_FIELD_IDS
 
 elements.ncmCode.addEventListener("input", () => {
   const currentCode = String(elements.ncmCode.value || "").replace(/\D/g, "");
-  if (focusState.ncm?.codigo !== currentCode) focusState = { status: "idle", ncm: null, environment: "", error: "", unavailable: false };
+  if (focusState.ncm?.codigo !== currentCode) focusState = { status: "idle", ncm: null, source: "", environment: "", checkedAt: "", error: "", unavailable: false };
   render();
 });
 
@@ -771,14 +762,16 @@ elements.ncmCode.addEventListener("keydown", (event) => {
   void lookupNcm();
 });
 
-elements.competitorAverage.addEventListener("input", () => {
-  touchedPricingFields.add("competitorAverage");
-  marketSource = "manual";
+elements.marketPrice.addEventListener("input", () => {
+  touchedPricingFields.add("marketPrice");
   marketState = { ...marketState, selectedItem: null };
-  manualMarketValue = elements.competitorAverage.value;
+  manualMarketValue = elements.marketPrice.value;
+  elements.marketReferenceRule.value = "manual";
   clearMarketReference(window.sessionStorage);
   render();
 });
+
+elements.marketReferenceRule.addEventListener("change", render);
 
 $("#marketSearchButton").addEventListener("click", searchMarket);
 $("#marketQuery").addEventListener("keydown", (event) => {

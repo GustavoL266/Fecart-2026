@@ -18,8 +18,16 @@ Aplicação web para calcular preço de venda sustentável, comparar referência
 - Salvamento de todos os campos relevantes da consulta (entradas, memória do cálculo e referência de mercado) em `calculation_data`.
 - Consulta de NCM pela Focus NFe exclusivamente no backend, com memória de cálculo, origem dos dados e aviso explícito de pendências fiscais.
 - Consulta opcional de produtos e preços da Amazon Brasil pela Nexscope, sempre através do backend.
-- Cálculos monetários internos em centavos, incluindo frete, seguro, desconto e despesas adicionais.
+- Cálculo técnico canônico no mesmo módulo puro para navegador e servidor, com validação em ambos os lados e sem arredondamentos intermediários.
 - Validação no navegador e no servidor, limitação de tentativas de autenticação, cabeçalhos de segurança e respostas sem hashes/senhas.
+
+## Precificação técnica v6
+
+O cálculo salvo usa `pricingSchemaVersion: 6` e `formulaVersion: "technical-pricing-v2"`. A matéria-prima é ajustada por `materialCost / (1 - wasteRate)`; os custos indiretos são `(folha + custos fixos) / quantidade mensal prevista`; e o capital de giro incide, com juros compostos, somente sobre o custo operacional durante `max(estoque + recebimento - pagamento, 0)` dias. O preço técnico é `custo total / (1 - tributos - taxa de pagamento - comissão - margem)` e é o único valor arredondado para cima ao centavo.
+
+Mercado e desconto não entram no custo nem mudam esse preço: mercado é apenas comparação opcional e o desconto gera preço anunciado cujo preço após desconto continua igual ou superior ao técnico. O servidor recebe somente entradas e gera o resultado, o resumo e a memória de cálculo; preços e totais enviados pelo navegador são ignorados. Nas colunas legadas, `cost_price` representa o custo direto e `additional_costs` representa custo indireto mais financeiro; o snapshot oficial permanece em `calculation_data`.
+
+Registros v5 continuam históricos: não são recalculados quando exibidos. Ao reutilizá-los, apenas campos semanticamente equivalentes são migrados; dias de estoque ficam vazios para confirmação e `discountAmount` legado não vira desconto comercial.
 
 ## Pré-requisitos
 

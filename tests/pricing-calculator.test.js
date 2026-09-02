@@ -1,85 +1,73 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateCosts, calculatePrice } from "../js/domain/pricing-calculator.js";
+import { calculatePricing, PricingValidationError, validatePricingInputs } from "../js/domain/pricing-calculator.js";
 
-const baseInputs = {
-  materialsCost: 12,
-  waste: 0.08,
-  packagingCost: 2,
-  deliveryCost: 1.5,
-  totalPayroll: 12600,
-  workerCount: 6,
-  outputPerWorkerHour: 12,
-  monthlyFixedCosts: 16000,
-  monthlyVolume: 4000,
-  taxRate: 0.06,
-  paymentFeeRate: 0.028,
-  commissionRate: 0,
-  margin: 0.18,
-  competitorAverage: 32,
-  receiveDays: 7,
-  payDays: 14,
-  capitalRate: 0.025,
+const base = {
+  materialCost: 18.5, wasteRate: 0.05, packagingCost: 3.5, deliveryCost: 4, insuranceCost: 0.5, otherDirectExpenses: 1.5,
+  monthlyPayroll: 12000, monthlyFixedCosts: 8000, expectedMonthlyUnits: 2000,
+  taxRate: 0.06, paymentFeeRate: 0.028, commissionRate: 0.05, desiredNetMargin: 0.2,
+  inventoryDays: 10, receivingDays: 7, paymentDays: 30, monthlyCapitalRate: 0.02,
 };
 
-test("calcula os custos diretos e o preço mínimo do cenário padrão", () => {
-  const costs = calculateCosts(baseInputs);
-  const result = calculatePrice(baseInputs);
-
-  assert.equal(costs.materialsWithWaste, 12.96);
-  assert.equal(costs.cashGapDays, 0);
-  assert.equal(Number(costs.baseCost.toFixed(2)), 21.45);
-  assert.equal(result.minimumPrice, 29.31);
-  assert.equal(Number(result.actualMargin.toFixed(2)), 0.18);
+test("cenário obrigatório usa desperdício por rendimento e arredonda apenas o preço técnico", () => {
+  const result = calculatePricing(base, { price: 69.9, source: "manual", rule: "manual" });
+  assert.ok(Math.abs(result.adjustedMaterialCost - (18.5 / 0.95)) < 1e-12);
+  assert.ok(Math.abs(result.directCost - 28.973684210526315) < 1e-12);
+  assert.equal(result.indirectCost, 10);
+  assert.equal(result.financedDays, 0);
+  assert.equal(result.financialCost, 0);
+  assert.ok(Math.abs(result.technicalPriceRaw - 58.872635) < 0.001);
+  assert.equal(result.technicalPrice, 58.88);
+  assert.equal(result.market.price, 69.9);
+  assert.ok(result.market.difference > 0);
+  assert.equal(result.presentation.technicalPrice, 58.88);
 });
 
-test("inclui o custo de capital quando o recebimento ocorre após o pagamento", () => {
-  const result = calculatePrice({ ...baseInputs, receiveDays: 30, payDays: 0 });
-
-  assert.equal(result.costs.cashGapDays, 30);
-  assert.ok(result.costs.workingCapitalCost > 0);
-  assert.ok(result.minimumPrice > 29.31);
+test("valida desperdício, produção, percentuais e números sem correção silenciosa", () => {
+  assert.equal(validatePricingInputs({ ...base, wasteRate: 0 }).isValid, true);
+  assert.equal(validatePricingInputs({ ...base, wasteRate: 0.999999 }).isValid, true);
+  assert.equal(validatePricingInputs({ ...base, wasteRate: 1 }).errors.wasteRate, "O desperdício deve ser menor que 100%.");
+  assert.match(validatePricingInputs({ ...base, expectedMonthlyUnits: 0 }).errors.expectedMonthlyUnits, /maior que zero/);
+  assert.match(validatePricingInputs({ ...base, desiredNetMargin: -0.01 }).errors.desiredNetMargin, /não pode ser negativo/);
+  assert.match(validatePricingInputs({ ...base, taxRate: 0.7, paymentFeeRate: 0.2, commissionRate: 0.1, desiredNetMargin: 0 }).errors.desiredNetMargin, /menor que 100%/);
+  assert.match(validatePricingInputs({ ...base, materialCost: Number.NaN }).errors.materialCost, /número finito/);
+  assert.throws(() => calculatePricing({ ...base, monthlyCapitalRate: Infinity }), PricingValidationError);
 });
 
-test("marca o cálculo como inviável quando as taxas e a margem consomem todo o preço", () => {
-  const result = calculatePrice({ ...baseInputs, taxRate: 0.5, paymentFeeRate: 0.2, commissionRate: 0.1, margin: 0.2 });
-
-  assert.equal(result.isValid, false);
-  assert.equal(result.minimumPrice, null);
-  assert.equal(result.profitPerSale, 0);
+test("ciclo financeiro respeita zero, ciclo negativo e juros compostos positivos", () => {
+  assert.equal(calculatePricing({ ...base, inventoryDays: 0, receivingDays: 0, paymentDays: 0 }).financialCost, 0);
+  assert.equal(calculatePricing({ ...base, inventoryDays: 1, receivingDays: 1, paymentDays: 10 }).financedDays, 0);
+  const result = calculatePricing({ ...base, inventoryDays: 30, receivingDays: 30, paymentDays: 0, monthlyCapitalRate: 0.02 });
+  assert.equal(result.financedDays, 60);
+  assert.ok(Math.abs(result.periodCapitalRate - ((1.02 ** 2) - 1)) < 1e-12);
+  assert.ok(result.financialCost > 0);
 });
 
-test("calcula dinheiro em centavos e arredonda o preço sempre para cima", () => {
-  const result = calculatePrice({
-    ...baseInputs,
-    materialsCost: 0.1,
-    waste: 0.1,
-    packagingCost: 0.2,
-    deliveryCost: 0.3,
-    totalPayroll: 0,
-    monthlyFixedCosts: 0,
-    taxRate: 0,
-    paymentFeeRate: 0,
-    margin: 0.3333,
-  });
-
-  assert.equal(Number.isInteger(result.costs.baseCostCents), true);
-  assert.equal(Number.isInteger(result.minimumPriceCents), true);
-  assert.equal(result.minimumPrice, result.minimumPriceCents / 100);
-  assert.ok(result.minimumPriceCents >= result.costs.baseCostCents);
+test("mercado vazio permanece nulo; produto, média e mediana são referências distintas", () => {
+  assert.equal(calculatePricing(base).market.price, null);
+  const product = calculatePricing(base, { price: 77, source: "Amazon", rule: "selected-product", selectedProduct: { id: "x" } });
+  const average = calculatePricing(base, { price: 70, source: "Amazon", rule: "amazon-average" });
+  const median = calculatePricing(base, { price: 68, source: "Amazon", rule: "amazon-median" });
+  assert.equal(product.market.rule, "selected-product");
+  assert.equal(average.market.rule, "amazon-average");
+  assert.equal(median.market.rule, "amazon-median");
+  assert.equal(product.technicalPrice, average.technicalPrice);
 });
 
-test("incorpora frete, seguro, desconto e despesas adicionais sem ponto flutuante monetário", () => {
-  const result = calculatePrice({
-    ...baseInputs,
-    insuranceCost: 1.25,
-    discountAmount: 0.5,
-    otherExpenses: 0.75,
-  });
+test("desconto fica fora do custo e preserva o preço técnico após o desconto", () => {
+  const withoutDiscount = calculatePricing(base);
+  const percentage = calculatePricing({ ...base, discountRate: 0.1 });
+  const fixed = calculatePricing({ ...base, fixedDiscountAmount: 5 });
+  assert.equal(withoutDiscount.technicalPrice, percentage.technicalPrice);
+  assert.equal(withoutDiscount.technicalPrice, fixed.technicalPrice);
+  assert.equal(percentage.discount.postDiscountPrice, percentage.technicalPrice);
+  assert.equal(fixed.discount.advertisedPrice, fixed.technicalPrice + 5);
+  assert.equal(validatePricingInputs({ ...base, discountRate: 0.1, fixedDiscountAmount: 1 }).isValid, false);
+});
 
-  assert.equal(result.costs.deliveryCostCents, 150);
-  assert.equal(result.costs.insuranceCostCents, 125);
-  assert.equal(result.costs.discountAmountCents, 50);
-  assert.equal(result.costs.otherExpensesCents, 75);
-  assert.equal(Number.isInteger(result.salesExpensesCents), true);
+test("capacidade produtiva é apenas informativa e nunca muda o preço", () => {
+  const low = calculatePricing({ ...base, productionCapacity: { workerCount: 1, productiveHoursPerWorkerMonth: 1, unitsPerWorkerHour: 1 } });
+  const high = calculatePricing({ ...base, productionCapacity: { workerCount: 100, productiveHoursPerWorkerMonth: 300, unitsPerWorkerHour: 100 } });
+  assert.equal(low.technicalPrice, high.technicalPrice);
+  assert.equal(low.inputs.productionCapacity.monthlyCapacity, 1);
 });

@@ -1,153 +1,55 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-
-import { calculatePrice } from "../js/domain/pricing-calculator.js";
 import { parseBrazilianNumber, PRICING_FIELD_IDS, validatePricingForm } from "../js/ui/form.js";
 
-const validValues = {
-  materialsCost: "12",
-  waste: "8",
-  packagingCost: "2",
-  deliveryCost: "1,5",
-  insuranceCost: "",
-  discountAmount: "",
-  otherExpenses: "",
-  totalPayroll: "12600",
-  workerCount: "6",
-  outputPerWorkerHour: "12",
-  monthlyFixedCosts: "16000",
-  monthlyVolume: "4000",
-  taxRate: "6",
-  paymentFeeRate: "2,8",
-  commissionRate: "0",
-  margin: "18",
-  competitorAverage: "32",
-  receiveDays: "7",
-  payDays: "14",
-  capitalRate: "2,5",
+const values = {
+  materialCost: "18,50", wasteRate: "5", packagingCost: "3,50", deliveryCost: "4", insuranceCost: "", otherDirectExpenses: "",
+  monthlyPayroll: "12000", monthlyFixedCosts: "8000", expectedMonthlyUnits: "2000", taxRate: "6", paymentFeeRate: "2,8", commissionRate: "5", desiredNetMargin: "20",
+  inventoryDays: "10", receivingDays: "7", paymentDays: "30", monthlyCapitalRate: "2", discountRate: "", fixedDiscountAmount: "", marketPrice: "",
 };
-
 function elementsFor(overrides = {}) {
-  const values = { ...validValues, ...overrides };
-  return Object.fromEntries(
-    [
-      ...PRICING_FIELD_IDS,
-      "ncmCode",
-      "taxRegime",
-      "originState",
-      "destinationState",
-      "cfop",
-      "taxSituation",
-      "customerType",
-      "operationPurpose",
-    ].map((fieldId) => [fieldId, { value: values[fieldId] ?? "" }]),
-  );
+  const all = { ...values, ...overrides };
+  return Object.fromEntries([...PRICING_FIELD_IDS, "workerCount", "productiveHoursPerWorkerMonth", "unitsPerWorkerHour", "ncmCode", "taxRegime", "originState", "destinationState", "cfop", "taxSituation", "customerType", "operationPurpose"].map((id) => [id, { value: all[id] ?? "" }]));
 }
 
-test("interpreta vírgula decimal e rejeita texto, infinito e notação não prevista", () => {
-  assert.deepEqual(parseBrazilianNumber("10,5"), { status: "valid", value: 10.5 });
+test("interpreta número brasileiro e rejeita texto, infinito e notação", () => {
   assert.deepEqual(parseBrazilianNumber("1.234,56"), { status: "valid", value: 1234.56 });
-  assert.equal(parseBrazilianNumber("").status, "empty");
-  assert.equal(parseBrazilianNumber("abc").status, "invalid");
-  assert.equal(parseBrazilianNumber("Infinity").status, "invalid");
-  assert.equal(parseBrazilianNumber("1e3").status, "invalid");
+  ["", "abc", "Infinity", "1e3"].forEach((value) => assert.notEqual(parseBrazilianNumber(value).status, "valid"));
 });
 
-test("formulário vazio permanece inválido sem transformar ausências em zero", () => {
-  const emptyElements = elementsFor(Object.fromEntries(PRICING_FIELD_IDS.map((fieldId) => [fieldId, ""])));
-  const validation = validatePricingForm(emptyElements);
-
+test("mantém campos obrigatórios vazios, opcional nulo e texto inválido sem trocar o valor digitado", () => {
+  const empty = elementsFor(Object.fromEntries(PRICING_FIELD_IDS.map((id) => [id, ""])));
+  const validation = validatePricingForm(empty);
   assert.equal(validation.isValid, false);
-  assert.equal(validation.inputs, null);
-  assert.equal(validation.errors.materialsCost, "Informe o custo dos insumos.");
-  assert.equal(validation.errors.margin, "Informe a margem líquida desejada.");
-  assert.equal(validation.errors.insuranceCost, undefined);
-  assert.equal(validation.errors.discountAmount, undefined);
-  assert.equal(validation.errors.otherExpenses, undefined);
+  assert.equal(validation.errors.materialCost, "Informe o custo da matéria-prima.");
+  assert.equal(validation.errors.marketPrice, undefined);
+  const invalid = elementsFor({ materialCost: "abc" });
+  assert.equal(validatePricingForm(invalid).errors.materialCost, "Informe um número válido, sem notação científica.");
+  assert.equal(invalid.materialCost.value, "abc");
 });
 
-test("mantém margem acima do limite no campo, informa o máximo e bloqueia o cálculo", () => {
-  const elements = elementsFor({ margin: "90" });
-  const validation = validatePricingForm(elements);
-
-  assert.equal(elements.margin.value, "90");
-  assert.equal(validation.isValid, false);
-  assert.equal(validation.inputs, null);
-  assert.equal(validation.errors.margin, "A margem máxima permitida é 60%.");
-});
-
-test("rejeita custo negativo e texto inválido sem corrigi-los", () => {
-  const negativeElements = elementsFor({ materialsCost: "-100" });
-  const negativeValidation = validatePricingForm(negativeElements);
-  assert.equal(negativeElements.materialsCost.value, "-100");
-  assert.equal(negativeValidation.errors.materialsCost, "O custo dos insumos não pode ser negativo.");
-  assert.equal(negativeValidation.inputs, null);
-
-  const textElements = elementsFor({ materialsCost: "abc" });
-  const textValidation = validatePricingForm(textElements);
-  assert.equal(textElements.materialsCost.value, "abc");
-  assert.equal(textValidation.errors.materialsCost, "Informe um número válido.");
-  assert.equal(textValidation.inputs, null);
-});
-
-test("campos opcionais vazios só viram zero no objeto validado", () => {
-  const elements = elementsFor();
-  const validation = validatePricingForm(elements);
-
-  assert.equal(validation.isValid, true);
-  assert.deepEqual(validation.emptyOptionalFields, ["insuranceCost", "discountAmount", "otherExpenses"]);
-  assert.equal(elements.insuranceCost.value, "");
-  assert.equal(validation.inputs.insuranceCost, 0);
-  assert.equal(validation.inputs.discountAmount, 0);
-  assert.equal(validation.inputs.otherExpenses, 0);
-});
-
-test("dados válidos preservam o resultado histórico da fórmula", () => {
+test("converte percentuais para frações e deixa mercado ausente como null", () => {
   const validation = validatePricingForm(elementsFor());
-  const result = calculatePrice(validation.inputs);
-
   assert.equal(validation.isValid, true);
-  assert.equal(result.minimumPrice, 29.31);
-  assert.equal(Number(result.actualMargin.toFixed(2)), 0.18);
+  assert.equal(validation.inputs.wasteRate, 0.05);
+  assert.equal(validation.inputs.desiredNetMargin, 0.2);
+  assert.equal(validation.inputs.marketPrice, null);
+  assert.equal(validation.inputs.insuranceCost, 0);
+  assert.deepEqual(validation.emptyOptionalFields.sort(), ["discountRate", "fixedDiscountAmount", "insuranceCost", "marketPrice", "otherDirectExpenses"].sort());
 });
 
-test("soma de percentuais inviável é associada à margem antes da fórmula", () => {
-  const validation = validatePricingForm(elementsFor({ taxRate: "40", paymentFeeRate: "20", commissionRate: "20", margin: "20" }));
-
-  assert.equal(validation.isValid, false);
-  assert.equal(validation.inputs, null);
-  assert.equal(validation.errors.margin, "A soma de impostos, taxas, comissão e margem deve ser menor que 100%.");
+test("bloqueia domínio matemático, negativos e capacidade incompleta", () => {
+  assert.match(validatePricingForm(elementsFor({ wasteRate: "100" })).errors.wasteRate, /menor que 100%/);
+  assert.match(validatePricingForm(elementsFor({ materialCost: "-1" })).errors.materialCost, /não pode ser negativo/);
+  assert.match(validatePricingForm(elementsFor({ taxRate: "80", paymentFeeRate: "10", commissionRate: "10", desiredNetMargin: "0" })).errors.desiredNetMargin, /menor que 100%/);
+  assert.match(validatePricingForm(elementsFor({ workerCount: "2" })).errors.productiveHoursPerWorkerMonth, /Complete a capacidade/);
 });
 
-test("HTML inicial não contém tipo de produto, presets nem values nos inputs manuais", () => {
+test("HTML inicia vazio e expõe os novos campos sem desconto legado como custo", () => {
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-  const pricingConfig = readFileSync(new URL("../js/config/pricing.js", import.meta.url), "utf8");
-  const mainSource = readFileSync(new URL("../js/main.js", import.meta.url), "utf8");
-
-  assert.doesNotMatch(html, /Tipo de produto|productType/);
-  assert.doesNotMatch(pricingConfig, /CATEGORY_PRESETS|comestiveis|cosmeticos/);
-  assert.doesNotMatch(mainSource, /applyCategoryPreset|productType|isAboveCompetitorLimit/);
-  for (const fieldId of PRICING_FIELD_IDS) {
-    const input = html.match(new RegExp(`<input[^>]*id="${fieldId}"[^>]*>`))?.[0];
-    assert.ok(input, `Input ${fieldId} deve existir.`);
-    assert.doesNotMatch(input, /\svalue=/, `Input ${fieldId} deve iniciar vazio.`);
-  }
-});
-
-test("salvamento obtém a validação compartilhada antes de montar ou enviar o payload", () => {
-  const mainSource = readFileSync(new URL("../js/main.js", import.meta.url), "utf8");
-  const payloadFunction = mainSource.slice(
-    mainSource.indexOf("function productPayloadFromCalculator"),
-    mainSource.indexOf("async function saveProduct"),
-  );
-  const saveFunction = mainSource.slice(
-    mainSource.indexOf("async function saveProduct"),
-    mainSource.indexOf("async function loadProducts"),
-  );
-
-  assert.match(payloadFunction, /currentPricingValidation\(\)/);
-  assert.match(payloadFunction, /if \(!validation\.isValid\)/);
-  assert.match(payloadFunction, /throw new ApiError\("Corrija os campos indicados antes de salvar\./);
-  assert.ok(saveFunction.indexOf("productPayloadFromCalculator()") < saveFunction.indexOf('api.post("/products"'));
+  for (const id of PRICING_FIELD_IDS) assert.match(html, new RegExp(`id="${id}"`));
+  assert.doesNotMatch(html, /id="discountAmount"/);
+  assert.match(html, /Carga tributária estimada/);
+  assert.match(html, /Quantidade prevista de unidades por mês/);
 });

@@ -8,12 +8,3 @@ export const MARKET_RULES = {
   closeGap: 0.08,
   attentionGap: 0.18,
 };
-
-export const PERCENTAGE_FIELDS = new Set([
-  "waste",
-  "taxRate",
-  "paymentFeeRate",
-  "commissionRate",
-  "margin",
-  "capitalRate",
-]);

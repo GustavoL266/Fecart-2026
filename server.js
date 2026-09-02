@@ -14,7 +14,8 @@ import { createNexscopeProvider, nexscopeErrorForClient, NexscopeError, redactNe
 import { createFocusNFeClient, focusNFeErrorForClient, FocusNFeError, redactFocusNFeSensitiveData } from "./lib/focus-nfe-client.js";
 import { productForClient, userForClient } from "./lib/models.js";
 import { hashPassword, verifyPassword } from "./lib/passwords.js";
-import { loginSchema, marketSearchSchema, productIdSchema, productListSchema, productSchema, registerSchema, validate } from "./lib/validation.js";
+import { authoritativeProductSnapshot } from "./lib/pricing-persistence.js";
+import { loginSchema, marketSearchSchema, productCreateSchema, productIdSchema, productListSchema, productMetadataSchema, registerSchema, validate } from "./lib/validation.js";
 
 const config = getConfig();
 const focusNfeConfig = getFocusNfeConfig();
@@ -280,7 +281,8 @@ app.get("/products/:id", requireAuth, async (req, res, next) => {
 
 app.post("/products", requireAuth, async (req, res, next) => {
   try {
-    const input = validate(productSchema, req.body);
+    const request = validate(productCreateSchema, req.body);
+    const input = authoritativeProductSnapshot(request);
     const { rows } = await pool.query(
       `INSERT INTO products (
         id, user_id, name, description, category, cost_price, additional_costs, profit_margin,
@@ -290,7 +292,7 @@ app.post("/products", requireAuth, async (req, res, next) => {
       [
         randomUUID(), req.user.id, input.name, input.description, input.category, input.costPrice,
         input.additionalCosts, input.profitMargin, input.suggestedPrice, input.marketplace,
-        input.consultationDate || null, JSON.stringify(input.calculationData),
+        null, JSON.stringify(input.calculationData),
       ],
     );
     return res.status(201).json({ product: productForClient(rows[0]) });
@@ -302,18 +304,14 @@ app.post("/products", requireAuth, async (req, res, next) => {
 app.patch("/products/:id", requireAuth, async (req, res, next) => {
   try {
     const { id } = validate(productIdSchema, req.params);
-    const input = validate(productSchema, req.body);
+    const input = validate(productMetadataSchema, req.body);
     const { rows } = await pool.query(
       `UPDATE products SET
-        name = $3, description = $4, category = $5, cost_price = $6, additional_costs = $7,
-        profit_margin = $8, suggested_price = $9, marketplace = $10,
-        consultation_date = COALESCE($11::timestamptz, consultation_date), calculation_data = $12::jsonb
+        name = $3, description = $4, category = $5
        WHERE id = $1 AND user_id = $2
        RETURNING ${productColumns()}`,
       [
-        id, req.user.id, input.name, input.description, input.category, input.costPrice,
-        input.additionalCosts, input.profitMargin, input.suggestedPrice, input.marketplace,
-        input.consultationDate || null, JSON.stringify(input.calculationData),
+        id, req.user.id, input.name, input.description, input.category,
       ],
     );
     if (!rows[0]) return res.status(404).json({ error: "Produto não encontrado." });
