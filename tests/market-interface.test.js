@@ -20,6 +20,7 @@ test("Consulta de Mercado tem identidade própria, fallback manual e cards selec
   assert.match(dashboard, /Referência selecionada/);
   assert.match(dashboard, /data-market-retry/);
   assert.match(dashboard, /selectedMarketProduct\.source/);
+  assert.match(dashboard, /Buscando produtos\.\.\./);
 });
 
 test("dashboard possui três áreas responsivas e tributação pendente sem valor inventado", () => {

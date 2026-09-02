@@ -7,7 +7,7 @@ import {
   NexscopeProvider,
   redactNexscopeSensitiveData,
 } from "../lib/nexscope-provider.js";
-import { getNexscopeConfig, NEXSCOPE_AMAZON_DOMAIN_BRAZIL } from "../lib/config.js";
+import { getNexscopeConfig, marketHealth, NEXSCOPE_AMAZON_DOMAIN_BRAZIL } from "../lib/config.js";
 
 function response(status, body = {}, headers = {}) {
   return {
@@ -73,6 +73,23 @@ test("configura a Nexscope como opcional sem expor ou exigir credenciais Amazon"
   assert.deepEqual(optional.missingEnvironmentVariables, ["NEXSCOPE_API_KEY"]);
   assert.equal(getNexscopeConfig({ NEXSCOPE_API_KEY: "nk-teste" }).isConfigured, true);
   assert.throws(() => getNexscopeConfig({ NEXSCOPE_TIMEOUT_MS: "99" }), /NEXSCOPE_TIMEOUT_MS/);
+});
+
+test("aceita somente NEXSCOPE_API_KEY e gera health sem dados sensíveis", () => {
+  const wrongNames = getNexscopeConfig({
+    NEXCOPE_API_KEY: "nk-errada",
+    NEXSCOPE_KEY: "nk-errada",
+    NEXSCOPE_TOKEN: "nk-errada",
+    NEXSCOPE_API_TOKEN: "nk-errada",
+  });
+  const configured = getNexscopeConfig({ NEXSCOPE_API_KEY: "  nk-correta  " });
+
+  assert.equal(wrongNames.isConfigured, false);
+  assert.equal(configured.isConfigured, true);
+  assert.equal(configured.apiKey, "nk-correta");
+  assert.deepEqual(marketHealth(configured), { provider: "Nexscope", configured: true });
+  assert.deepEqual(marketHealth(wrongNames), { provider: "Nexscope", configured: false });
+  assert.doesNotMatch(JSON.stringify(marketHealth(configured)), /nk-correta|apiKey/i);
 });
 
 test("autentica via Bearer no backend e usa o contrato oficial Amazon Search", async () => {

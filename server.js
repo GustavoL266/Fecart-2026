@@ -7,7 +7,7 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
-import { getConfig, getFocusNfeConfig, getNexscopeConfig } from "./lib/config.js";
+import { getConfig, getFocusNfeConfig, getNexscopeConfig, marketHealth } from "./lib/config.js";
 import { pool, verifyDatabase } from "./lib/database.js";
 import { runMarketSearch } from "./lib/market-search.js";
 import { createNexscopeProvider, nexscopeErrorForClient, NexscopeError, redactNexscopeSensitiveData } from "./lib/nexscope-provider.js";
@@ -28,10 +28,11 @@ const PgSession = connectPgSimple(session);
 console.info(
   `[Fiscal] Provider: FocusNFe | configured=${focusNfeConfig.isConfigured} | environment=${focusNfeConfig.environment}`,
 );
-console.info(
-  `[Market] Provider: Nexscope | configured=${nexscopeConfig.isConfigured} | marketplace=${nexscopeConfig.marketplace}`,
-  nexscopeConfig.isConfigured ? {} : { missingEnvironmentVariables: nexscopeConfig.missingEnvironmentVariables },
-);
+console.info("[Market] Provider: Nexscope");
+console.info(`[Market] Configured: ${nexscopeConfig.isConfigured}`);
+if (!nexscopeConfig.isConfigured) {
+  console.warn(`[Market] Missing environment variables: ${nexscopeConfig.missingEnvironmentVariables.join(", ")}`);
+}
 
 app.disable("x-powered-by");
 if (config.secureCookie) app.set("trust proxy", 1);
@@ -205,10 +206,7 @@ app.get("/health", async (req, res, next) => {
         environment: focusNfeConfig.environment,
         provider: "FocusNFe",
       },
-      market: {
-        configured: nexscopeConfig.isConfigured,
-        provider: "Nexscope",
-      },
+      market: marketHealth(nexscopeConfig),
     });
   } catch (error) {
     return next(error);

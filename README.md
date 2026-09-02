@@ -77,6 +77,8 @@ O repositório contém [`render.yaml`](render.yaml), que publica a aplicação c
 5. Para habilitar a pesquisa de mercado, preencha manualmente `NEXSCOPE_API_KEY` no Web Service. O Blueprint define `NEXSCOPE_TIMEOUT_MS=5000`; a existência de `sync: false` não preenche o segredo.
 6. Abra a URL `https://…onrender.com` fornecida pelo Render. Essa é a URL que deve ser compartilhada e usada para criar contas.
 
+Em um serviço Render já existente, abra **Environment**, adicione a key `NEXSCOPE_API_KEY` com a chave real fornecida pela Nexscope e escolha **Save Changes**. Em seguida execute **Manual Deploy → Deploy latest commit**. Nunca grave o valor no GitHub ou no frontend.
+
 Não é preciso (nem correto) colocar credenciais no GitHub, no código ou no GitHub Pages. Se o Pages já estiver ativo no repositório, desative-o em **Settings → Pages** para evitar que usuários cheguem à cópia estática sem API.
 
 ## Diagnóstico de inicialização

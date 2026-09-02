@@ -864,14 +864,14 @@ function renderMarketPanel(document, result, marketState) {
   panel.hidden = marketState.status === "idle";
   summary.hidden = !marketState.selectedItem;
   searchButton.disabled = marketState.status === "loading";
-  searchButton.textContent = marketState.status === "loading" ? "Buscando preços..." : "Pesquisar produto";
+  searchButton.textContent = marketState.status === "loading" ? "Buscando produtos..." : "Pesquisar produto";
   selectedContainer.hidden = !marketState.selectedItem;
   selectedContainer.innerHTML = marketState.selectedItem
     ? `<p class="eyebrow">Referência selecionada</p><h3>${escapeHtml(marketState.selectedItem.title)}</h3><strong>${currency.format(marketState.selectedItem.price)}</strong><span>Fonte: ${escapeHtml(marketState.selectedItem.source)}</span><small>Tributação pendente; nenhuma alíquota ou NCM foi presumido.</small><button type="button" class="secondary-button" data-change-market-reference>Trocar produto</button>`
     : "";
 
   if (marketState.status === "loading") {
-    searchStatus.textContent = "Buscando preços...";
+    searchStatus.textContent = "Buscando produtos...";
     statsContainer.innerHTML = '<div class="market-loading"><span aria-hidden="true"></span><p>Consultando produtos no mercado...</p></div>';
     resultsContainer.innerHTML = "";
     return;
