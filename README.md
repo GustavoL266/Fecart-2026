@@ -57,7 +57,7 @@ Configure somente no ambiente do servidor:
 
 ```text
 NEXSCOPE_API_KEY
-NEXSCOPE_TIMEOUT_MS=5000
+NEXSCOPE_TIMEOUT_MS=15000
 ```
 
 `NEXSCOPE_API_KEY` é a única credencial de mercado obrigatória e deve ser criada em **API Access** da Nexscope. Nunca a coloque no frontend. Sem ela, `/health` retorna apenas `market.configured: false` e a pesquisa fica indisponível; o simulador continua funcionando com o campo manual **Preço médio local dos concorrentes (R$)**.
@@ -74,7 +74,7 @@ O repositório contém [`render.yaml`](render.yaml), que publica a aplicação c
 2. No Render, escolha **New → Blueprint**, conecte o repositório e confirme os recursos propostos.
 3. O serviço cria o PostgreSQL, injeta `DATABASE_URL`, gera `SESSION_SECRET`, executa `npm run migrate` antes de cada publicação e inicia `npm start`.
 4. Configure no Web Service um `FOCUS_NFE_TOKEN` de produção. O Blueprint já seleciona `https://api.focusnfe.com.br` e o backend registra apenas `configured=true/false`, nunca o token.
-5. Para habilitar a pesquisa de mercado, preencha manualmente `NEXSCOPE_API_KEY` no Web Service. O Blueprint define `NEXSCOPE_TIMEOUT_MS=5000`; a existência de `sync: false` não preenche o segredo.
+5. Para habilitar a pesquisa de mercado, preencha manualmente `NEXSCOPE_API_KEY` no Web Service. O Blueprint define `NEXSCOPE_TIMEOUT_MS=15000`; a existência de `sync: false` não preenche o segredo.
 6. Abra a URL `https://…onrender.com` fornecida pelo Render. Essa é a URL que deve ser compartilhada e usada para criar contas.
 
 Em um serviço Render já existente, abra **Environment**, adicione a key `NEXSCOPE_API_KEY` com a chave real fornecida pela Nexscope e escolha **Save Changes**. Em seguida execute **Manual Deploy → Deploy latest commit**. Nunca grave o valor no GitHub ou no frontend.
@@ -88,7 +88,8 @@ O frontend e a API são servidos pelo mesmo processo; não há um segundo servid
 - `SESSION_SECRET não foi definida`: copie `.env.example` para `.env` e informe uma chave aleatória de pelo menos 32 caracteres.
 - `DATABASE_URL não foi definida` ou falha de conexão: inicie o PostgreSQL e confira host, porta, usuário, senha e nome do banco no `.env`.
 - `MIGRATIONS_PENDING`: execute `npm run migrate` (ou `pnpm migrate`) antes de iniciar a aplicação.
-- `market.configured: false` no `/health`: confira se `NEXSCOPE_API_KEY` foi configurada no backend. O endpoint nunca mostra a chave. Se estiver `true`, mas a busca responder `401`/`403`, gere ou revise a chave e suas permissões no API Access da Nexscope.
+- `market.configured: false` no `/health`: confira se `NEXSCOPE_API_KEY` foi configurada no backend. O endpoint nunca mostra a chave.
+- `market.configured: true` confirma somente que a variável existe. Depois de uma pesquisa, consulte os logs `[Nexscope] Status` e `[Nexscope] Error` para distinguir credencial inválida (`401`), falta de acesso ao Amazon Search (`403`), créditos insuficientes (`402`), limite (`429`) e falha upstream (`5xx`).
 
 Na inicialização, o servidor testa a conexão com o PostgreSQL e confirma que as tabelas exigidas existem. Assim, uma configuração incompleta aparece no terminal com a causa concreta, em vez de falhar apenas ao enviar o formulário.
 

@@ -29,7 +29,7 @@ services:
       - key: NEXSCOPE_API_KEY
         sync: false
       - key: NEXSCOPE_TIMEOUT_MS
-        value: "5000"
+        value: "15000"
 
 databases:
   - name: assistente-precificacao-db

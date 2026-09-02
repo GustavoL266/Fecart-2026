@@ -823,8 +823,16 @@ input[type="range"] {
 
 .market-error-alert {
   grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   border: 1px solid color-mix(in srgb, var(--amber) 42%, var(--line));
   background: color-mix(in srgb, var(--amber) 9%, var(--panel));
+}
+
+.market-error-alert > div {
+  min-width: 0;
 }
 
 .market-error-alert p {
@@ -832,6 +840,8 @@ input[type="range"] {
   color: var(--muted);
   font-size: 0.82rem;
   line-height: 1.35;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .market-error-icon {

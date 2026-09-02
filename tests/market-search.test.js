@@ -21,6 +21,20 @@ test("rota de mercado informa a configuração ausente sem expor valores", async
   );
 });
 
+test("busca vazia retorna INVALID_MARKET_QUERY sem chamar provider", async () => {
+  let calls = 0;
+  await assert.rejects(
+    () => runMarketSearch({
+      provider: { async search() { calls += 1; } },
+      config: baseConfig,
+      logger: { info() {}, warn() {} },
+      query: "  ",
+    }),
+    { code: "INVALID_MARKET_QUERY", status: 400 },
+  );
+  assert.equal(calls, 0);
+});
+
 test("rota executa as duas consultas pedidas e registra somente metadados seguros", async () => {
   const logs = [];
   const results = [{ id: "B001", title: "Telefone", price: 100, currency: "BRL", source: "Amazon" }];

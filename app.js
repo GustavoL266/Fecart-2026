@@ -1730,10 +1730,14 @@ function setMarketError(query, caughtError) {
     error = "O provedor limitou temporariamente as consultas. Aguarde um pouco e tente novamente.";
   } else if (caughtError instanceof ApiError && caughtError.code === "NEXSCOPE_NOT_CONFIGURED") {
     error = "Consulta de mercado temporariamente indisponível.";
-  } else if (caughtError instanceof ApiError && caughtError.code === "NEXSCOPE_AUTHENTICATION_FAILED") {
-    error = "A credencial do provedor de mercado precisa ser revisada.";
+  } else if (caughtError instanceof ApiError && caughtError.code === "NEXSCOPE_UNAUTHORIZED") {
+    error = "Não foi possível autenticar a consulta de mercado.";
+  } else if (caughtError instanceof ApiError && caughtError.code === "NEXSCOPE_FORBIDDEN") {
+    error = "A conta do provedor não possui acesso à pesquisa Amazon.";
+  } else if (caughtError instanceof ApiError && caughtError.code === "NEXSCOPE_INSUFFICIENT_CREDITS") {
+    error = "A conta do provedor está sem créditos suficientes para esta consulta.";
   } else if (caughtError instanceof ApiError && caughtError.code === "NEXSCOPE_TIMEOUT") {
-    error = "A consulta do mercado excedeu o tempo de resposta.";
+    error = "A consulta demorou mais que o esperado. Tente novamente.";
   }
 
   marketState = {

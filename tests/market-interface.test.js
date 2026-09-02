@@ -21,6 +21,8 @@ test("Consulta de Mercado tem identidade própria, fallback manual e cards selec
   assert.match(dashboard, /data-market-retry/);
   assert.match(dashboard, /selectedMarketProduct\.source/);
   assert.match(dashboard, /Buscando produtos\.\.\./);
+  assert.match(styles, /\.market-error-alert[\s\S]*grid-column: 1 \/ -1;[\s\S]*width: 100%;[\s\S]*min-width: 0;/);
+  assert.match(styles, /\.market-error-alert p[\s\S]*overflow-wrap: break-word;[\s\S]*word-break: normal;/);
 });
 
 test("dashboard possui três áreas responsivas e tributação pendente sem valor inventado", () => {

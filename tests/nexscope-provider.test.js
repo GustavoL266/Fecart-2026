@@ -13,6 +13,7 @@ function response(status, body = {}, headers = {}) {
   return {
     ok: status >= 200 && status < 300,
     status,
+    statusText: "",
     headers: { get: (name) => headers[name.toLowerCase()] ?? null },
     json: async () => body,
   };
@@ -59,8 +60,6 @@ function providerWith(fetchImpl, options = {}) {
     language: "pt_BR",
     fetchImpl,
     logger: { info() {}, warn() {} },
-    maxRetries: 0,
-    sleep: async () => {},
     ...options,
   });
 }
@@ -127,18 +126,29 @@ test("autentica via Bearer no backend e usa o contrato oficial Amazon Search", a
   assert.equal(result.marketplace, "Amazon");
 });
 
-test("aceita URL Amazon completa e normaliza moeda da loja brasileira", async () => {
+test("aceita URL Amazon completa, mas não presume BRL quando a moeda está ausente", async () => {
   const provider = providerWith(async () => response(200, {
-    products: [{
-      asin: "B012345678",
-      title: "Iphone recondicionado",
-      price: 1999.9,
-      asinUrl: "https://www.amazon.com.br/dp/B012345678?ref_=teste",
-    }],
+    products: [
+      {
+        asin: "B012345678",
+        title: "Iphone sem moeda",
+        price: 1999.9,
+        asinUrl: "https://www.amazon.com.br/dp/B012345678?ref_=teste",
+      },
+      {
+        asin: "B087654321",
+        title: "Iphone com moeda",
+        price: 2199.9,
+        currency: "R$",
+        asinUrl: "https://www.amazon.com.br/dp/B087654321?ref_=teste",
+      },
+    ],
   }));
-  const [item] = (await provider.search("Iphone")).results;
+  const result = await provider.search("Iphone");
+  assert.equal(result.results.length, 1);
+  const [item] = result.results;
   assert.equal(item.currency, "BRL");
-  assert.equal(item.url, "https://www.amazon.com.br/dp/B012345678?ref_=teste");
+  assert.equal(item.url, "https://www.amazon.com.br/dp/B087654321?ref_=teste");
 });
 
 test("reutiliza cache curto e evita pesquisas idênticas simultâneas", async () => {
@@ -163,33 +173,39 @@ test("reutiliza cache curto e evita pesquisas idênticas simultâneas", async ()
   assert.equal(calls, 2);
 });
 
-test("faz retry limitado em 429 e nunca expõe a chave", async () => {
+test("não repete automaticamente um 429 e nunca expõe a chave", async () => {
   let calls = 0;
   const logs = [];
   const provider = providerWith(async () => {
     calls += 1;
-    return calls === 1 ? response(429, {}, { "retry-after": "0" }) : response(200, sampleSearchResponse());
-  }, { maxRetries: 1, logger: { info() {}, warn: (...args) => logs.push(args) } });
+    return response(429, { code: "RATE_LIMITED", message: "Too many requests" }, { "retry-after": "0" });
+  }, { logger: { info: (...args) => logs.push(args), warn: (...args) => logs.push(args) } });
 
-  assert.equal((await provider.search("Iphone")).results.length, 1);
-  assert.equal(calls, 2);
+  await assert.rejects(() => provider.search("Iphone"), { code: "NEXSCOPE_RATE_LIMITED", status: 429 });
+  assert.equal(calls, 1);
+  assert.match(JSON.stringify(logs), /\[Nexscope\] Status: 429/);
+  assert.match(JSON.stringify(logs), /RATE_LIMITED/);
+  assert.match(JSON.stringify(logs), /\[Nexscope\] Duration: \d+ms/);
   assert.equal(JSON.stringify(logs).includes("nk-chave-ficticia"), false);
   assert.equal(
     redactNexscopeSensitiveData("Bearer nk-chave-ficticia nk-chave-ficticia", ["nk-chave-ficticia"]),
     "Bearer [REDACTED] [REDACTED]",
   );
-  const error = new NexscopeError("Falha nk-chave-ficticia", { code: "TEST" });
+  const error = new NexscopeError("Falha nk-chave-ficticia", {
+    code: "TEST",
+    details: { upstreamCode: "nk-chave-ficticia", upstreamStatus: 401 },
+  });
   assert.equal(JSON.stringify(nexscopeErrorForClient(error, ["nk-chave-ficticia"])).includes("nk-chave-ficticia"), false);
 });
 
 test("diferencia parâmetros, credencial, permissão, limite e indisponibilidade", async (context) => {
   const scenarios = [
     ["requisição inválida", 400, "NEXSCOPE_INVALID_REQUEST", 400],
-    ["credencial inválida", 401, "NEXSCOPE_AUTHENTICATION_FAILED", 401],
-    ["sem permissão", 403, "NEXSCOPE_AUTHENTICATION_FAILED", 403],
+    ["credencial inválida", 401, "NEXSCOPE_UNAUTHORIZED", 401],
+    ["sem permissão", 403, "NEXSCOPE_FORBIDDEN", 403],
     ["rate limit", 429, "NEXSCOPE_RATE_LIMITED", 429],
-    ["erro upstream", 500, "NEXSCOPE_UNAVAILABLE", 502],
-    ["bad gateway", 502, "NEXSCOPE_UNAVAILABLE", 502],
+    ["erro upstream", 500, "NEXSCOPE_UPSTREAM_ERROR", 502],
+    ["bad gateway", 502, "NEXSCOPE_UPSTREAM_ERROR", 502],
     ["indisponível", 503, "NEXSCOPE_UNAVAILABLE", 503],
   ];
   for (const [name, providerStatus, code, clientStatus] of scenarios) {
@@ -198,6 +214,38 @@ test("diferencia parâmetros, credencial, permissão, limite e indisponibilidade
       await assert.rejects(() => provider.search("Iphone"), { code, status: clientStatus });
     });
   }
+});
+
+test("preserva erro de aplicação, permissão, créditos e request ID mesmo quando o HTTP é 200", async (context) => {
+  await context.test("acesso ao Amazon Search negado", async () => {
+    const logs = [];
+    const provider = providerWith(
+      async () => response(200, { errcode: 403, errmsg: "Amazon Search access denied" }, { "x-request-id": "req-403" }),
+      { logger: { info: (...args) => logs.push(args), warn: (...args) => logs.push(args) } },
+    );
+    await assert.rejects(
+      () => provider.search("Iphone"),
+      (error) => {
+        assert.equal(error.code, "NEXSCOPE_FORBIDDEN");
+        assert.equal(error.status, 403);
+        assert.deepEqual(error.details, { upstreamStatus: 200, upstreamCode: "403", requestId: "req-403" });
+        return true;
+      },
+    );
+    assert.match(JSON.stringify(logs), /Amazon Search access denied/);
+    assert.match(JSON.stringify(logs), /requestId=req-403/);
+  });
+
+  await context.test("créditos insuficientes", async () => {
+    const provider = providerWith(async () => response(200, {
+      code: "INSUFFICIENT_CREDITS",
+      message: "Insufficient credits",
+    }));
+    await assert.rejects(() => provider.search("Iphone"), {
+      code: "NEXSCOPE_INSUFFICIENT_CREDITS",
+      status: 402,
+    });
+  });
 });
 
 test("diferencia timeout, resposta inválida e busca vazia", async (context) => {

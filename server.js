@@ -215,7 +215,7 @@ app.get("/health", async (req, res, next) => {
 
 app.get("/market/search", requireAuth, marketSearchLimiter, async (req, res, next) => {
   try {
-    const { q } = validate(marketSearchSchema, req.query);
+    const { q } = validate(marketSearchSchema, req.query, { code: "INVALID_MARKET_QUERY" });
     const result = await runMarketSearch({ provider: marketProvider, config: nexscopeConfig, query: q });
     return res.json(result);
   } catch (error) {
