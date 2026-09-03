@@ -3730,13 +3730,139 @@ tr:last-child td {
 }
 
 .market-dashboard-section .market-tax-stat {
-  cursor: help;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
 }
 
-.market-dashboard-section .market-tax-stat:focus-visible {
-  border-color: var(--green);
-  outline: 2px solid color-mix(in srgb, var(--green) 24%, transparent);
-  outline-offset: 2px;
+.market-dashboard-section .market-tax-stat.is-success {
+  border-color: color-mix(in srgb, var(--green) 55%, var(--line));
+  background: var(--green-soft);
+}
+
+.market-dashboard-section .market-tax-stat.is-error {
+  border-color: color-mix(in srgb, var(--red) 45%, var(--line));
+}
+
+.market-tax-action {
+  min-height: 34px;
+  margin-top: auto;
+  border: 0;
+  border-radius: 7px;
+  background: var(--green);
+  color: #fff;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 800;
+  padding: 7px 9px;
+  cursor: pointer;
+}
+
+.market-tax-action.secondary {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--green);
+}
+
+.market-tax-actions {
+  display: grid !important;
+  gap: 6px;
+  margin: auto 0 0 !important;
+}
+
+.market-tax-actions .market-tax-action {
+  margin-top: 0;
+}
+
+.market-tax-details:empty {
+  display: none;
+}
+
+.market-tax-notice,
+.market-tax-breakdown {
+  border: 1px solid color-mix(in srgb, var(--green) 35%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--green-soft) 48%, var(--panel));
+  padding: 16px;
+}
+
+.market-tax-notice.is-error {
+  border-color: color-mix(in srgb, var(--red) 40%, var(--line));
+  background: color-mix(in srgb, var(--red) 7%, var(--panel));
+}
+
+.market-tax-notice p,
+.market-tax-breakdown > p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.ncm-suggestion-list {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ncm-suggestion-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.ncm-suggestion-list li div {
+  display: grid;
+  gap: 3px;
+}
+
+.ncm-suggestion-list li span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.market-tax-breakdown {
+  display: grid;
+  gap: 14px;
+}
+
+.market-tax-breakdown h3 {
+  margin: 3px 0 0;
+}
+
+.market-tax-breakdown dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.market-tax-breakdown dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 7px;
+}
+
+.market-tax-breakdown dt,
+.market-tax-breakdown dd {
+  margin: 0;
+}
+
+.market-tax-breakdown dd {
+  font-weight: 800;
+}
+
+.market-tax-breakdown .market-tax-total {
+  border-bottom: 0;
+  color: var(--green);
+  font-size: 1.08rem;
+  padding-top: 5px;
 }
 
 .market-dashboard-section .market-results {
@@ -4401,6 +4527,14 @@ tr:last-child td {
   .market-dashboard-section {
     gap: 15px;
     padding: 16px;
+  }
+
+  .market-dashboard-section .market-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .ncm-suggestion-list li {
+    grid-template-columns: 1fr;
   }
 
   .market-dashboard-section .market-results {

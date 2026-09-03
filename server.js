@@ -7,19 +7,26 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
-import { getConfig, getFocusNfeConfig, getSearchApiConfig, marketHealth } from "./lib/config.js";
+import { getConfig, getFiscalHubConfig, getFocusNfeConfig, getSearchApiConfig, marketHealth, taxHealth } from "./lib/config.js";
 import { pool, verifyDatabase } from "./lib/database.js";
 import { runMarketSearch } from "./lib/market-search.js";
 import { createSearchApiMarketProvider, searchApiErrorForClient, SearchApiError, redactSearchApiSensitiveData } from "./lib/searchapi-market-provider.js";
 import { createFocusNFeClient, focusNFeErrorForClient, FocusNFeError, redactFocusNFeSensitiveData } from "./lib/focus-nfe-client.js";
+import { createFiscalHubClient, fiscalHubErrorForClient, FiscalHubError, redactFiscalHubSensitiveData } from "./lib/fiscalhub-client.js";
+import { createFiscalHubNcmProvider } from "./lib/fiscalhub-ncm-provider.js";
+import { createFiscalHubTaxProvider } from "./lib/fiscalhub-tax-provider.js";
 import { productForClient, userForClient } from "./lib/models.js";
 import { hashPassword, verifyPassword } from "./lib/passwords.js";
 import { authoritativeProductSnapshot } from "./lib/pricing-persistence.js";
-import { loginSchema, marketSearchSchema, productCreateSchema, productIdSchema, productListSchema, productMetadataSchema, registerSchema, validate } from "./lib/validation.js";
+import { loginSchema, marketSearchSchema, ncmSearchSchema, productCreateSchema, productIdSchema, productListSchema, productMetadataSchema, registerSchema, taxCalculationSchema, validate } from "./lib/validation.js";
 
 const config = getConfig();
 const focusNfeConfig = getFocusNfeConfig();
 const focusNfeClient = focusNfeConfig.isConfigured ? createFocusNFeClient(focusNfeConfig) : null;
+const fiscalHubConfig = getFiscalHubConfig();
+const fiscalHubClient = fiscalHubConfig.isConfigured ? createFiscalHubClient(fiscalHubConfig) : null;
+const ncmProvider = fiscalHubClient ? createFiscalHubNcmProvider(fiscalHubClient) : null;
+const taxProvider = fiscalHubClient ? createFiscalHubTaxProvider(fiscalHubConfig, fiscalHubClient) : null;
 const searchApiConfig = getSearchApiConfig();
 const marketProvider = searchApiConfig.isConfigured ? createSearchApiMarketProvider(searchApiConfig) : null;
 const projectRoot = dirname(fileURLToPath(import.meta.url));
@@ -28,6 +35,9 @@ const PgSession = connectPgSimple(session);
 
 console.info(
   `[Fiscal] Provider: FocusNFe | configured=${focusNfeConfig.isConfigured} | environment=${focusNfeConfig.environment}`,
+);
+console.info(
+  `[Tax] Provider: FiscalHub | configured=${fiscalHubConfig.isConfigured} | companyConfigured=${fiscalHubConfig.companyConfigured}`,
 );
 console.info("[Market] Provider: SearchAPI Google Shopping");
 console.info(`[Market] Configured: ${searchApiConfig.isConfigured}`);
@@ -61,7 +71,7 @@ app.use(
 );
 app.use(express.json({ limit: "100kb" }));
 app.use((req, res, next) => {
-  if (req.path.startsWith("/auth") || req.path.startsWith("/products") || req.path.startsWith("/fiscal") || req.path.startsWith("/market")) {
+  if (req.path.startsWith("/auth") || req.path.startsWith("/products") || req.path.startsWith("/fiscal") || req.path.startsWith("/market") || req.path.startsWith("/tax")) {
     res.set("Cache-Control", "no-store");
   }
   next();
@@ -104,6 +114,14 @@ const marketSearchLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: { error: "Muitas consultas de mercado. Aguarde um minuto e tente novamente.", code: "MARKET_RATE_LIMITED" },
+});
+
+const taxCalculationLimiter = rateLimit({
+  windowMs: 60 * 1_000,
+  limit: 15,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Muitos cálculos tributários. Aguarde um minuto e tente novamente.", code: "TAX_RATE_LIMITED" },
 });
 
 function sessionRegenerate(req) {
@@ -208,6 +226,7 @@ app.get("/health", async (req, res, next) => {
         provider: "FocusNFe",
       },
       market: marketHealth(searchApiConfig),
+      tax: taxHealth(fiscalHubConfig),
     });
   } catch (error) {
     return next(error);
@@ -218,6 +237,22 @@ app.get("/market/search", requireAuth, marketSearchLimiter, async (req, res, nex
   try {
     const { q } = validate(marketSearchSchema, req.query, { code: "INVALID_MARKET_QUERY" });
     const result = await runMarketSearch({ provider: marketProvider, config: searchApiConfig, query: q });
+    return res.json(result);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/fiscal/ncms/search", requireAuth, fiscalLookupLimiter, async (req, res, next) => {
+  try {
+    if (!ncmProvider) {
+      throw new FiscalHubError("A integração FiscalHub não foi configurada.", {
+        code: "FISCALHUB_NOT_CONFIGURED",
+        status: 503,
+      });
+    }
+    const { q } = validate(ncmSearchSchema, req.query, { code: "INVALID_NCM_QUERY" });
+    const result = await ncmProvider.search(q);
     return res.json(result);
   } catch (error) {
     return next(error);
@@ -246,6 +281,22 @@ app.get("/fiscal/ncms/:codigo", requireAuth, fiscalLookupLimiter, async (req, re
       environment: focusNfeConfig.environment === "production" ? "produção" : "homologação",
       taxCalculationAvailable: false,
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/tax/calculate", requireAuth, taxCalculationLimiter, async (req, res, next) => {
+  try {
+    if (!taxProvider) {
+      throw new FiscalHubError("A integração FiscalHub não foi configurada.", {
+        code: "FISCALHUB_NOT_CONFIGURED",
+        status: 503,
+      });
+    }
+    const input = validate(taxCalculationSchema, req.body, { code: "INVALID_TAX_CONTEXT" });
+    const calculation = await taxProvider.calculate(input);
+    return res.json({ calculation });
   } catch (error) {
     return next(error);
   }
@@ -344,7 +395,9 @@ function isDatabaseError(error) {
 }
 
 app.use((error, req, res, next) => {
-  const safeLogMessage = error instanceof FocusNFeError
+  const safeLogMessage = error instanceof FiscalHubError
+    ? redactFiscalHubSensitiveData(error.message, [fiscalHubConfig.apiKey])
+    : error instanceof FocusNFeError
     ? redactFocusNFeSensitiveData(error.message, [focusNfeConfig.token])
     : error instanceof SearchApiError
       ? redactSearchApiSensitiveData(error.message, [searchApiConfig.apiKey])
@@ -360,7 +413,9 @@ app.use((error, req, res, next) => {
         : status >= 500
           ? "Não foi possível concluir a operação. Tente novamente em instantes."
           : error.message;
-  const payload = error instanceof FocusNFeError
+  const payload = error instanceof FiscalHubError
+    ? fiscalHubErrorForClient(error, [fiscalHubConfig.apiKey])
+    : error instanceof FocusNFeError
     ? focusNFeErrorForClient(error, [focusNfeConfig.token])
     : error instanceof SearchApiError
       ? searchApiErrorForClient(error)

@@ -30,6 +30,12 @@ services:
         sync: false
       - key: SEARCHAPI_TIMEOUT_MS
         value: "15000"
+      - key: FISCALHUB_API_KEY
+        sync: false
+      - key: FISCALHUB_EMPRESA_ID
+        sync: false
+      - key: FISCALHUB_TIMEOUT_MS
+        value: "10000"
 
 databases:
   - name: assistente-precificacao-db

@@ -195,9 +195,7 @@
         <section id="pricing-panel-fiscal" class="control-section pricing-tab-panel" role="tabpanel" aria-labelledby="pricing-tab-fiscal" data-pricing-panel="fiscal" hidden>
           <div class="tab-panel-heading"><p class="section-title">Contexto fiscal</p><p class="section-description">Reúna as informações fiscais que contextualizam a operação. Confirme os dados com um profissional quando necessário.</p></div>
           <div class="field-grid">
-            <div class="sidebar-field"><label for="ncmCode">NCM (8 dígitos, quando conhecido)</label><div class="search-row fiscal-search-row"><input id="ncmCode" type="text" inputmode="numeric" maxlength="8" pattern="[0-9]{8}" placeholder="Confirme com seu contador" autocomplete="off" /><button id="ncmLookupButton" class="market-search-button" type="button">Validar NCM</button></div><p id="ncmLookupStatus" class="helper-text" role="status">A classificação fiscal precisa ser confirmada; o nome do produto não determina um NCM confiável.</p><p id="ncmDescription" class="fiscal-description" hidden></p></div>
             <div class="sidebar-field"><label for="taxRegime">Regime tributário</label><select id="taxRegime"><option value="">Selecione</option><option value="simples-nacional">Simples Nacional</option><option value="lucro-presumido">Lucro Presumido</option><option value="lucro-real">Lucro Real</option><option value="mei">MEI</option><option value="outro">Outro / confirmar</option></select></div>
-            <div class="sidebar-grid sidebar-grid--two"><div class="sidebar-field"><label for="originState">UF de origem</label><input id="originState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="SP" autocomplete="off" /></div><div class="sidebar-field"><label for="destinationState">UF de destino</label><input id="destinationState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="SP" autocomplete="off" /></div></div>
             <div class="sidebar-field"><label for="customerType">Tipo de cliente</label><select id="customerType"><option value="">Selecione</option><option value="contribuinte">Contribuinte de ICMS</option><option value="nao-contribuinte">Não contribuinte</option><option value="consumidor-final">Consumidor final</option></select></div>
             <details class="fiscal-advanced-fields"><summary>Dados fiscais adicionais</summary><p class="helper-text">Preencha somente quando sua regra fiscal ou contador exigir.</p><div class="sidebar-grid sidebar-grid--two"><div class="sidebar-field"><label for="cfop">CFOP</label><input id="cfop" type="text" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="5102" autocomplete="off" /></div><div class="sidebar-field"><label for="taxSituation">CST/CSOSN</label><input id="taxSituation" type="text" maxlength="4" placeholder="Ex.: 00 ou 102" autocomplete="off" /></div></div><div class="sidebar-field"><label for="operationPurpose">Finalidade da operação</label><select id="operationPurpose"><option value="">Selecione</option><option value="venda">Venda normal</option><option value="revenda">Revenda</option><option value="industrializacao">Industrialização</option><option value="consumo">Uso/consumo</option><option value="ativo">Ativo imobilizado</option><option value="outra">Outra / confirmar</option></select></div></details>
           </div>
@@ -377,6 +375,25 @@
               </div>
             </section>
 
+            <section class="market-tax-context" aria-labelledby="market-tax-context-title">
+              <div class="tab-panel-heading compact">
+                <p class="eyebrow">FiscalHub</p>
+                <p class="section-title" id="market-tax-context-title">Dados para cálculo tributário</p>
+                <p class="section-description">O cálculo usa uma unidade do produto de maior preço. O regime tributário vem da empresa cadastrada na FiscalHub.</p>
+              </div>
+              <div class="sidebar-field">
+                <label for="ncmCode">NCM confirmado (8 dígitos)</label>
+                <div class="search-row fiscal-search-row"><input id="ncmCode" type="text" inputmode="numeric" maxlength="8" pattern="[0-9]{8}" placeholder="Confirme com seu contador" autocomplete="off" /><button id="ncmLookupButton" class="market-search-button" type="button">Validar NCM</button></div>
+                <p id="ncmLookupStatus" class="helper-text" role="status">A classificação fiscal precisa ser confirmada; o nome do produto não determina um NCM confiável.</p>
+                <p id="ncmDescription" class="fiscal-description" hidden></p>
+              </div>
+              <div class="sidebar-grid sidebar-grid--two">
+                <div class="sidebar-field"><label for="originState">UF de origem</label><input id="originState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="SP" autocomplete="off" /></div>
+                <div class="sidebar-field"><label for="destinationState">UF de destino</label><input id="destinationState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="SP" autocomplete="off" /></div>
+              </div>
+              <p id="marketTaxContextStatus" class="helper-text" role="status">Confirme o NCM e as UFs para habilitar o cálculo.</p>
+            </section>
+
             <section class="manual-market-fallback" aria-labelledby="manual-market-title">
               <div class="tab-panel-heading compact">
                 <p class="eyebrow">Alternativa manual</p>
@@ -500,6 +517,7 @@
             </header>
             <p id="marketDashboardStatus" class="market-dashboard-status" role="status"></p>
             <div id="marketStats" class="market-stats"></div>
+            <div id="marketTaxDetails" class="market-tax-details" aria-live="polite"></div>
             <article id="selectedMarketProduct" class="selected-market-product" hidden></article>
             <div id="marketResults" class="market-results"></div>
           </section>

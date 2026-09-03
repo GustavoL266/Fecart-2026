@@ -18,6 +18,7 @@ Aplicação web para calcular preço de venda sustentável, comparar referência
 - Salvamento de todos os campos relevantes da consulta (entradas, memória do cálculo e referência de mercado) em `calculation_data`.
 - Consulta de NCM pela Focus NFe exclusivamente no backend, com memória de cálculo, origem dos dados e aviso explícito de pendências fiscais.
 - Consulta opcional de produtos e preços do Google Shopping pela SearchAPI.io, sempre através do backend.
+- Cálculo sob demanda dos tributos do produto de maior preço pela FiscalHub, com NCM confirmado, cache curto e detalhamento dos campos retornados.
 - Cálculo técnico canônico no mesmo módulo puro para navegador e servidor, com validação em ambos os lados e sem arredondamentos intermediários.
 - Validação no navegador e no servidor, limitação de tentativas de autenticação, cabeçalhos de segurança e respostas sem hashes/senhas.
 
@@ -55,7 +56,7 @@ Antes de publicar, troque obrigatoriamente `SESSION_SECRET`, a senha de banco e 
 
 Defina `FOCUS_NFE_TOKEN` somente no ambiente do processo. Em desenvolvimento, a aplicação usa homologação; com `NODE_ENV=production`, usa `https://api.focusnfe.com.br` por padrão. `FOCUS_NFE_BASE_URL` é opcional e deve ser configurada apenas quando você quiser forçar um dos ambientes oficiais. O token precisa corresponder ao ambiente escolhido. Use `FOCUS_NFE_TIMEOUT_MS=5000`. O token é enviado pelo backend como usuário do HTTP Basic com senha vazia; nunca é exposto ao navegador, salvo no banco ou incluído em logs.
 
-O assistente usa a Focus NFe apenas para consultar e validar a descrição de um NCM exato. A documentação não oferece um endpoint de cálculo tributário automático: a carga tributária continua sendo um dado informado/regra configurada e o resultado aparece como estimativa fiscal pendente. Consulte [docs/focus-nfe.md](docs/focus-nfe.md) para limites, dados exigidos do contador e avaliação de NF-e recebidas.
+O assistente usa a Focus NFe apenas para consultar e validar a descrição de um NCM exato. Ela não é apresentada como origem do cálculo tributário. Consulte [docs/focus-nfe.md](docs/focus-nfe.md) para os limites dessa validação.
 
 ### SearchAPI.io / Google Shopping
 
@@ -72,6 +73,20 @@ SEARCHAPI_TIMEOUT_MS=15000
 
 O endpoint diferencia configuração ausente (`503`), consulta inválida (`400`), credencial recusada ou sem permissão (`401/403`), limite (`429`), resposta externa inválida (`502`), falhas externas (`5xx`) e timeout (`504`). Os logs registram apenas consulta, provedor, status, contagem e uso de cache — nunca a chave ou o cabeçalho de autorização. Consulte [docs/searchapi.md](docs/searchapi.md) para o contrato externo e o teste real.
 
+### FiscalHub
+
+O navegador chama somente `POST /tax/calculate`. O backend envia `X-Api-Key` para `POST https://api.fiscalhub.com.br/api/v1/tributario/calcular` com `empresaId`, UFs e um item: o produto de maior preço da pesquisa atual, `quantidade: 1`. O cálculo acontece apenas após clique do usuário e é reutilizado por cinco minutos quando NCM, preço, UFs e empresa não mudam.
+
+Configure somente no ambiente do servidor:
+
+```text
+FISCALHUB_API_KEY=
+FISCALHUB_EMPRESA_ID=
+FISCALHUB_TIMEOUT_MS=10000
+```
+
+`FISCALHUB_EMPRESA_ID` é o UUID da empresa cadastrada no portal FiscalHub. O regime tributário usado pelo motor pertence a esse cadastro; ele não é inventado pelo frontend. A busca descritiva de NCM serve apenas para sugestões e sempre exige confirmação pela Focus NFe. O sistema usa o total final explícito da FiscalHub, ou um total de tributos explícito quando fornecido; ele não soma ICMS/PIS/COFINS e IBS/CBS granularmente. Consulte [docs/fiscalhub.md](docs/fiscalhub.md).
+
 ## Publicação a partir do GitHub
 
 **Não publique este projeto no GitHub Pages.** Ele serve apenas HTML, CSS e JavaScript estáticos: não executa `server.js`, não mantém sessões nem conecta ao PostgreSQL. Por isso as chamadas `GET /auth/me` retornam `404` e os `POST /auth/login` e `POST /auth/register` retornam `405` no Pages. Além disso, o GitHub não recomenda o Pages para sites que recebem senhas.
@@ -83,9 +98,10 @@ O repositório contém [`render.yaml`](render.yaml), que publica a aplicação c
 3. O serviço cria o PostgreSQL, injeta `DATABASE_URL`, gera `SESSION_SECRET`, executa `npm run migrate` antes de cada publicação e inicia `npm start`.
 4. Configure no Web Service um `FOCUS_NFE_TOKEN` de produção. O Blueprint já seleciona `https://api.focusnfe.com.br` e o backend registra apenas `configured=true/false`, nunca o token.
 5. Para habilitar a pesquisa de mercado, preencha manualmente `SEARCHAPI_API_KEY` no Web Service. O Blueprint define `SEARCHAPI_TIMEOUT_MS=15000`; a existência de `sync: false` não preenche o segredo.
-6. Abra a URL `https://…onrender.com` fornecida pelo Render. Essa é a URL que deve ser compartilhada e usada para criar contas.
+6. Preencha `FISCALHUB_API_KEY` e `FISCALHUB_EMPRESA_ID` no Web Service para habilitar o cálculo tributário.
+7. Abra a URL `https://…onrender.com` fornecida pelo Render. Essa é a URL que deve ser compartilhada e usada para criar contas.
 
-Em um serviço Render já existente, abra **Environment**, adicione a key `SEARCHAPI_API_KEY` com a chave real fornecida pela SearchAPI.io e escolha **Save Changes**. Em seguida execute **Manual Deploy → Deploy latest commit**. Nunca grave o valor no GitHub ou no frontend.
+Em um serviço Render já existente, abra **Environment**, confira `SEARCHAPI_API_KEY`, `FISCALHUB_API_KEY` e `FISCALHUB_EMPRESA_ID` e escolha **Save Changes**. Em seguida execute **Manual Deploy → Deploy latest commit**. Nunca grave os valores no GitHub ou no frontend.
 
 Não é preciso (nem correto) colocar credenciais no GitHub, no código ou no GitHub Pages. Se o Pages já estiver ativo no repositório, desative-o em **Settings → Pages** para evitar que usuários cheguem à cópia estática sem API.
 
@@ -98,6 +114,7 @@ O frontend e a API são servidos pelo mesmo processo; não há um segundo servid
 - `MIGRATIONS_PENDING`: execute `npm run migrate` (ou `pnpm migrate`) antes de iniciar a aplicação.
 - `market.configured: false` no `/health`: confira se `SEARCHAPI_API_KEY` foi configurada no backend. O endpoint nunca mostra a chave.
 - `market.configured: true` confirma somente que a variável existe. Depois de uma pesquisa, consulte os logs `[Market] Status` e `[Market] Results` para distinguir credencial inválida (`401`), falta de permissão (`403`), limite (`429`) e falha externa (`5xx`).
+- `tax.configured: false` no `/health`: confira `FISCALHUB_API_KEY`; `tax.companyConfigured: false`: cadastre/selecione a empresa no portal FiscalHub e configure seu UUID em `FISCALHUB_EMPRESA_ID`.
 
 Na inicialização, o servidor testa a conexão com o PostgreSQL e confirma que as tabelas exigidas existem. Assim, uma configuração incompleta aparece no terminal com a causa concreta, em vez de falhar apenas ao enviar o formulário.
 
@@ -155,7 +172,9 @@ O relacionamento `products.user_id → users.id` usa chave estrangeira com `ON D
 | GET | `/products` | Obrigatória |
 | GET | `/products/:id` | Obrigatória + dono |
 | GET | `/fiscal/ncms/:codigo` | Obrigatória; proxy backend para Focus NFe |
+| GET | `/fiscal/ncms/search?q=termos` | Obrigatória; sugestões de NCM via FiscalHub, sem confirmação automática |
 | GET | `/market/search?q=termos` | Obrigatória; proxy backend para SearchAPI Google Shopping |
+| POST | `/tax/calculate` | Obrigatória; calcula na FiscalHub somente o maior preço informado pelo state |
 | POST | `/products` | Obrigatória |
 | PATCH | `/products/:id` | Obrigatória + dono |
 | DELETE | `/products/:id` | Obrigatória + dono |

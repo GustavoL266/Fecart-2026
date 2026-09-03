@@ -501,7 +501,7 @@ function isGitHubPages() {
 
 async function request(path, options = {}) {
   const { method = "GET", body, handleUnauthorized = true } = options;
-  if (isGitHubPages() && (path.startsWith("/auth") || path.startsWith("/products") || path.startsWith("/market"))) {
+  if (isGitHubPages() && (path.startsWith("/auth") || path.startsWith("/products") || path.startsWith("/market") || path.startsWith("/tax") || path.startsWith("/fiscal"))) {
     throw new ApiError(
       "Este endereço do GitHub Pages exibe apenas a interface. Abra a URL da aplicação no Render para criar ou acessar sua conta.",
       503,
@@ -535,6 +535,31 @@ const api = {
   patch: (path, body, options) => request(path, { ...options, method: "PATCH", body }),
   delete: (path, options) => request(path, { ...options, method: "DELETE" }),
 };
+
+
+
+class TaxService {
+  #api;
+
+  constructor({ apiClient = api } = {}) {
+    this.#api = apiClient;
+  }
+
+  calculateMaximum({ ncm, originState, destinationState, unitValue }) {
+    return this.#api.post("/tax/calculate", {
+      ncm,
+      originState,
+      destinationState,
+      quantity: 1,
+      unitValue,
+    }, { handleUnauthorized: false });
+  }
+
+  searchNcmSuggestions(description) {
+    const query = String(description || "").trim().replace(/\s+/g, " ").slice(0, 120);
+    return this.#api.get(`/fiscal/ncms/search?q=${encodeURIComponent(query)}`, { handleUnauthorized: false });
+  }
+}
 
 
 const MARKET_REFERENCE_KEY = "assistente-precificacao-market-reference-v1";
@@ -889,22 +914,67 @@ function renderFiscalSummary(document, assessment) {
   document.querySelector("#fiscalSummary").innerHTML = `<p><strong>NCM:</strong> ${escapeHtml(ncm)} (${escapeHtml(status)})</p><p><strong>Carga usada:</strong> estimada manualmente; a Focus NFe não calculou qualquer alíquota.</p><p><strong>Tributos ainda dependentes de regra externa:</strong> ${escapeHtml(assessment.unresolvedTaxes.join(", "))}.</p>`;
 }
 
-function renderTaxedMaximumStat(marketState) {
-  const maximumItem = marketState.items.reduce((current, item) => {
+function maximumMarketItemForDisplay(marketState) {
+  return marketState.items.reduce((current, item) => {
     if (!Number.isFinite(item.price)) return current;
     return !current || item.price > current.price ? item : current;
   }, null);
+}
+
+function taxAction(label, attribute, secondary = false) {
+  return `<button type="button" class="market-tax-action${secondary ? " secondary" : ""}" ${attribute}>${label}</button>`;
+}
+
+function renderTaxedMaximumStat(marketState) {
+  const maximumItem = maximumMarketItemForDisplay(marketState);
   const maximumPrice = maximumItem?.price ?? marketState.stats.max;
-  const details = [
+  const tax = marketState.tax || { status: "idle" };
+  const context = marketState.taxContext || {};
+  const marketDetails = [
     maximumItem ? `Produto: ${maximumItem.title}` : null,
     `Preço de mercado: ${dashboardMoney(maximumPrice)}`,
-    "Tributos: não disponíveis",
-    "Total: não disponível",
     "Fonte de mercado: Google Shopping",
-    "Fonte fiscal: nenhum TaxProvider de cálculo configurado",
   ].filter(Boolean).join(" · ");
 
-  return `<div class="market-tax-stat" title="${escapeHtml(details)}" aria-label="${escapeHtml(details)}" tabindex="0"><span>Maior + tributos</span><strong>—</strong><small>Tributação pendente</small></div>`;
+  if (tax.status === "loading") {
+    return '<div class="market-tax-stat is-loading"><span>Maior + tributos</span><strong>—</strong><small>Calculando na FiscalHub…</small></div>';
+  }
+  if (tax.status === "success") {
+    return `<div class="market-tax-stat is-success"><span>Maior + tributos</span><strong>${dashboardMoney(tax.result.total)}</strong><small>Calculado pela FiscalHub${tax.result.cached ? " · cache" : ""}</small>${taxAction(tax.expanded ? "Ocultar tributos" : "Ver tributos", "data-toggle-market-taxes")}</div>`;
+  }
+  if (tax.status === "error") {
+    const companyMissing = tax.code === "FISCALHUB_EMPRESA_NOT_CONFIGURED";
+    return `<div class="market-tax-stat is-error"><span>Maior + tributos</span><strong>—</strong><small>${escapeHtml(tax.shortMessage || "Não foi possível calcular")}</small>${companyMissing ? "" : taxAction("Tentar novamente", "data-calculate-market-taxes", true)}</div>`;
+  }
+  if (!context.ncmConfirmed) {
+    return `<div class="market-tax-stat" title="${escapeHtml(marketDetails)}" aria-label="${escapeHtml(`${marketDetails} · NCM necessário`)}"><span>Maior + tributos</span><strong>—</strong><small>NCM necessário</small><span class="market-tax-actions">${taxAction("Informar/confirmar NCM", "data-confirm-market-ncm", true)}${taxAction("Buscar sugestões", "data-search-ncm-suggestions", true)}</span></div>`;
+  }
+  if (!context.originState || !context.destinationState) {
+    return `<div class="market-tax-stat"><span>Maior + tributos</span><strong>—</strong><small>Informe as UFs</small></div>`;
+  }
+
+  return `<div class="market-tax-stat"><span>Maior + tributos</span><strong>—</strong><small>${escapeHtml(maximumItem?.title || dashboardMoney(maximumPrice))}</small>${taxAction("Calcular tributos", "data-calculate-market-taxes")}</div>`;
+}
+
+function renderTaxDetails(marketState) {
+  const tax = marketState.tax || { status: "idle" };
+  if (tax.status === "ncm-loading") {
+    return '<div class="market-tax-notice"><strong>Buscando classificações possíveis…</strong><p>A seleção continuará dependendo da sua confirmação.</p></div>';
+  }
+  if (tax.status === "ncm-suggestions") {
+    if (!tax.suggestions.length) {
+      return '<div class="market-tax-notice"><strong>Nenhuma sugestão confiável foi encontrada.</strong><p>Informe o NCM confirmado pelo seu contador.</p></div>';
+    }
+    const suggestions = tax.suggestions.map((item) => `<li><div><strong>${escapeHtml(item.code)}</strong><span>${escapeHtml(item.description)}</span></div><button type="button" class="secondary-button" data-use-ncm-suggestion="${escapeHtml(item.code)}">Usar e validar</button></li>`).join("");
+    return `<div class="market-tax-notice"><strong>Classificação fiscal precisa ser confirmada.</strong><p>A FiscalHub encontrou possibilidades pela descrição; escolha apenas se corresponder ao produto.</p><ul class="ncm-suggestion-list">${suggestions}</ul></div>`;
+  }
+  if (tax.status === "ncm-error" || tax.status === "error") {
+    return `<div class="market-tax-notice is-error" role="alert"><strong>${escapeHtml(tax.message || "Não foi possível concluir o cálculo tributário.")}</strong></div>`;
+  }
+  if (tax.status !== "success" || !tax.expanded) return "";
+
+  const rows = tax.result.taxes.map((item) => `<div><dt>${escapeHtml(item.label)}</dt><dd>${dashboardMoney(item.value)}</dd></div>`).join("");
+  return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">FiscalHub</p><h3 id="market-tax-breakdown-title">Detalhes dos tributos</h3></div><dl><div><dt>Preço de mercado</dt><dd>${dashboardMoney(tax.result.marketPrice)}</dd></div>${rows}<div class="market-tax-total"><dt>Total</dt><dd>${dashboardMoney(tax.result.total)}</dd></div></dl><p>NCM ${escapeHtml(tax.result.ncm)} · ${escapeHtml(tax.result.originState)} → ${escapeHtml(tax.result.destinationState)} · quantidade 1</p></section>`;
 }
 
 function renderMarketPanel(document, marketState) {
@@ -913,6 +983,7 @@ function renderMarketPanel(document, marketState) {
   const results = document.querySelector("#marketResults");
   const sidebarStatus = document.querySelector("#marketSearchStatus");
   const dashboardStatus = document.querySelector("#marketDashboardStatus");
+  const taxDetails = document.querySelector("#marketTaxDetails");
   const selected = document.querySelector("#selectedMarketProduct");
   const searchButton = document.querySelector("#marketSearchButton");
   panel.hidden = marketState.status === "idle";
@@ -924,6 +995,7 @@ function renderMarketPanel(document, marketState) {
     ? ` · Nota ${selectedItem.rating.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}${Number.isInteger(selectedItem.reviews) ? ` (${selectedItem.reviews.toLocaleString("pt-BR")} avaliações)` : ""}`
     : "";
   selected.innerHTML = selectedItem ? `<p class="eyebrow">Produto individual selecionado</p><h3>${escapeHtml(selectedItem.title)}</h3><strong>${dashboardMoney(selectedItem.price)}</strong><small>Loja: ${escapeHtml(selectedItem.seller || selectedItem.source)}${escapeHtml(selectedRating)}</small><small>Google Shopping · consulta de ${escapeHtml(selectedItem.consultedAt ? new Date(selectedItem.consultedAt).toLocaleString("pt-BR") : "agora")}</small><button type="button" class="secondary-button" data-change-market-reference>Remover seleção</button>` : "";
+  taxDetails.innerHTML = "";
   if (marketState.status === "loading") {
     sidebarStatus.textContent = "Buscando produtos no mercado…";
     dashboardStatus.textContent = "Buscando produtos no mercado…";
@@ -962,6 +1034,7 @@ function renderMarketPanel(document, marketState) {
     ["Maior", marketState.stats.max],
   ].map(([label, value]) => `<div><span>${label}</span><strong>${dashboardMoney(value)}</strong></div>`).join("");
   stats.innerHTML = `${standardStats}${renderTaxedMaximumStat(marketState)}`;
+  taxDetails.innerHTML = renderTaxDetails(marketState);
   results.innerHTML = marketState.items.map((item) => {
     const isSelected = marketState.selectedItem?.id === item.id;
     const rating = Number.isFinite(item.rating)
@@ -1379,6 +1452,7 @@ const $ = (selector) => document.querySelector(selector);
 const themeStorageKey = "assistente-precificacao-theme";
 const detailRouteHashes = Object.freeze({ price: "#preco-calculado" });
 const market = new MarketService();
+const taxService = new TaxService();
 const taxRuleEngine = new ConfiguredTaxRuleEngine();
 const formFieldIds = [
   "ncmCode",
@@ -1418,6 +1492,7 @@ let marketState = {
   stats: null,
   selectedItem: null,
   error: "",
+  tax: { status: "idle", expanded: false, result: null, suggestions: [], code: "", message: "", shortMessage: "" },
 };
 let manualMarketValue = elements.marketPrice.value;
 let productSearchTimer;
@@ -1548,6 +1623,32 @@ function currentPricingValidation() {
   return validation;
 }
 
+function emptyMarketTaxState(overrides = {}) {
+  return { status: "idle", expanded: false, result: null, suggestions: [], code: "", message: "", shortMessage: "", ...overrides };
+}
+
+function currentMarketTaxContext() {
+  const ncm = String(elements.ncmCode.value || "").replace(/\D/g, "");
+  return {
+    ncm,
+    ncmConfirmed: focusState.status === "success" && focusState.ncm?.codigo === ncm,
+    originState: String(elements.originState.value || "").trim().toUpperCase(),
+    destinationState: String(elements.destinationState.value || "").trim().toUpperCase(),
+  };
+}
+
+function marketStateForRender() {
+  return { ...marketState, tax: marketState.tax || emptyMarketTaxState(), taxContext: currentMarketTaxContext() };
+}
+
+function renderMarketTaxContextStatus() {
+  const context = currentMarketTaxContext();
+  const status = $("#marketTaxContextStatus");
+  if (!context.ncmConfirmed) status.textContent = "NCM necessário: informe uma classificação e confirme-a pela Focus NFe.";
+  else if (!context.originState || !context.destinationState) status.textContent = "Informe UF de origem e UF de destino para calcular.";
+  else status.textContent = `Pronto para calcular 1 unidade do maior preço: NCM ${context.ncm}, ${context.originState} → ${context.destinationState}.`;
+}
+
 function marketReferenceFromState(inputs) {
   const rule = elements.marketReferenceRule.value || "manual";
   if (rule === "manual") return inputs.marketPrice ? { price: inputs.marketPrice, source: "manual", rule } : null;
@@ -1561,15 +1662,17 @@ function marketReferenceFromState(inputs) {
 
 function render() {
   const validation = currentPricingValidation();
+  const viewMarketState = marketStateForRender();
   if (validation.isValid) {
     const inputs = validation.inputs;
     const result = calculatePricing(inputs, marketReferenceFromState(inputs));
     const fiscalAssessment = taxRuleEngine.assess(inputs, focusState);
-    renderDashboard(document, result, marketState, fiscalAssessment);
+    renderDashboard(document, result, viewMarketState, fiscalAssessment);
   } else {
-    renderIncompleteDashboard(document, marketState, validation.errors);
+    renderIncompleteDashboard(document, viewMarketState, validation.errors);
   }
   renderNcmState();
+  renderMarketTaxContextStatus();
   $("#mobileSuggestedPrice").textContent = $("#suggestedPrice").textContent;
   pricingTabs.updateCompletion();
 }
@@ -1751,6 +1854,91 @@ function setMarketError(query, caughtError) {
   };
 }
 
+function maximumMarketItem() {
+  return marketState.items.reduce((current, item) => {
+    if (!Number.isFinite(item.price)) return current;
+    return !current || item.price > current.price ? item : current;
+  }, null);
+}
+
+function setMarketTaxError(error) {
+  const messages = {
+    FISCALHUB_NOT_CONFIGURED: ["FiscalHub não configurada", "Configure FISCALHUB_API_KEY no ambiente do backend."],
+    FISCALHUB_EMPRESA_NOT_CONFIGURED: ["Empresa não configurada", "Configure a empresa utilizada para o cálculo tributário."],
+    FISCALHUB_UNAUTHORIZED: ["Falha de autenticação", "A API Key da FiscalHub é inválida ou foi revogada."],
+    FISCALHUB_FORBIDDEN: ["Sem permissão", "A empresa ou o recurso não está autorizado na FiscalHub."],
+    FISCALHUB_NOT_FOUND: ["Empresa não encontrada", "A empresa ou o recurso não foi encontrado na FiscalHub."],
+    FISCALHUB_INVALID_OPERATION: ["Dados inválidos", "Revise o NCM e as UFs da operação."],
+    FISCALHUB_ERROR: ["Erro na FiscalHub", "A FiscalHub não conseguiu concluir o cálculo."],
+    FISCALHUB_TOTAL_NOT_PROVIDED: ["Total indisponível", "A FiscalHub não informou um total final seguro; os impostos não foram somados manualmente."],
+  };
+  const [shortMessage, fallback] = messages[error instanceof ApiError ? error.code : ""] || ["Cálculo indisponível", messageFor(error)];
+  marketState = { ...marketState, tax: emptyMarketTaxState({ status: "error", code: error.code || "", message: error.message || fallback, shortMessage }) };
+}
+
+async function calculateMaximumTaxes() {
+  if (marketState.tax?.status === "loading") return;
+  const maximumItem = maximumMarketItem();
+  if (!maximumItem) return;
+  const context = currentMarketTaxContext();
+  if (!context.ncmConfirmed) {
+    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "ncm-error", message: "NCM necessário. Informe a classificação fiscal e confirme-a pela Focus NFe." }) };
+    render();
+    elements.ncmCode.focus();
+    return;
+  }
+  if (!/^[A-Z]{2}$/.test(context.originState) || !/^[A-Z]{2}$/.test(context.destinationState)) {
+    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "error", shortMessage: "Informe as UFs", message: "Informe UF de origem e UF de destino antes de calcular." }) };
+    render();
+    return;
+  }
+  const requestSignature = [maximumItem.id, maximumItem.price, context.ncm, context.originState, context.destinationState].join("|");
+  const requestIsCurrent = () => {
+    const currentMaximum = maximumMarketItem();
+    const currentContext = currentMarketTaxContext();
+    return [currentMaximum?.id, currentMaximum?.price, currentContext.ncm, currentContext.originState, currentContext.destinationState].join("|") === requestSignature;
+  };
+
+  marketState = { ...marketState, tax: emptyMarketTaxState({ status: "loading" }) };
+  render();
+  try {
+    const response = await taxService.calculateMaximum({
+      ncm: context.ncm,
+      originState: context.originState,
+      destinationState: context.destinationState,
+      unitValue: maximumItem.price,
+    });
+    if (!requestIsCurrent()) return;
+    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "success", result: response.calculation }) };
+  } catch (error) {
+    if (!requestIsCurrent()) return;
+    setMarketTaxError(error);
+  }
+  render();
+}
+
+async function searchNcmSuggestions() {
+  if (marketState.tax?.status === "ncm-loading") return;
+  const maximumItem = maximumMarketItem();
+  const description = maximumItem?.title || marketState.query;
+  if (!description) return;
+  marketState = { ...marketState, tax: emptyMarketTaxState({ status: "ncm-loading" }) };
+  render();
+  try {
+    const response = await taxService.searchNcmSuggestions(description);
+    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "ncm-suggestions", suggestions: response.results || [] }) };
+  } catch (error) {
+    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "ncm-error", code: error.code || "", message: messageFor(error) }) };
+  }
+  render();
+}
+
+async function useNcmSuggestion(code) {
+  elements.ncmCode.value = String(code || "").replace(/\D/g, "");
+  marketState = { ...marketState, tax: emptyMarketTaxState() };
+  await lookupNcm();
+}
+
 async function searchMarket() {
   if (marketState.status === "loading") return;
   const query = $("#marketQuery").value.trim();
@@ -1760,7 +1948,7 @@ async function searchMarket() {
     return;
   }
 
-  marketState = { ...marketState, status: "loading", query, items: [], stats: null, error: "" };
+  marketState = { ...marketState, status: "loading", query, items: [], stats: null, error: "", tax: emptyMarketTaxState() };
   render();
 
   try {
@@ -2110,13 +2298,21 @@ async function submitRegistration(event) {
   elements.customerType,
   elements.operationPurpose,
 ].forEach((field) => {
-  field.addEventListener("input", render);
-  field.addEventListener("change", render);
+  const updateField = () => {
+    if (field === elements.originState || field === elements.destinationState) {
+      field.value = field.value.toUpperCase();
+      marketState = { ...marketState, tax: emptyMarketTaxState() };
+    }
+    render();
+  };
+  field.addEventListener("input", updateField);
+  field.addEventListener("change", updateField);
 });
 
 elements.ncmCode.addEventListener("input", () => {
   const currentCode = String(elements.ncmCode.value || "").replace(/\D/g, "");
   if (focusState.ncm?.codigo !== currentCode) focusState = { status: "idle", ncm: null, source: "", environment: "", checkedAt: "", error: "", unavailable: false };
+  marketState = { ...marketState, tax: emptyMarketTaxState() };
   render();
 });
 
@@ -2148,6 +2344,18 @@ $("#marketPanel").addEventListener("click", (event) => {
   const button = event.target.closest("[data-market-select]");
   if (button) selectMarketProduct(button.dataset.marketSelect);
   if (event.target.closest("[data-market-retry]")) void searchMarket();
+  if (event.target.closest("[data-calculate-market-taxes]")) void calculateMaximumTaxes();
+  if (event.target.closest("[data-search-ncm-suggestions]")) void searchNcmSuggestions();
+  if (event.target.closest("[data-confirm-market-ncm]")) {
+    pricingTabs.activate("market");
+    elements.ncmCode.focus();
+  }
+  const suggestion = event.target.closest("[data-use-ncm-suggestion]");
+  if (suggestion) void useNcmSuggestion(suggestion.dataset.useNcmSuggestion);
+  if (event.target.closest("[data-toggle-market-taxes]")) {
+    marketState = { ...marketState, tax: { ...marketState.tax, expanded: !marketState.tax.expanded } };
+    render();
+  }
 });
 $("#selectedMarketProduct").addEventListener("click", (event) => {
   if (event.target.closest("[data-change-market-reference]")) restoreManualMarket({ focusSearch: true });

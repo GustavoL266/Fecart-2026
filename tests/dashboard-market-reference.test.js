@@ -31,7 +31,7 @@ test("dashboard lê o resultado canônico e distingue produto individual", () =>
   assert.match(document.nodes.get("#marketDashboardStatus").textContent, /2 referências encontradas/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /Média/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /Maior \+ tributos/);
-  assert.match(document.nodes.get("#marketStats").innerHTML, /Tributação pendente/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /NCM necessário/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /Produto alternativo/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /Preço de mercado: R\$\s32,00/);
   assert.doesNotMatch(document.nodes.get("#marketStats").innerHTML, /Fonte fiscal: Focus NFe/);
@@ -40,4 +40,38 @@ test("dashboard lê o resultado canônico e distingue produto individual", () =>
   assert.match(document.nodes.get("#marketResults").innerHTML, /Usar como referência/);
   assert.equal(document.nodes.get("#primaryMarketValue").hidden, false);
   assert.match(document.nodes.get("#primaryMarketSource").textContent, /Produto principal.*Loja Exemplo.*Google Shopping/);
+});
+
+test("dashboard atualiza Maior + tributos e mostra somente tributos retornados", () => {
+  const maximum = { id: "produto-maximo", title: "Produto máximo", price: 100, source: "Loja", seller: "Loja", currency: "BRL", url: "https://example.com/max" };
+  const result = calculatePricing(inputs, null);
+  const document = documentStub();
+  renderDashboard(document, result, {
+    status: "success",
+    query: "Produto máximo",
+    items: [maximum],
+    stats: { count: 1, average: 100, median: 100, min: 100, max: 100 },
+    marketplace: "Google Shopping",
+    taxContext: { ncm: "09012100", ncmConfirmed: true, originState: "SP", destinationState: "RJ" },
+    tax: {
+      status: "success",
+      expanded: true,
+      result: {
+        marketPrice: 100,
+        total: 120,
+        ncm: "09012100",
+        originState: "SP",
+        destinationState: "RJ",
+        cached: false,
+        taxes: [{ key: "valorIcms", label: "ICMS", value: 18 }],
+      },
+    },
+  }, new ConfiguredTaxRuleEngine().assess(inputs));
+
+  assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s120,00/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Calculado pela FiscalHub/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Preço de mercado/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /ICMS/);
+  assert.doesNotMatch(document.nodes.get("#marketTaxDetails").innerHTML, /COFINS/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Total/);
 });

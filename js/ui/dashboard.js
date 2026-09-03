@@ -47,22 +47,67 @@ function renderFiscalSummary(document, assessment) {
   document.querySelector("#fiscalSummary").innerHTML = `<p><strong>NCM:</strong> ${escapeHtml(ncm)} (${escapeHtml(status)})</p><p><strong>Carga usada:</strong> estimada manualmente; a Focus NFe não calculou qualquer alíquota.</p><p><strong>Tributos ainda dependentes de regra externa:</strong> ${escapeHtml(assessment.unresolvedTaxes.join(", "))}.</p>`;
 }
 
-function renderTaxedMaximumStat(marketState) {
-  const maximumItem = marketState.items.reduce((current, item) => {
+function maximumMarketItemForDisplay(marketState) {
+  return marketState.items.reduce((current, item) => {
     if (!Number.isFinite(item.price)) return current;
     return !current || item.price > current.price ? item : current;
   }, null);
+}
+
+function taxAction(label, attribute, secondary = false) {
+  return `<button type="button" class="market-tax-action${secondary ? " secondary" : ""}" ${attribute}>${label}</button>`;
+}
+
+function renderTaxedMaximumStat(marketState) {
+  const maximumItem = maximumMarketItemForDisplay(marketState);
   const maximumPrice = maximumItem?.price ?? marketState.stats.max;
-  const details = [
+  const tax = marketState.tax || { status: "idle" };
+  const context = marketState.taxContext || {};
+  const marketDetails = [
     maximumItem ? `Produto: ${maximumItem.title}` : null,
     `Preço de mercado: ${dashboardMoney(maximumPrice)}`,
-    "Tributos: não disponíveis",
-    "Total: não disponível",
     "Fonte de mercado: Google Shopping",
-    "Fonte fiscal: nenhum TaxProvider de cálculo configurado",
   ].filter(Boolean).join(" · ");
 
-  return `<div class="market-tax-stat" title="${escapeHtml(details)}" aria-label="${escapeHtml(details)}" tabindex="0"><span>Maior + tributos</span><strong>—</strong><small>Tributação pendente</small></div>`;
+  if (tax.status === "loading") {
+    return '<div class="market-tax-stat is-loading"><span>Maior + tributos</span><strong>—</strong><small>Calculando na FiscalHub…</small></div>';
+  }
+  if (tax.status === "success") {
+    return `<div class="market-tax-stat is-success"><span>Maior + tributos</span><strong>${dashboardMoney(tax.result.total)}</strong><small>Calculado pela FiscalHub${tax.result.cached ? " · cache" : ""}</small>${taxAction(tax.expanded ? "Ocultar tributos" : "Ver tributos", "data-toggle-market-taxes")}</div>`;
+  }
+  if (tax.status === "error") {
+    const companyMissing = tax.code === "FISCALHUB_EMPRESA_NOT_CONFIGURED";
+    return `<div class="market-tax-stat is-error"><span>Maior + tributos</span><strong>—</strong><small>${escapeHtml(tax.shortMessage || "Não foi possível calcular")}</small>${companyMissing ? "" : taxAction("Tentar novamente", "data-calculate-market-taxes", true)}</div>`;
+  }
+  if (!context.ncmConfirmed) {
+    return `<div class="market-tax-stat" title="${escapeHtml(marketDetails)}" aria-label="${escapeHtml(`${marketDetails} · NCM necessário`)}"><span>Maior + tributos</span><strong>—</strong><small>NCM necessário</small><span class="market-tax-actions">${taxAction("Informar/confirmar NCM", "data-confirm-market-ncm", true)}${taxAction("Buscar sugestões", "data-search-ncm-suggestions", true)}</span></div>`;
+  }
+  if (!context.originState || !context.destinationState) {
+    return `<div class="market-tax-stat"><span>Maior + tributos</span><strong>—</strong><small>Informe as UFs</small></div>`;
+  }
+
+  return `<div class="market-tax-stat"><span>Maior + tributos</span><strong>—</strong><small>${escapeHtml(maximumItem?.title || dashboardMoney(maximumPrice))}</small>${taxAction("Calcular tributos", "data-calculate-market-taxes")}</div>`;
+}
+
+function renderTaxDetails(marketState) {
+  const tax = marketState.tax || { status: "idle" };
+  if (tax.status === "ncm-loading") {
+    return '<div class="market-tax-notice"><strong>Buscando classificações possíveis…</strong><p>A seleção continuará dependendo da sua confirmação.</p></div>';
+  }
+  if (tax.status === "ncm-suggestions") {
+    if (!tax.suggestions.length) {
+      return '<div class="market-tax-notice"><strong>Nenhuma sugestão confiável foi encontrada.</strong><p>Informe o NCM confirmado pelo seu contador.</p></div>';
+    }
+    const suggestions = tax.suggestions.map((item) => `<li><div><strong>${escapeHtml(item.code)}</strong><span>${escapeHtml(item.description)}</span></div><button type="button" class="secondary-button" data-use-ncm-suggestion="${escapeHtml(item.code)}">Usar e validar</button></li>`).join("");
+    return `<div class="market-tax-notice"><strong>Classificação fiscal precisa ser confirmada.</strong><p>A FiscalHub encontrou possibilidades pela descrição; escolha apenas se corresponder ao produto.</p><ul class="ncm-suggestion-list">${suggestions}</ul></div>`;
+  }
+  if (tax.status === "ncm-error" || tax.status === "error") {
+    return `<div class="market-tax-notice is-error" role="alert"><strong>${escapeHtml(tax.message || "Não foi possível concluir o cálculo tributário.")}</strong></div>`;
+  }
+  if (tax.status !== "success" || !tax.expanded) return "";
+
+  const rows = tax.result.taxes.map((item) => `<div><dt>${escapeHtml(item.label)}</dt><dd>${dashboardMoney(item.value)}</dd></div>`).join("");
+  return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">FiscalHub</p><h3 id="market-tax-breakdown-title">Detalhes dos tributos</h3></div><dl><div><dt>Preço de mercado</dt><dd>${dashboardMoney(tax.result.marketPrice)}</dd></div>${rows}<div class="market-tax-total"><dt>Total</dt><dd>${dashboardMoney(tax.result.total)}</dd></div></dl><p>NCM ${escapeHtml(tax.result.ncm)} · ${escapeHtml(tax.result.originState)} → ${escapeHtml(tax.result.destinationState)} · quantidade 1</p></section>`;
 }
 
 function renderMarketPanel(document, marketState) {
@@ -71,6 +116,7 @@ function renderMarketPanel(document, marketState) {
   const results = document.querySelector("#marketResults");
   const sidebarStatus = document.querySelector("#marketSearchStatus");
   const dashboardStatus = document.querySelector("#marketDashboardStatus");
+  const taxDetails = document.querySelector("#marketTaxDetails");
   const selected = document.querySelector("#selectedMarketProduct");
   const searchButton = document.querySelector("#marketSearchButton");
   panel.hidden = marketState.status === "idle";
@@ -82,6 +128,7 @@ function renderMarketPanel(document, marketState) {
     ? ` · Nota ${selectedItem.rating.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}${Number.isInteger(selectedItem.reviews) ? ` (${selectedItem.reviews.toLocaleString("pt-BR")} avaliações)` : ""}`
     : "";
   selected.innerHTML = selectedItem ? `<p class="eyebrow">Produto individual selecionado</p><h3>${escapeHtml(selectedItem.title)}</h3><strong>${dashboardMoney(selectedItem.price)}</strong><small>Loja: ${escapeHtml(selectedItem.seller || selectedItem.source)}${escapeHtml(selectedRating)}</small><small>Google Shopping · consulta de ${escapeHtml(selectedItem.consultedAt ? new Date(selectedItem.consultedAt).toLocaleString("pt-BR") : "agora")}</small><button type="button" class="secondary-button" data-change-market-reference>Remover seleção</button>` : "";
+  taxDetails.innerHTML = "";
   if (marketState.status === "loading") {
     sidebarStatus.textContent = "Buscando produtos no mercado…";
     dashboardStatus.textContent = "Buscando produtos no mercado…";
@@ -120,6 +167,7 @@ function renderMarketPanel(document, marketState) {
     ["Maior", marketState.stats.max],
   ].map(([label, value]) => `<div><span>${label}</span><strong>${dashboardMoney(value)}</strong></div>`).join("");
   stats.innerHTML = `${standardStats}${renderTaxedMaximumStat(marketState)}`;
+  taxDetails.innerHTML = renderTaxDetails(marketState);
   results.innerHTML = marketState.items.map((item) => {
     const isSelected = marketState.selectedItem?.id === item.id;
     const rating = Number.isFinite(item.rating)
