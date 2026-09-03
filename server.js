@@ -13,6 +13,8 @@ import { runMarketSearch } from "./lib/market-search.js";
 import { createSearchApiMarketProvider, searchApiErrorForClient, SearchApiError, redactSearchApiSensitiveData } from "./lib/searchapi-market-provider.js";
 import { createFocusNFeClient, focusNFeErrorForClient, FocusNFeError, redactFocusNFeSensitiveData } from "./lib/focus-nfe-client.js";
 import { createFiscalHubClient, fiscalHubErrorForClient, FiscalHubError, redactFiscalHubSensitiveData } from "./lib/fiscalhub-client.js";
+// TEMPORARY DIAGNOSTIC: remove this import and the marked route after validating the Render key.
+import { diagnoseFiscalHub } from "./lib/fiscalhub-diagnostic.js";
 import { createFiscalHubNcmProvider } from "./lib/fiscalhub-ncm-provider.js";
 import { createFiscalHubTaxProvider } from "./lib/fiscalhub-tax-provider.js";
 import { productForClient, userForClient } from "./lib/models.js";
@@ -71,7 +73,7 @@ app.use(
 );
 app.use(express.json({ limit: "100kb" }));
 app.use((req, res, next) => {
-  if (req.path.startsWith("/auth") || req.path.startsWith("/products") || req.path.startsWith("/fiscal") || req.path.startsWith("/market") || req.path.startsWith("/tax")) {
+  if (req.path.startsWith("/auth") || req.path.startsWith("/products") || req.path.startsWith("/fiscal") || req.path.startsWith("/market") || req.path.startsWith("/tax") || req.path.startsWith("/diagnostics")) {
     res.set("Cache-Control", "no-store");
   }
   next();
@@ -238,6 +240,20 @@ app.get("/market/search", requireAuth, marketSearchLimiter, async (req, res, nex
     const { q } = validate(marketSearchSchema, req.query, { code: "INVALID_MARKET_QUERY" });
     const result = await runMarketSearch({ provider: marketProvider, config: searchApiConfig, query: q });
     return res.json(result);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// TEMPORARY DIAGNOSTIC: protected by the existing authenticated session and fiscal rate limit.
+// Remove this block, the import above and lib/fiscalhub-diagnostic.js after the production check.
+app.get("/diagnostics/fiscalhub", requireAuth, fiscalLookupLimiter, async (req, res, next) => {
+  try {
+    const diagnostic = await diagnoseFiscalHub({
+      apiKey: process.env.FISCALHUB_API_KEY,
+      timeoutMs: fiscalHubConfig.timeoutMs,
+    });
+    return res.json(diagnostic);
   } catch (error) {
     return next(error);
   }

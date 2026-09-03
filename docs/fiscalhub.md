@@ -53,3 +53,11 @@ Os erros externos preservam 400, 401, 403, 404, 422, 429 e 500. Falha de rede us
 4. Informe UF de origem e destino.
 5. Clique em **Calcular tributos** no cartão **Maior + tributos**.
 6. Abra **Ver tributos** e confira os valores com o retorno/painel da FiscalHub.
+
+## Diagnóstico temporário da API Key
+
+Enquanto o Shell não estiver disponível no Render, um usuário autenticado pode abrir `GET /diagnostics/fiscalhub`. A rota consulta somente o NCM fixo `84713012`, não lê parâmetros do navegador e retorna apenas configuração, status, autorização e permissão.
+
+Interpretação: `200` confirma chave aceita; `401` indica chave ausente/inválida/revogada na FiscalHub; `403` indica chave reconhecida, mas sem permissão para o recurso. `status: null` com `configured: false` indica variável ausente no Render. Com `configured: true`, indica timeout ou indisponibilidade de rede.
+
+Para remover o diagnóstico, exclua o bloco marcado `TEMPORARY DIAGNOSTIC` e seu import em `server.js`, remova `lib/fiscalhub-diagnostic.js`, este trecho da documentação e `tests/fiscalhub-diagnostic.test.js`.
