@@ -19,11 +19,11 @@ test("diagnóstico diferencia variável ausente sem chamar a FiscalHub", async (
   });
   assert.deepEqual(result, { configured: false, provider: "FiscalHub", status: null });
   assert.equal(calls, 0);
-  assert.deepEqual(logs, ["[FiscalHub Diagnostic] configured=false"]);
+  assert.deepEqual(logs, ["[FiscalHub] configured=false", "[FiscalHub] prefixValid=false"]);
 });
 
 test("diagnóstico usa NCM oficial, X-Api-Key e descarta corpo e headers", async () => {
-  const apiKey = "chave-ficticia-de-diagnostico";
+  const apiKey = "fh_live_chave-ficticia-de-diagnostico";
   let captured;
   const logs = [];
   const result = await diagnoseFiscalHub({
@@ -38,10 +38,33 @@ test("diagnóstico usa NCM oficial, X-Api-Key e descarta corpo e headers", async
   assert.equal(captured.options.method, "GET");
   assert.equal(captured.options.headers["X-Api-Key"], apiKey);
   assert.equal(captured.options.headers["Content-Type"], "application/json");
+  assert.deepEqual(Object.keys(captured.options.headers).sort(), ["Accept", "Content-Type", "X-Api-Key"]);
+  assert.equal(Object.hasOwn(captured.options.headers, "Authorization"), false);
+  assert.equal(new URL(captured.url).search, "");
   assert.deepEqual(result, { configured: true, provider: "FiscalHub", status: 200, authorized: true });
   assert.equal(JSON.stringify(result).includes(apiKey), false);
   assert.equal(Object.hasOwn(result, "headers"), false);
-  assert.deepEqual(logs, ["[FiscalHub Diagnostic] configured=true", "[FiscalHub Diagnostic] status=200"]);
+  assert.deepEqual(logs, [
+    "[FiscalHub] configured=true",
+    "[FiscalHub] prefixValid=true",
+    "[FiscalHub] requestStatus=200",
+  ]);
+  assert.equal(JSON.stringify(logs).includes(apiKey), false);
+});
+
+test("diagnóstico registra prefixo inválido sem revelar a chave", async () => {
+  const apiKey = "credencial-ficticia-sem-prefixo";
+  const logs = [];
+  await diagnoseFiscalHub({
+    apiKey,
+    fetchImpl: async () => response(401),
+    logger: { info: (message) => logs.push(message) },
+  });
+  assert.deepEqual(logs, [
+    "[FiscalHub] configured=true",
+    "[FiscalHub] prefixValid=false",
+    "[FiscalHub] requestStatus=401",
+  ]);
   assert.equal(JSON.stringify(logs).includes(apiKey), false);
 });
 
@@ -79,6 +102,6 @@ test("diagnóstico não transforma falha de rede em falha de autenticação", as
 
 test("rota temporária exige autenticação, rate limit e nunca aceita chave pela URL", () => {
   assert.match(server, /app\.get\("\/diagnostics\/fiscalhub", requireAuth, fiscalLookupLimiter/);
-  assert.match(server, /apiKey: process\.env\.FISCALHUB_API_KEY/);
+  assert.match(server, /process\.env\.FISCALHUB_API_KEY\.trim\(\)/);
   assert.doesNotMatch(server, /diagnostics\/fiscalhub[\s\S]{0,300}req\.(query|headers|body)/);
 });

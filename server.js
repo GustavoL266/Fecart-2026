@@ -250,7 +250,9 @@ app.get("/market/search", requireAuth, marketSearchLimiter, async (req, res, nex
 app.get("/diagnostics/fiscalhub", requireAuth, fiscalLookupLimiter, async (req, res, next) => {
   try {
     const diagnostic = await diagnoseFiscalHub({
-      apiKey: process.env.FISCALHUB_API_KEY,
+      apiKey: process.env.FISCALHUB_API_KEY
+        ? process.env.FISCALHUB_API_KEY.trim()
+        : "",
       timeoutMs: fiscalHubConfig.timeoutMs,
     });
     return res.json(diagnostic);
