@@ -31,7 +31,7 @@ test("dashboard lê o resultado canônico e distingue produto individual", () =>
   assert.match(document.nodes.get("#marketDashboardStatus").textContent, /2 referências encontradas/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /Média/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /Maior \+ tributos/);
-  assert.match(document.nodes.get("#marketStats").innerHTML, /NCM necessário/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Classificação fiscal necessária/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /Produto alternativo/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /Preço de mercado: R\$\s32,00/);
   assert.doesNotMatch(document.nodes.get("#marketStats").innerHTML, /Fonte fiscal: Focus NFe/);

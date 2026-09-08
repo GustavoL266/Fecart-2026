@@ -14,6 +14,7 @@ import { createSearchApiMarketProvider, searchApiErrorForClient, SearchApiError,
 import { createFocusNFeClient, focusNFeErrorForClient, FocusNFeError, redactFocusNFeSensitiveData } from "./lib/focus-nfe-client.js";
 import { createFiscalHubClient, fiscalHubErrorForClient, FiscalHubError, redactFiscalHubSensitiveData } from "./lib/fiscalhub-client.js";
 import { createFiscalHubTaxProvider } from "./lib/fiscalhub-tax-provider.js";
+import { searchFiscalNcms, confirmFiscalNcm, hasRelevantFiscalConfirmation } from "./lib/fiscal-classification.js";
 import { productForClient, userForClient } from "./lib/models.js";
 import { hashPassword, verifyPassword } from "./lib/passwords.js";
 import { authoritativeProductSnapshot } from "./lib/pricing-persistence.js";
@@ -261,21 +262,22 @@ app.get("/market/search", requireAuth, marketSearchLimiter, async (req, res, nex
 
 app.get("/fiscal/ncms/search", requireAuth, fiscalLookupLimiter, async (req, res, next) => {
   try {
-    const { q } = validate(ncmSearchSchema, req.query, { code: "INVALID_NCM_QUERY" });
+    const input = validate(ncmSearchSchema, req.query, { code: "INVALID_NCM_QUERY" });
     if (!focusNfeClient) {
       throw new FocusNFeError("A consulta fiscal ainda não foi configurada neste ambiente.", {
         code: "FOCUS_NFE_NOT_CONFIGURED",
         status: 503,
       });
     }
-    console.info("[Fiscal/NCM] userAuthenticated=true provider=FocusNFe upstreamStatus=pending route=search");
-    const results = await focusNfeClient.searchNcms(q);
-    console.info("[Fiscal/NCM] userAuthenticated=true provider=FocusNFe upstreamStatus=200 route=search");
-    return res.json({
-      query: q,
-      results: results.map((ncm) => ({ code: ncm.codigo, description: ncm.descricao_completa })),
-      source: "Focus NFe",
-    });
+    delete req.session.confirmedNcm;
+    delete req.session.fiscalNcmConfirmation;
+    delete req.session.fiscalNcmSearch;
+    await sessionSave(req);
+    const result = await searchFiscalNcms(focusNfeClient, input, { secrets: [focusNfeConfig.token, fiscalHubConfig.apiKey, fiscalHubConfig.companyId] });
+    const classificationId = randomUUID();
+    req.session.fiscalNcmSearch = { ...result, classificationId };
+    await sessionSave(req);
+    return res.json({ ...result, classificationId });
   } catch (error) {
     if (error instanceof FocusNFeError) {
       console.info(`[Fiscal/NCM] userAuthenticated=true provider=FocusNFe upstreamStatus=${error.upstreamStatus ?? "not_called"} code=${error.code} route=search`);
@@ -286,7 +288,7 @@ app.get("/fiscal/ncms/search", requireAuth, fiscalLookupLimiter, async (req, res
 
 app.get("/fiscal/ncms/:codigo", requireAuth, fiscalLookupLimiter, async (req, res, next) => {
   try {
-    const normalizedCode = String(req.params.codigo || "").replace(/\D/g, "");
+    const normalizedCode = String(req.params.codigo || "");
     if (!focusNfeClient) {
       throw new FocusNFeError("A consulta fiscal ainda não foi configurada neste ambiente.", {
         code: "FOCUS_NFE_NOT_CONFIGURED",
@@ -295,12 +297,16 @@ app.get("/fiscal/ncms/:codigo", requireAuth, fiscalLookupLimiter, async (req, re
     }
 
     console.info("[Fiscal/NCM] userAuthenticated=true provider=FocusNFe upstreamStatus=pending route=validate");
-    const ncm = await focusNfeClient.getNcm(normalizedCode);
+    const { ncm, confirmation } = await confirmFiscalNcm(focusNfeClient, req.session.fiscalNcmSearch, normalizedCode, req.query.classificationId);
     req.session.confirmedNcm = ncm.codigo;
+    req.session.fiscalNcmConfirmation = confirmation;
     await sessionSave(req);
     console.info("[Fiscal/NCM] userAuthenticated=true provider=FocusNFe upstreamStatus=200 route=validate");
     return res.json({
       ncm,
+      classificationId: confirmation.classificationId,
+      originalQuery: confirmation.originalQuery,
+      normalizedQuery: confirmation.normalizedQuery,
       source: "Focus NFe",
       environment: focusNfeConfig.environment === "production" ? "produção" : "homologação",
       taxCalculationAvailable: false,
@@ -316,13 +322,15 @@ app.get("/fiscal/ncms/:codigo", requireAuth, fiscalLookupLimiter, async (req, re
 app.post("/tax/calculate", requireAuth, taxCalculationLimiter, async (req, res, next) => {
   try {
     const parsed = taxCalculationSchema.safeParse(req.body);
-    const ncmConfirmed = /^\d{8}$/.test(req.body?.ncm || "") && req.session.confirmedNcm === req.body?.ncm;
+    const ncmValid = typeof req.body?.ncm === "string" && /^\d{8}$/.test(req.body.ncm);
+    const ncmConfirmed = ncmValid && hasRelevantFiscalConfirmation(req.body, req.session);
     const safeState = (field) => taxCalculationSchema.shape[field].safeParse(req.body?.[field]).data || "missing_or_invalid";
     const price = Number.isFinite(req.body?.unitValue) ? req.body.unitValue : "missing_or_invalid";
     console.info("[Tax] requested=true");
     console.info(`[Tax] configured=${fiscalHubConfig.isConfigured}`);
     console.info(`[Tax] companyConfigured=${fiscalHubConfig.companyConfigured}`);
     console.info(`[Tax] ncmConfirmed=${ncmConfirmed}`);
+    console.info(`[Tax] ncmValid=${ncmValid}`);
     console.info(`[Tax] origin=${safeState("originState")}`);
     console.info(`[Tax] destination=${safeState("destinationState")}`);
     console.info(`[Tax] price=${price}`);
@@ -332,6 +340,9 @@ app.post("/tax/calculate", requireAuth, taxCalculationLimiter, async (req, res, 
       destinationState: "Informe uma UF de destino brasileira válida.",
       unitValue: "Informe um maior preço válido e positivo.",
       quantity: "A quantidade deve ser 1.",
+      classificationId: "Confirme a classificação fiscal atual.",
+      originalQuery: "Informe o produto para classificação fiscal.",
+      normalizedQuery: "Informe a categoria para classificação fiscal.",
     };
     const issues = parsed.success ? [] : parsed.error.issues.map((issue) => fieldMessages[issue.path[0]] || "Revise os dados fiscais.");
     const ncmMissing = !/^\d{8}$/.test(req.body?.ncm || "");
@@ -344,6 +355,7 @@ app.post("/tax/calculate", requireAuth, taxCalculationLimiter, async (req, res, 
       issues.push("Chave FiscalHub não configurada: configure FISCALHUB_API_KEY no backend.");
     }
     if (issues.length) {
+      console.info("[Tax] requestStarted=false");
       console.info("[Tax] upstreamStatus=not_called");
       throw new FiscalHubError([...new Set(issues)].join(" "), {
         code: !fiscalHubConfig.companyConfigured ? "FISCALHUB_EMPRESA_NOT_CONFIGURED"

@@ -21,7 +21,7 @@ test("a interface busca por produto, mostra sugestões e não oferece entrada ma
   const fiscalEnd = html.indexOf("</section>", fiscalStart);
   const fiscalSection = html.slice(fiscalStart, fiscalEnd);
 
-  assert.match(fiscalSection, /Produto para classificação fiscal/);
+  assert.match(fiscalSection, /Categoria usada para classificação/);
   assert.match(fiscalSection, /id="ncmProductQuery"/);
   assert.match(fiscalSection, /id="ncmSearchButton"/);
   assert.match(fiscalSection, /id="ncmSuggestions"/);
@@ -45,11 +45,13 @@ test("a busca por descrição é explícita, preserva ambiguidade e confirma som
   assert.match(main, /Usar este NCM/);
 });
 
-test("uma pesquisa de mercado só sugere o texto para NCM, sem chamar o provider fiscal", () => {
+test("pesquisa de mercado preserva o termo comercial e inicia o fluxo fiscal normalizado", () => {
   const market = sourceBetween("async function searchMarket()", "function selectMarketProduct");
 
-  assert.match(market, /#ncmProductQuery/);
-  assert.doesNotMatch(market, /fiscal\/ncms|searchNcmSuggestions|lookupNcm/);
+  assert.match(market, /prepareFiscalClassification\(query\)/);
+  assert.match(market, /market\.search\(query\)/);
+  assert.match(market, /fiscalRevision === ncmSearchRevision/);
+  assert.doesNotMatch(market, /lookupNcm/);
 });
 
 test("alterar ou salvar limpa a classificação atual sem nova chamada fiscal", () => {
@@ -70,8 +72,8 @@ test("o endpoint de sugestões não confirma sessão e a FiscalHub continua cond
   const searchRoute = server.slice(searchStart, validateStart);
   const taxRoute = server.slice(taxStart);
 
-  assert.match(searchRoute, /focusNfeClient\.searchNcms\(q\)/);
-  assert.doesNotMatch(searchRoute, /req\.session\.confirmedNcm/);
-  assert.match(taxRoute, /req\.session\.confirmedNcm === req\.body\?\.ncm/);
+  assert.match(searchRoute, /searchFiscalNcms\(focusNfeClient, input/);
+  assert.doesNotMatch(searchRoute, /req\.session\.confirmedNcm\s*=/);
+  assert.match(taxRoute, /hasRelevantFiscalConfirmation\(req\.body, req\.session\)/);
   assert.match(taxRoute, /taxProvider\.calculate\(input\)/);
 });

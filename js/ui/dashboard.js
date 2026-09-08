@@ -77,7 +77,7 @@ function renderTaxedMaximumStat(marketState) {
     return `<div class="market-tax-stat is-error" title="${escapeHtml(`${marketDetails} · ${prerequisiteError.message}`)}"><span>Maior + tributos</span><strong>—</strong><small>${escapeHtml(prerequisiteError.shortMessage)}</small>${needsNcm ? taxAction("Classificar produto", "data-confirm-market-ncm", true) : ""}</div>`;
   }
   if (tax.status === "loading") {
-    return '<div class="market-tax-stat is-loading"><span>Maior + tributos</span><strong>—</strong><small>Calculando na FiscalHub…</small></div>';
+    return '<div class="market-tax-stat is-loading"><span>Maior + tributos</span><strong>—</strong><small>Calculando tributos...</small></div>';
   }
   if (tax.status === "success") {
     return `<div class="market-tax-stat is-success"><span>Maior + tributos</span><strong class="financial-value">${dashboardMoney(tax.result.total)}</strong><small>Calculado pela FiscalHub${tax.result.cached ? " · cache" : ""}</small>${taxAction(tax.expanded ? "Ocultar tributos" : "Ver tributos", "data-toggle-market-taxes")}</div>`;
@@ -86,7 +86,7 @@ function renderTaxedMaximumStat(marketState) {
     const companyMissing = tax.code === "FISCALHUB_EMPRESA_NOT_CONFIGURED";
     return `<div class="market-tax-stat is-error"><span>Maior + tributos</span><strong>—</strong><small>${escapeHtml(tax.shortMessage || "Não foi possível calcular")}</small>${companyMissing ? "" : taxAction("Tentar novamente", "data-calculate-market-taxes", true)}</div>`;
   }
-  return `<div class="market-tax-stat"><span>Maior + tributos</span><strong>—</strong><small>${escapeHtml(maximumItem?.title || dashboardMoney(maximumPrice))}</small>${taxAction("Calcular tributos", "data-calculate-market-taxes")}</div>`;
+  return `<div class="market-tax-stat"><span>Maior + tributos</span><strong>—</strong><small>Preparando cálculo tributário...</small>${taxAction("Calcular tributos", "data-calculate-market-taxes")}</div>`;
 }
 
 function renderTaxDetails(marketState) {

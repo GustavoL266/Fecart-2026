@@ -72,7 +72,7 @@ test("envia HTTP Basic com token como usuário e senha vazia", async () => {
 
 test("consulta e valida um NCM existente", async () => {
   const client = clientWith(async () => response(200, validNcm));
-  assert.deepEqual(await client.getNcm("0901.21.00"), validNcm);
+  assert.deepEqual(await client.getNcm("09012100"), validNcm);
 });
 
 test("busca sugestões exclusivamente pela descrição oficial da Focus NFe", async () => {

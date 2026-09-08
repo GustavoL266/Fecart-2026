@@ -31,8 +31,8 @@ test("/fiscal/ncms/search usa apenas a busca por descrição da Focus NFe", () =
   const searchRoute = server.slice(searchStart, validationStart);
 
   assert.ok(searchStart >= 0 && validationStart > searchStart);
-  assert.match(searchRoute, /focusNfeClient\.searchNcms\(q\)/);
-  assert.doesNotMatch(searchRoute, /confirmedNcm/);
+  assert.match(searchRoute, /searchFiscalNcms\(focusNfeClient, input/);
+  assert.doesNotMatch(searchRoute, /req\.session\.confirmedNcm\s*=/);
   assert.match(searchRoute, /provider=FocusNFe/);
   assert.doesNotMatch(searchRoute, /FiscalHub|fiscalHubClient|ncmProvider/);
 });

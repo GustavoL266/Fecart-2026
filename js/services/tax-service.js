@@ -1,14 +1,18 @@
 import { api } from "./api-client.js";
+import { normalizeFiscalState, isValidFiscalState } from "../domain/fiscal-context.js";
 
 const taxMessages = Object.freeze({
-  NCM_REQUIRED: ["NCM necessário", "Confirme um NCM com 8 dígitos, sem espaços ou outros caracteres."],
-  FOCUS_NFE_NCM_CONFIRMATION_REQUIRED: ["NCM necessário", "Confirme o NCM para calcular os tributos."],
+  NCM_REQUIRED: ["Classificação fiscal necessária", "Confirme um NCM relacionado à categoria atual para calcular os tributos."],
+  FOCUS_NFE_NCM_CONFIRMATION_REQUIRED: ["Classificação fiscal necessária", "Confirme o NCM relacionado à categoria atual para calcular os tributos."],
+  NCM_CLASSIFICATION_REQUIRED: ["Classificação fiscal necessária", "Pesquise a categoria e confirme uma sugestão atual."],
+  NCM_IRRELEVANT: ["Classificação fiscal inválida", "A descrição do NCM não corresponde à categoria atual."],
   FISCALHUB_NOT_CONFIGURED: ["Chave FiscalHub não configurada", "A chave de acesso da FiscalHub precisa ser configurada no servidor."],
-  FISCALHUB_EMPRESA_NOT_CONFIGURED: ["Empresa FiscalHub não configurada", "A empresa para cálculo tributário precisa ser configurada no servidor."],
+  FISCALHUB_EMPRESA_NOT_CONFIGURED: ["Empresa FiscalHub não configurada", "Configure a empresa da FiscalHub para calcular os tributos."],
   FISCALHUB_UNAUTHORIZED: ["Erro de autenticação FiscalHub", "A FiscalHub recusou a chave de acesso."],
   FISCALHUB_FORBIDDEN: ["Sem permissão na FiscalHub", "A empresa ou o recurso não está autorizado na FiscalHub."],
   FISCALHUB_NOT_FOUND: ["Empresa/recurso não encontrado", "A empresa ou o recurso não foi encontrado na FiscalHub."],
   INVALID_TAX_CONTEXT: ["Revise os dados fiscais", "Revise o NCM, as UFs e o maior preço."],
+  INVALID_TAX_UF: ["Informe UF de origem e destino", "Selecione UF de origem e UF de destino válidas."],
   FISCALHUB_INVALID_OPERATION: ["Revise os dados fiscais", "A FiscalHub rejeitou os dados da operação."],
   FISCALHUB_REJECTED: ["Revise os dados fiscais", "A FiscalHub informou dados fiscais insuficientes ou inválidos."],
   FISCALHUB_ERROR: ["Erro na FiscalHub", "A FiscalHub não conseguiu concluir o cálculo."],
@@ -32,12 +36,11 @@ export function marketTaxPrerequisiteError(context, unitValue, availability) {
   const issues = [];
   if (availability?.companyConfigured === false) issues.push(marketTaxError({ code: "FISCALHUB_EMPRESA_NOT_CONFIGURED" }));
   if (availability?.configured === false) issues.push(marketTaxError({ code: "FISCALHUB_NOT_CONFIGURED" }));
-  const validState = /^(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)$/;
   const fields = [];
-  if (!validState.test(context.originState || "")) fields.push("Informe uma UF de origem brasileira válida.");
-  if (!validState.test(context.destinationState || "")) fields.push("Informe uma UF de destino brasileira válida.");
-  if (!Number.isFinite(unitValue) || unitValue <= 0) fields.push("Informe um maior preço válido e positivo.");
-  if (fields.length) issues.push(marketTaxError({ code: "INVALID_TAX_CONTEXT", message: fields.join(" ") }));
+  if (!isValidFiscalState(context.originState)) fields.push("Selecione uma UF de origem brasileira válida.");
+  if (!isValidFiscalState(context.destinationState)) fields.push("Selecione uma UF de destino brasileira válida.");
+  if (fields.length) issues.push(marketTaxError({ code: "INVALID_TAX_UF", message: fields.join(" ") }));
+  if (!Number.isFinite(unitValue) || unitValue <= 0) issues.push(marketTaxError({ code: "INVALID_TAX_CONTEXT", message: "Informe um maior preço válido e positivo." }));
   return issues.length ? { ...issues[0], message: issues.map((issue) => issue.message).join(" ") } : null;
 }
 
@@ -48,13 +51,16 @@ export class TaxService {
     this.#api = apiClient;
   }
 
-  calculateMaximum({ ncm, originState, destinationState, unitValue }) {
+  calculateMaximum({ ncm, originState, destinationState, unitValue, classificationId, originalQuery, normalizedQuery }) {
     return this.#api.post("/tax/calculate", {
       ncm,
-      originState,
-      destinationState,
+      originState: normalizeFiscalState(originState),
+      destinationState: normalizeFiscalState(destinationState),
       quantity: 1,
       unitValue,
+      classificationId,
+      originalQuery,
+      normalizedQuery,
     });
   }
 }

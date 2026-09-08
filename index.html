@@ -392,18 +392,19 @@
                 <p class="section-description">O cálculo usa uma unidade do produto de maior preço. O regime tributário vem da empresa cadastrada na FiscalHub.</p>
               </div>
               <div class="sidebar-field">
-                <label for="ncmProductQuery">Produto para classificação fiscal</label>
-                <div class="search-row fiscal-search-row"><input id="ncmProductQuery" type="text" placeholder="Ex.: bolo de chocolate" autocomplete="off" aria-describedby="ncmLookupStatus" /><button id="ncmSearchButton" class="market-search-button" type="button">Buscar NCM</button></div>
+                <p class="helper-text">Produto pesquisado: <strong id="fiscalOriginalProduct">Nenhum produto pesquisado</strong></p>
+                <label for="ncmProductQuery">Categoria usada para classificação</label>
+                <div class="search-row fiscal-search-row"><input id="ncmProductQuery" type="text" maxlength="120" placeholder="Ex.: telefone celular ou bolo de chocolate" autocomplete="off" aria-describedby="ncmLookupStatus" /><button id="ncmSearchButton" class="market-search-button" type="button">Buscar NCM</button></div>
                 <input id="ncmCode" type="hidden" />
                 <p id="ncmLookupStatus" class="helper-text" role="status">Pesquise pelo produto e confirme uma sugestão fiscal.</p>
                 <p id="ncmSuggestionsHeading" class="helper-text" hidden><strong>Sugestões de NCM</strong></p>
                 <ul id="ncmSuggestions" class="ncm-suggestion-list" aria-label="Sugestões de NCM" aria-live="polite" hidden></ul>
                 <p id="ncmDescription" class="fiscal-description" hidden></p>
-                <button id="ncmChangeButton" class="secondary-button" type="button" hidden>Alterar classificação</button>
+                <button id="ncmChangeButton" class="secondary-button" type="button" hidden>Alterar categoria</button>
               </div>
               <div class="sidebar-grid sidebar-grid--two">
-                <div class="sidebar-field"><label for="originState">UF de origem</label><input id="originState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="SP" autocomplete="off" /></div>
-                <div class="sidebar-field"><label for="destinationState">UF de destino</label><input id="destinationState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="SP" autocomplete="off" /></div>
+                <div class="sidebar-field"><label for="originState">UF de origem</label><select id="originState"><option value="">Selecione a UF</option><option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option><option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option><option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option><option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option><option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option><option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option></select></div>
+                <div class="sidebar-field"><label for="destinationState">UF de destino</label><select id="destinationState"><option value="">Selecione a UF</option><option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option><option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option><option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option><option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option><option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option><option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option></select></div>
               </div>
               <p id="marketTaxContextStatus" class="helper-text" role="status">Confirme o NCM e as UFs para habilitar o cálculo.</p>
             </section>

@@ -8,12 +8,15 @@ import { FiscalHubTaxProvider, normalizeFiscalHubTaxResponse } from "../lib/fisc
 import { taxCalculationSchema } from "../lib/validation.js";
 import { marketTaxError, marketTaxPrerequisiteError } from "../js/services/tax-service.js";
 import { renderIncompleteDashboard } from "../js/ui/dashboard.js";
+import { hasRelevantFiscalConfirmation } from "../lib/fiscal-classification.js";
+import { normalizeProductForFiscalSearch, isRelevantFiscalNcm } from "../js/domain/fiscal-classification.js";
+import { normalizeFiscalState } from "../js/domain/fiscal-context.js";
 
 const [serverSource, mainSource] = await Promise.all([
   readFile(new URL("../server.js", import.meta.url), "utf8"),
   readFile(new URL("../js/main.js", import.meta.url), "utf8"),
 ]);
-const validInput = { ncm: "09012100", quantity: 1, unitValue: 280, originState: "SP", destinationState: "RJ" };
+const validInput = { ncm: "09012100", quantity: 1, unitValue: 280, originState: "SP", destinationState: "RJ", classificationId: "fixture-classification", originalQuery: "café", normalizedQuery: "café" };
 const configuredEnv = { FISCALHUB_API_KEY: "  fh_test_fixture-secret  ", FISCALHUB_EMPRESA_ID: "  fixture-company-id  " };
 const finalPayload = { totais: { valorIcms: 50.4, valorTotalNota: 310 } };
 
@@ -32,11 +35,12 @@ function taxRoute({ env = configuredEnv, upstreamStatus = 200, payload = finalPa
   vm.runInNewContext(serverSource.slice(serverSource.indexOf('app.post("/tax/calculate"'), serverSource.indexOf('app.get("/products"')), {
     app: { post: (_path, _auth, _limiter, callback) => { handler = callback; } },
     requireAuth() {}, taxCalculationLimiter() {}, console: logger,
-    taxCalculationSchema, FiscalHubError, fiscalHubConfig: config, taxProvider: provider,
+    taxCalculationSchema, FiscalHubError, fiscalHubConfig: config, taxProvider: provider, hasRelevantFiscalConfirmation,
   });
   return { logs, calls, async request(body = validInput, confirmedNcm = validInput.ncm) {
     let result;
-    await handler({ body, session: { confirmedNcm } }, { json: (value) => { result = { status: 200, body: value }; } }, (error) => {
+    const fiscalNcmConfirmation = { ...validInput, code: confirmedNcm, description: "Café torrado, não descafeinado" };
+    await handler({ body, session: { confirmedNcm, fiscalNcmConfirmation } }, { json: (value) => { result = { status: 200, body: value }; } }, (error) => {
       result = { status: error.status, body: fiscalHubErrorForClient(error, [config.apiKey, config.companyId]) };
     });
     return result;
@@ -144,15 +148,16 @@ function frontend() {
   const calls = [];
   const context = vm.createContext({
     state: { taxAvailability: { configured: true, companyConfigured: true } },
-    focusState: { status: "success", ncm: { codigo: validInput.ncm } },
+    focusState: { status: "success", ncm: { codigo: validInput.ncm, descricao_completa: "Café torrado" }, classificationId: validInput.classificationId, originalQuery: "café", normalizedQuery: "café" },
+    ncmSearchState: { originalQuery: "café" },
     elements: { ncmCode: { value: validInput.ncm }, originState: { value: "SP" }, destinationState: { value: "RJ" } },
     marketState: { items: [{ id: "low", price: 100 }, { id: "high", price: 280 }, { id: "mid", price: 200 }], stats: { min: 100, max: 280, average: 193.33, median: 200 }, tax: { status: "idle" } },
-    marketTaxError, marketTaxPrerequisiteError,
+    marketTaxError, marketTaxPrerequisiteError, normalizeProductForFiscalSearch, isRelevantFiscalNcm, normalizeFiscalState,
     taxService: { calculateMaximum(input) { return new Promise((resolve, reject) => calls.push({ input, resolve, reject })); } },
-    $: () => ({ focus() {} }),
+    $: () => ({ value: "café", focus() {} }),
     render() { context.marketStateForRender(); },
   });
-  for (const name of ["emptyMarketTaxState", "currentMarketTaxContext", "marketTaxSignature", "marketStateForRender", "maximumMarketItem", "setMarketTaxError", "calculateMaximumTaxes"]) {
+  for (const name of ["emptyMarketTaxState", "currentFiscalClassification", "currentMarketTaxContext", "marketTaxSignature", "marketStateForRender", "maximumMarketItem", "setMarketTaxError", "calculateMaximumTaxes"]) {
     const start = mainSource.search(new RegExp(`^(?:async )?function ${name}\\(`, "m"));
     assert.ok(start >= 0, name);
     const remainder = mainSource.slice(start);
@@ -226,9 +231,9 @@ test("card distingue pré-requisitos, mostra instrução exata e bloqueia reques
   for (const [change, label, detail] of [
     [(c) => { c.state.taxAvailability.companyConfigured = false; }, "Empresa FiscalHub não configurada", "empresa"],
     [(c) => { c.state.taxAvailability.configured = false; }, "Chave FiscalHub não configurada", "chave"],
-    [(c) => { c.focusState.status = "idle"; }, "NCM necessário", "NCM"],
-    [(c) => { c.elements.originState.value = "XX"; }, "Revise os dados fiscais", "UF de origem"],
-    [(c) => { c.elements.destinationState.value = ""; }, "Revise os dados fiscais", "UF de destino"],
+    [(c) => { c.focusState.status = "idle"; }, "Classificação fiscal necessária", "NCM"],
+    [(c) => { c.elements.originState.value = "XX"; }, "Informe UF de origem e destino", "UF de origem"],
+    [(c) => { c.elements.destinationState.value = ""; }, "Informe UF de origem e destino", "UF de destino"],
   ]) {
     const { context, calls } = frontend();
     change(context);

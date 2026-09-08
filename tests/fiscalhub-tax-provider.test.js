@@ -169,7 +169,7 @@ test("serviço do navegador envia somente uma unidade e reaproveita o preço rec
   await service.calculateMaximum({ ncm: "09012100", originState: "SP", destinationState: "RJ", unitValue: 100 });
   assert.deepEqual(calls[0], {
     path: "/tax/calculate",
-    body: { ncm: "09012100", originState: "SP", destinationState: "RJ", quantity: 1, unitValue: 100 },
+    body: { ncm: "09012100", originState: "SP", destinationState: "RJ", quantity: 1, unitValue: 100, classificationId: undefined, originalQuery: undefined, normalizedQuery: undefined },
     options: undefined,
   });
 });

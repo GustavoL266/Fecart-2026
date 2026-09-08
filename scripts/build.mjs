@@ -9,6 +9,8 @@ const sourceFiles = [
   "js/domain/pricing-calculator.js",
   "js/domain/tax-rule-engine.js",
   "js/domain/market-analysis.js",
+  "js/domain/fiscal-classification.js",
+  "js/domain/fiscal-context.js",
   "js/services/market-service.js",
   "js/services/api-client.js",
   "js/services/tax-service.js",

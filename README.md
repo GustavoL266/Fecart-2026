@@ -16,9 +16,9 @@ Aplicação web para calcular preço de venda sustentável, comparar referência
 - Todos os acessos a produto verificam `user_id` junto ao ID do produto. Um produto de outra conta retorna `404` e nunca é exposto.
 - Histórico com busca por nome, ordenação por data, visualização, edição, exclusão e reutilização de uma precificação anterior.
 - Salvamento de todos os campos relevantes da consulta (entradas, memória do cálculo e referência de mercado) em `calculation_data`.
-- Consulta de NCM pela Focus NFe exclusivamente no backend, com memória de cálculo, origem dos dados e aviso explícito de pendências fiscais.
+- Normalização editável do produto em categoria fiscal, com sugestões reais da Focus NFe filtradas por relevância e confirmação explícita de NCM.
 - Consulta opcional de produtos e preços do Google Shopping pela SearchAPI.io, sempre através do backend.
-- Cálculo sob demanda dos tributos do produto de maior preço pela FiscalHub, com NCM confirmado, cache curto e detalhamento dos campos retornados.
+- Cálculo dos tributos do produto de maior preço pela FiscalHub após classificação confirmada e UFs preenchidas, com cache curto e detalhamento dos campos retornados.
 - Cálculo técnico canônico no mesmo módulo puro para navegador e servidor, com validação em ambos os lados e sem arredondamentos intermediários.
 - Validação no navegador e no servidor, limitação de tentativas de autenticação, cabeçalhos de segurança e respostas sem hashes/senhas.
 
@@ -75,7 +75,7 @@ O endpoint diferencia configuração ausente (`503`), consulta inválida (`400`)
 
 ### FiscalHub
 
-O navegador chama somente `POST /tax/calculate`. O backend envia `X-Api-Key` para `POST https://api.fiscalhub.com.br/api/v1/tributario/calcular` com `empresaId`, UFs e um item: o produto de maior preço da pesquisa atual, `quantidade: 1`. O cálculo acontece apenas após clique do usuário e é reutilizado por cinco minutos quando NCM, preço, UFs e empresa não mudam.
+O navegador chama somente `POST /tax/calculate`. O backend envia `X-Api-Key` para `POST https://api.fiscalhub.com.br/api/v1/tributario/calcular` com `empresaId`, UFs e um item: o produto de maior preço da pesquisa atual, `quantidade: 1`. O cálculo inicia após a confirmação explícita de um NCM relevante e o preenchimento das UFs, desde que a integração esteja configurada. O botão permite nova tentativa. O cache dura cinco minutos quando NCM, preço, UFs e empresa não mudam.
 
 Configure somente no ambiente do servidor:
 
