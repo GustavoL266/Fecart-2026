@@ -1057,7 +1057,7 @@ input[type="range"] {
   letter-spacing: 0.04em;
 }
 
-.primary-price-cell > strong {
+.primary-price-cell > strong:not(.financial-value) {
   overflow-wrap: anywhere;
   font-size: clamp(1.35rem, 2.2vw, 2rem);
   line-height: 1.05;
@@ -4709,4 +4709,86 @@ tr:last-child td {
 
 @media (prefers-reduced-motion: reduce) {
   .mobile-menu-toggle span, .pricing-tab-panel.is-active { transition: none; animation: none; }
+}
+
+/* Valores financeiros são indicadores, não texto corrido: nunca quebram no meio. */
+:where(
+  .primary-price-cell,
+  .summary-card,
+  .market-stats > div,
+  .market-tax-stat,
+  .market-result-content,
+  .selected-market-product,
+  .metric-card,
+  .detail-hero > div:first-child,
+  .price-donut > div,
+  .comparison-footer > span,
+  .chart-legend li,
+  .comparison-bars li > div,
+  .market-tax-breakdown dl > div,
+  .mobile-price-summary > div
+) {
+  container-type: inline-size;
+}
+
+.financial-value {
+  display: block;
+  min-width: 0;
+  max-inline-size: 100%;
+  white-space: nowrap;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+  hyphens: none;
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(1.05rem, 3vw, 4.7rem);
+  font-size: clamp(1.05rem, 12cqi, 4.7rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.primary-price-cell > .financial-value {
+  font-size: clamp(1.1rem, 12cqi, 4rem);
+}
+
+.primary-price-sustainable .summary-value.financial-value {
+  margin: 0;
+  font-size: clamp(1.2rem, 12cqi, 4rem);
+}
+
+.summary-value.financial-value {
+  font-size: clamp(1.1rem, 11.5cqi, 2.9rem);
+}
+
+.market-stats .financial-value,
+.market-tax-stat .financial-value,
+.market-result-price .financial-value,
+.selected-market-product .financial-value,
+.metric-card .financial-value,
+.market-tax-breakdown .financial-value {
+  font-size: clamp(1rem, 12cqi, 1.8rem);
+}
+
+.detail-hero > div:first-child > .financial-value {
+  font-size: clamp(1.25rem, 12cqi, 5rem);
+}
+
+.price-donut .financial-value,
+.comparison-footer .financial-value,
+.chart-legend .financial-value,
+.comparison-bars .financial-value {
+  font-size: clamp(0.9rem, 12cqi, 1.85rem);
+}
+
+.mobile-price-summary .financial-value {
+  font-size: clamp(1rem, 12cqi, 1.65rem);
+}
+
+@media (min-width: 901px) and (max-width: 1500px) {
+  .primary-price-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .primary-price-sustainable {
+    grid-column: 1 / -1;
+  }
 }

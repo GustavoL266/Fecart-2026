@@ -20,7 +20,7 @@ function renderComposition(document, result) {
     const size = share * 100;
     return { cursor: cursor + size, markup: `${markup}<circle class="donut-segment donut-segment-${index + 1}" cx="60" cy="60" r="48" pathLength="100" stroke-dasharray="${size.toFixed(4)} ${(100 - size).toFixed(4)}" stroke-dashoffset="${(-cursor).toFixed(4)}"></circle>` };
   }, { markup: "", cursor: 0 }).markup;
-  document.querySelector("#priceCompositionLegend").innerHTML = components.map((item, index) => `<li><span class="chart-legend-color chart-legend-color-${index + 1}"></span><span>${escapeHtml(item.label)}</span><strong>${money(item.value)}</strong><small>${percent(total ? item.value / total : 0)}</small></li>`).join("");
+  document.querySelector("#priceCompositionLegend").innerHTML = components.map((item, index) => `<li><span class="chart-legend-color chart-legend-color-${index + 1}"></span><span>${escapeHtml(item.label)}</span><strong class="financial-value">${money(item.value)}</strong><small>${percent(total ? item.value / total : 0)}</small></li>`).join("");
 }
 
 export function renderPriceDetails(document, result, alertCount) {
@@ -38,7 +38,7 @@ export function renderPriceDetails(document, result, alertCount) {
     : "Não há referência de mercado. Isso não bloqueia o preço técnico.";
   document.querySelector("#priceComparisonBars").innerHTML = [
     ["Custo total", result.totalUnitCost], ["Preço técnico", result.technicalPrice], ["Mercado", result.market.price],
-  ].filter(([, value]) => value !== null).map(([label, value]) => `<li><div><span>${label}</span><strong>${money(value)}</strong></div></li>`).join("");
+  ].filter(([, value]) => value !== null).map(([label, value]) => `<li><div><span>${label}</span><strong class="financial-value">${money(value)}</strong></div></li>`).join("");
   renderComposition(document, result);
 }
 

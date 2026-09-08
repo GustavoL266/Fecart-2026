@@ -80,7 +80,7 @@ function renderTaxedMaximumStat(marketState) {
     return '<div class="market-tax-stat is-loading"><span>Maior + tributos</span><strong>—</strong><small>Calculando na FiscalHub…</small></div>';
   }
   if (tax.status === "success") {
-    return `<div class="market-tax-stat is-success"><span>Maior + tributos</span><strong>${dashboardMoney(tax.result.total)}</strong><small>Calculado pela FiscalHub${tax.result.cached ? " · cache" : ""}</small>${taxAction(tax.expanded ? "Ocultar tributos" : "Ver tributos", "data-toggle-market-taxes")}</div>`;
+    return `<div class="market-tax-stat is-success"><span>Maior + tributos</span><strong class="financial-value">${dashboardMoney(tax.result.total)}</strong><small>Calculado pela FiscalHub${tax.result.cached ? " · cache" : ""}</small>${taxAction(tax.expanded ? "Ocultar tributos" : "Ver tributos", "data-toggle-market-taxes")}</div>`;
   }
   if (tax.status === "error") {
     const companyMissing = tax.code === "FISCALHUB_EMPRESA_NOT_CONFIGURED";
@@ -98,8 +98,8 @@ function renderTaxDetails(marketState) {
   }
   if (tax.status !== "success" || !tax.expanded) return "";
 
-  const rows = tax.result.taxes.map((item) => `<div><dt>${escapeHtml(item.label)}</dt><dd>${dashboardMoney(item.value)}</dd></div>`).join("");
-  return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">FiscalHub</p><h3 id="market-tax-breakdown-title">Detalhes dos tributos</h3></div><dl><div><dt>Preço de mercado</dt><dd>${dashboardMoney(tax.result.marketPrice)}</dd></div>${rows}<div class="market-tax-total"><dt>Total</dt><dd>${dashboardMoney(tax.result.total)}</dd></div></dl><p>NCM ${escapeHtml(tax.result.ncm)} · ${escapeHtml(tax.result.originState)} → ${escapeHtml(tax.result.destinationState)} · quantidade 1</p></section>`;
+  const rows = tax.result.taxes.map((item) => `<div><dt>${escapeHtml(item.label)}</dt><dd class="financial-value">${dashboardMoney(item.value)}</dd></div>`).join("");
+  return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">FiscalHub</p><h3 id="market-tax-breakdown-title">Detalhes dos tributos</h3></div><dl><div><dt>Preço de mercado</dt><dd class="financial-value">${dashboardMoney(tax.result.marketPrice)}</dd></div>${rows}<div class="market-tax-total"><dt>Total</dt><dd class="financial-value">${dashboardMoney(tax.result.total)}</dd></div></dl><p>NCM ${escapeHtml(tax.result.ncm)} · ${escapeHtml(tax.result.originState)} → ${escapeHtml(tax.result.destinationState)} · quantidade 1</p></section>`;
 }
 
 function renderMarketPanel(document, marketState) {
@@ -119,7 +119,7 @@ function renderMarketPanel(document, marketState) {
   const selectedRating = Number.isFinite(selectedItem?.rating)
     ? ` · Nota ${selectedItem.rating.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}${Number.isInteger(selectedItem.reviews) ? ` (${selectedItem.reviews.toLocaleString("pt-BR")} avaliações)` : ""}`
     : "";
-  selected.innerHTML = selectedItem ? `<p class="eyebrow">Produto individual selecionado</p><h3>${escapeHtml(selectedItem.title)}</h3><strong>${dashboardMoney(selectedItem.price)}</strong><small>Loja: ${escapeHtml(selectedItem.seller || selectedItem.source)}${escapeHtml(selectedRating)}</small><small>Google Shopping · consulta de ${escapeHtml(selectedItem.consultedAt ? new Date(selectedItem.consultedAt).toLocaleString("pt-BR") : "agora")}</small><button type="button" class="secondary-button" data-change-market-reference>Remover seleção</button>` : "";
+  selected.innerHTML = selectedItem ? `<p class="eyebrow">Produto individual selecionado</p><h3>${escapeHtml(selectedItem.title)}</h3><strong class="financial-value">${dashboardMoney(selectedItem.price)}</strong><small>Loja: ${escapeHtml(selectedItem.seller || selectedItem.source)}${escapeHtml(selectedRating)}</small><small>Google Shopping · consulta de ${escapeHtml(selectedItem.consultedAt ? new Date(selectedItem.consultedAt).toLocaleString("pt-BR") : "agora")}</small><button type="button" class="secondary-button" data-change-market-reference>Remover seleção</button>` : "";
   taxDetails.innerHTML = "";
   if (marketState.status === "loading") {
     sidebarStatus.textContent = "Buscando produtos no mercado…";
@@ -157,7 +157,7 @@ function renderMarketPanel(document, marketState) {
     ["Mediana", marketState.stats.median],
     ["Menor", marketState.stats.min],
     ["Maior", marketState.stats.max],
-  ].map(([label, value]) => `<div><span>${label}</span><strong>${dashboardMoney(value)}</strong></div>`).join("");
+  ].map(([label, value]) => `<div><span>${label}</span><strong class="financial-value">${dashboardMoney(value)}</strong></div>`).join("");
   stats.innerHTML = `${standardStats}${renderTaxedMaximumStat(marketState)}`;
   taxDetails.innerHTML = renderTaxDetails(marketState);
   results.innerHTML = marketState.items.map((item) => {
@@ -174,7 +174,7 @@ function renderMarketPanel(document, marketState) {
     const action = isSelected
       ? '<button type="button" disabled aria-current="true">Referência selecionada</button>'
       : `<button type="button" data-market-select="${escapeHtml(item.id)}">Usar como referência</button>`;
-    return `<article class="market-result${isSelected ? " selected" : ""}">${image}${selection}<div class="market-result-content"><h4>${escapeHtml(item.title)}</h4><div class="market-result-price"><strong>${dashboardMoney(item.price)}</strong>${rating}</div><p>Loja: ${escapeHtml(item.seller || item.source)}</p></div><div class="market-actions">${action}<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver no Google Shopping</a></div></article>`;
+    return `<article class="market-result${isSelected ? " selected" : ""}">${image}${selection}<div class="market-result-content"><h4>${escapeHtml(item.title)}</h4><div class="market-result-price"><strong class="financial-value">${dashboardMoney(item.price)}</strong>${rating}</div><p>Loja: ${escapeHtml(item.seller || item.source)}</p></div><div class="market-actions">${action}<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver no Google Shopping</a></div></article>`;
   }).join("");
 }
 

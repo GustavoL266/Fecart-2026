@@ -496,7 +496,7 @@
       <div class="pricing-panel-resizer" data-panel-resizer role="separator" aria-label="Redimensionar área do simulador" aria-orientation="vertical" aria-valuemin="320" aria-valuemax="620" aria-valuenow="390" tabindex="0"><span aria-hidden="true"></span><span class="resizer-hint">Arraste para ajustar</span></div>
 
       <aside id="mobilePriceSummary" class="mobile-price-summary" aria-label="Resumo do preço calculado">
-        <div><span>Preço sustentável</span><strong id="mobileSuggestedPrice">R$ 0,00</strong></div>
+        <div><span>Preço sustentável</span><strong id="mobileSuggestedPrice" class="financial-value">R$ 0,00</strong></div>
         <button id="showMobileResultButton" type="button">Abrir resultado</button>
       </aside>
 
@@ -550,12 +550,12 @@
               <div id="primaryPriceGrid" class="primary-price-grid">
                 <div class="primary-price-cell primary-price-sustainable">
                   <span>Seu preço sustentável</span>
-                  <strong id="suggestedPrice" class="summary-value">R$ 0,00</strong>
+                  <strong id="suggestedPrice" class="summary-value financial-value">R$ 0,00</strong>
                   <small>Margem líquida: <strong id="estimatedMargin">0%</strong></small>
                 </div>
                 <div id="primaryMarketValue" class="primary-price-cell" hidden>
                   <span>Preço de mercado</span>
-                  <strong id="primaryMarketPrice">R$ 0,00</strong>
+                  <strong id="primaryMarketPrice" class="financial-value">R$ 0,00</strong>
                   <small id="primaryMarketSource">Fonte: mercado</small>
                 </div>
                 <div id="primaryTaxImpact" class="primary-price-cell primary-tax-cell" hidden>
@@ -579,7 +579,7 @@
                 <div><p class="eyebrow">Mercado</p><h3 id="marketTitle">Preço médio informado</h3></div>
               </div>
               <span id="marketPriceLabel" class="summary-label">Referência manual</span>
-              <strong id="marketReferencePrice" class="summary-value compact">R$ 0,00</strong>
+              <strong id="marketReferencePrice" class="summary-value compact financial-value">R$ 0,00</strong>
               <p id="marketReferenceDetails" class="market-reference-details">Fonte: valor manual</p>
               <progress id="marketMeter" class="market-meter compact-meter" max="100" value="0" aria-label="Relação entre o preço calculado e o preço médio de mercado"></progress>
               <p id="marketStatus" class="summary-description"></p>
@@ -590,7 +590,7 @@
             <article class="summary-card">
               <p class="eyebrow">Custos</p>
               <h3>Custo-base por venda</h3>
-              <strong id="baseCost" class="summary-value compact">R$ 0,00</strong>
+              <strong id="baseCost" class="summary-value compact financial-value">R$ 0,00</strong>
               <p class="summary-description">Reúne custos diretos, capital de giro e rateio da estrutura mensal.</p>
               <button type="button" class="detail-link" data-detail-view="price" data-detail-target="financial-breakdown">Ver detalhes <span aria-hidden="true">→</span></button>
             </article>
@@ -598,7 +598,7 @@
             <article class="summary-card">
               <p class="eyebrow">Margem</p>
               <h3>Lucro líquido por unidade</h3>
-              <strong id="profitPerSale" class="summary-value compact">R$ 0,00</strong>
+              <strong id="profitPerSale" class="summary-value compact financial-value">R$ 0,00</strong>
               <p class="summary-description">Valor líquido estimado após custos e despesas sobre a venda.</p>
               <button type="button" class="detail-link" data-detail-view="price" data-detail-target="overview">Ver detalhes <span aria-hidden="true">→</span></button>
             </article>
@@ -624,7 +624,7 @@
           <article id="detail-overview" class="detail-hero" data-detail-anchor="overview" tabindex="-1">
             <div>
               <p class="eyebrow">Preço mínimo sustentável</p>
-              <strong id="detailSuggestedPrice">R$ 0,00</strong>
+              <strong id="detailSuggestedPrice" class="financial-value">R$ 0,00</strong>
               <p>Valor mínimo financeiro para cobrir a operação e alcançar a margem configurada.</p>
             </div>
             <div class="detail-hero-margin">
@@ -636,9 +636,9 @@
           <section class="detail-section" aria-labelledby="financial-summary-title">
             <div class="detail-section-heading"><p class="eyebrow">Resumo financeiro</p><h2 id="financial-summary-title">Os números por trás do preço</h2></div>
             <div class="detail-metric-grid">
-              <article class="metric-card"><span>Custo-base</span><strong id="detailBaseCost">R$ 0,00</strong><small>Custos necessários por venda</small></article>
+              <article class="metric-card"><span>Custo-base</span><strong id="detailBaseCost" class="financial-value">R$ 0,00</strong><small>Custos necessários por venda</small></article>
               <article class="metric-card"><span>Despesas sobre a venda</span><strong id="detailSalesRate">0%</strong><small>Tributos, taxa e comissão</small></article>
-              <article class="metric-card"><span>Lucro líquido</span><strong id="detailProfit">R$ 0,00</strong><small>Resultado estimado por unidade</small></article>
+              <article class="metric-card"><span>Lucro líquido</span><strong id="detailProfit" class="financial-value">R$ 0,00</strong><small>Resultado estimado por unidade</small></article>
               <article class="metric-card"><span>Pontos de atenção</span><strong id="detailAlertCount">0</strong><small>Revise antes de aplicar o preço</small></article>
             </div>
           </section>
@@ -652,7 +652,7 @@
                     <circle class="donut-track" cx="60" cy="60" r="48"></circle>
                     <g id="priceDonutSegments" transform="rotate(-90 60 60)"></g>
                   </svg>
-                  <div><span>Preço final</span><strong id="detailDonutPrice">R$ 0,00</strong></div>
+                  <div><span>Preço final</span><strong id="detailDonutPrice" class="financial-value">R$ 0,00</strong></div>
                 </div>
                 <ul id="priceCompositionLegend" class="chart-legend"></ul>
               </div>
@@ -662,8 +662,8 @@
               <div class="detail-section-heading compact"><p class="eyebrow">Comparação</p><h2>Preço e mercado</h2><p id="detailMarketNarrative"></p></div>
               <ul id="priceComparisonBars" class="comparison-bars"></ul>
               <div class="comparison-footer">
-                <span>Média de mercado <strong id="detailMarketPrice">R$ 0,00</strong></span>
-                <span>Custo-base limite <strong id="detailMarketCostLimit">R$ 0,00</strong></span>
+                <span>Média de mercado <strong id="detailMarketPrice" class="financial-value">R$ 0,00</strong></span>
+                <span>Custo-base limite <strong id="detailMarketCostLimit" class="financial-value">R$ 0,00</strong></span>
               </div>
             </article>
           </section>
