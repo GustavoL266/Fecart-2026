@@ -4603,3 +4603,110 @@ tr:last-child td {
   .app-shell { grid-template-columns: 1fr; }
   .pricing-sidebar { height: var(--pricing-panel-height, auto); overflow-y: auto; }
 }
+
+/* Jornada mobile: uma etapa por vez, navegação leve e resultado dentro do fluxo. */
+.mobile-pricing-progress { display: none; }
+.history-filter-disclosure, .history-filter-content { display: contents; }
+.history-filter-disclosure summary { display: none; }
+
+@media (max-width: 900px) {
+  html { scroll-padding-top: calc(68px + env(safe-area-inset-top)); }
+  .mobile-app-header { min-height: 60px; box-shadow: none; padding: max(8px, env(safe-area-inset-top)) 16px 8px; }
+  .mobile-brand { gap: 9px; font-size: 0.8rem; }
+  .mobile-brand .brand-mark { width: 36px; height: 36px; border-radius: 10px; }
+  .mobile-menu-toggle { border-color: transparent; background: transparent; }
+  .mobile-menu { top: calc(100% + 6px); right: 12px; width: min(296px, calc(100vw - 24px)); border-radius: 16px; box-shadow: 0 14px 34px color-mix(in srgb, var(--ink) 16%, transparent); padding: 8px; }
+  .mobile-menu button { min-height: 48px; border-radius: 10px; padding-inline: 12px; }
+  .mobile-menu .mobile-menu-theme { display: flex; align-items: center; gap: 9px; border-top: 1px solid var(--line); border-radius: 0; color: var(--ink); margin-top: 4px; }
+  .mobile-menu-theme .theme-symbol { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: var(--green-soft); color: var(--green); }
+  .app-shell:not([hidden]) { display: block; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+  .pricing-panel-resizer { display: none; }
+  .pricing-sidebar, .app-shell .pricing-sidebar { height: auto !important; min-height: 0; max-height: none; overflow: visible; border: 0; background: var(--surface); padding: 0 16px 20px; }
+  .sidebar-sticky-top { position: relative; top: auto; width: 100%; margin: 0; border: 0; box-shadow: none; }
+  .pricing-sidebar .sidebar-header { display: none; }
+  .mobile-pricing-progress { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 14px; align-items: center; padding: 18px 0 14px; }
+  .mobile-pricing-progress-copy { display: grid; gap: 2px; }
+  .mobile-pricing-progress-copy span { color: var(--muted); font-size: 0.74rem; font-weight: 750; }
+  .mobile-pricing-progress-copy strong { font-size: 1.05rem; letter-spacing: -0.015em; }
+  .mobile-pricing-steps-button { min-height: 44px; border-radius: 10px; font-size: 0.82rem; padding-inline: 13px; }
+  .mobile-pricing-progress progress { grid-column: 1 / -1; width: 100%; height: 4px; overflow: hidden; appearance: none; border: 0; border-radius: 99px; background: var(--meter-track); }
+  .mobile-pricing-progress progress::-webkit-progress-bar { background: var(--meter-track); }
+  .mobile-pricing-progress progress::-webkit-progress-value, .mobile-pricing-progress progress::-moz-progress-bar { background: var(--green); }
+  .pricing-tabs { display: none; }
+  .pricing-sidebar.is-step-picker-open .pricing-tabs { position: absolute; z-index: 35; top: 72px; right: 0; left: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: min(64dvh, 430px); gap: 8px; overflow-y: auto; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); box-shadow: 0 16px 40px color-mix(in srgb, var(--ink) 18%, transparent); padding: 10px; }
+  .pricing-sidebar.is-step-picker-open .pricing-tab { justify-content: flex-start; min-height: 46px; border-radius: 10px; font-size: 0.82rem; padding: 0 11px; text-align: left; }
+  .pricing-sidebar .pricing-tab-panel { padding: 13px 0 0; }
+  .tab-panel-heading { gap: 5px; margin-bottom: 20px; }
+  .pricing-sidebar .tab-panel-heading .section-title, .market-consultation-heading .section-title { color: var(--ink); font-size: 1.28rem; font-weight: 800; letter-spacing: -0.025em; }
+  .section-description { max-width: 42rem; font-size: 0.9rem; line-height: 1.45; }
+  .pricing-sidebar .field-grid, .pricing-sidebar .sidebar-grid { gap: 15px; }
+  .pricing-sidebar .sidebar-grid--two { grid-template-columns: 1fr; }
+  .pricing-sidebar .sidebar-field { gap: 7px; }
+  .pricing-sidebar .sidebar-field label, .pricing-sidebar .market-search label { font-size: 0.9rem; }
+  .pricing-sidebar :is(input[type="number"], input[type="text"], select, textarea) { min-height: 50px; border-radius: 10px; font-size: 1rem; }
+  .pricing-sidebar textarea { min-height: 104px; }
+  .pricing-sidebar .market-search-card, .pricing-sidebar .manual-market-fallback, .pricing-sidebar .market-tax-context, .pricing-sidebar .market-results-panel { border-radius: 12px; box-shadow: none; padding: 15px; }
+  .pricing-sidebar .market-consultation-heading { grid-template-columns: 38px minmax(0, 1fr); gap: 11px; padding-bottom: 15px; }
+  .pricing-sidebar .market-consultation-icon { width: 38px; height: 38px; border-radius: 10px; font-size: 1.1rem; }
+  .pricing-sidebar .pricing-step-actions { position: relative; gap: 10px; margin-top: 26px; border-top: 0; padding-top: 0; }
+  .pricing-sidebar .pricing-step-button { min-height: 50px; border-radius: 11px; font-size: 0.9rem; }
+  .mobile-price-summary { position: relative; z-index: auto; display: flex; align-items: center; justify-content: space-between; min-height: 76px; gap: 12px; border: 1px solid color-mix(in srgb, var(--green) 36%, var(--line)); border-radius: 14px; background: color-mix(in srgb, var(--green-soft) 42%, var(--panel)); box-shadow: none; margin: 0 16px 22px; padding: 12px 14px; }
+  .mobile-price-summary strong { font-size: 1.38rem; }
+  .mobile-price-summary button { min-height: 46px; border-radius: 10px; font-size: 0.82rem; padding-inline: 12px; }
+  .workspace { gap: 20px; border-top: 1px solid var(--line); background: var(--surface); padding: 24px 16px 36px; }
+  .dashboard-view, .detail-page { gap: 16px; }
+  .dashboard-heading { padding: 0 2px; }
+  .dashboard-heading h1, .detail-header h1 { font-size: 1.55rem; }
+  .dashboard-heading p:not(.eyebrow), .detail-header > p:not(.eyebrow) { font-size: 0.9rem; }
+  .dashboard-summary-grid { gap: 0; }
+  .summary-card, .summary-card-primary, .summary-card-primary + .summary-card, .summary-card-alerts { min-height: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; padding: 20px 2px; }
+  .summary-card-primary { border: 1px solid color-mix(in srgb, var(--green) 36%, var(--line)); border-radius: 16px; background: linear-gradient(145deg, color-mix(in srgb, var(--green-soft) 54%, var(--panel)), var(--panel)); padding: 18px; }
+  .summary-card-primary + .summary-card { border-top: 0; }
+  .summary-card h3 { font-size: 1.08rem; }
+  .primary-price-grid { gap: 10px; margin-top: 16px; }
+  .primary-price-cell { border-radius: 10px; padding: 14px; }
+  .primary-price-sustainable .summary-value, .summary-value { font-size: clamp(2.45rem, 13vw, 3.35rem); }
+  .summary-primary-actions { gap: 12px; }
+  .summary-primary-actions .detail-link { min-height: 44px; align-content: center; }
+  .market-dashboard-section { gap: 14px; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; padding: 22px 2px; }
+  .market-dashboard-section .market-results { gap: 10px; }
+  .market-dashboard-section .market-result, .market-dashboard-section .market-result:first-child { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; min-height: 0; border-radius: 12px; background: var(--panel); padding: 12px; }
+  .market-dashboard-section .market-result img, .market-dashboard-section .market-image-placeholder { width: 72px; height: 72px; }
+  .market-dashboard-section .market-actions { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; margin-top: 0; }
+  .history-view { width: 100%; padding: 0 16px max(32px, env(safe-area-inset-bottom)); }
+  .history-mobile-header { width: calc(100% + 32px); margin: 0 -16px 20px; }
+  .history-topbar { gap: 8px; margin-bottom: 18px; }
+  .history-topbar h1 { font-size: 1.55rem; }
+  .history-controls { gap: 10px; border: 0; border-radius: 0; background: transparent; margin-bottom: 18px; padding: 0; }
+  .history-controls > label { color: var(--muted); font-size: 0.8rem; font-weight: 750; }
+  .history-filter-disclosure { display: block; border-top: 1px solid var(--line); padding-top: 10px; }
+  .history-filter-disclosure summary { display: flex; min-height: 44px; align-items: center; justify-content: space-between; color: var(--green); cursor: pointer; font-size: 0.9rem; font-weight: 800; list-style: none; }
+  .history-filter-disclosure summary::-webkit-details-marker { display: none; }
+  .history-filter-disclosure summary::after { content: "+"; font-size: 1.2rem; }
+  .history-filter-disclosure[open] summary::after { content: "−"; }
+  .history-filter-content { display: grid; gap: 8px; padding: 5px 0 2px; }
+  .history-filter-content label { color: var(--muted); font-size: 0.8rem; font-weight: 750; }
+  .product-card, .empty-history { box-shadow: none; }
+  .product-card { gap: 15px; border-radius: 12px; padding: 16px; }
+  .about-content { width: min(100% - 32px, 700px); gap: 42px; padding: 34px 0 32px; }
+  .about-hero { gap: 18px; }
+  .about-hero h1 { font-size: clamp(2rem, 10.5vw, 3rem); }
+  .about-hero-note, .about-feature-grid article, .about-disclaimer { border-radius: 12px; box-shadow: none; }
+  .about-flow { grid-template-columns: repeat(9, minmax(132px, 1fr)); gap: 7px; }
+  .about-results-grid article { min-height: 70px; border-radius: 10px; padding: 14px; }
+}
+
+@media (max-width: 430px) {
+  .mobile-brand > span:last-child { font-size: 0; }
+  .mobile-brand > span:last-child::after { content: "Precificar"; font-size: 0.82rem; }
+  .mobile-price-summary { align-items: flex-start; }
+  .mobile-price-summary button { padding-inline: 10px; }
+  .pricing-sidebar.is-step-picker-open .pricing-tabs { grid-template-columns: 1fr; }
+  .market-dashboard-section .market-actions { grid-template-columns: 1fr; }
+  .summary-primary-actions { display: grid; }
+  .summary-primary-actions .detail-link { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-menu-toggle span, .pricing-tab-panel.is-active { transition: none; animation: none; }
+}

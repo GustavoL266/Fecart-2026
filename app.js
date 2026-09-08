@@ -1230,6 +1230,10 @@ function createPricingTabs(root) {
   const tabs = Array.from(root.querySelectorAll("[data-pricing-tab]"));
   const panels = Array.from(root.querySelectorAll("[data-pricing-panel]"));
   const order = tabs.map((tab) => tab.dataset.pricingTab);
+  const mobileStep = root.querySelector("[data-mobile-pricing-step]");
+  const mobileTitle = root.querySelector("[data-mobile-pricing-title]");
+  const mobileProgress = root.querySelector("[data-mobile-pricing-progress]");
+  const mobileStepsToggle = root.querySelector("[data-mobile-steps-toggle]");
   let activeSection = order[0];
   const visitedSections = new Set();
   let pointerStartX = 0;
@@ -1268,6 +1272,31 @@ function createPricingTabs(root) {
     tabList.scrollTo({ left, behavior: "smooth" });
   }
 
+  function setMobileStepsOpen(open, { restoreFocus = false } = {}) {
+    root.classList?.toggle("is-step-picker-open", open);
+    if (!mobileStepsToggle) return;
+    mobileStepsToggle.setAttribute("aria-expanded", String(open));
+    mobileStepsToggle.textContent = open ? "Fechar" : "Etapas";
+    if (restoreFocus) mobileStepsToggle.focus();
+  }
+
+  function updateMobileProgress(section) {
+    const index = order.indexOf(section);
+    const tab = tabs[index];
+    const label = tab?.dataset.pricingLabel || tab?.textContent.trim() || "Etapa";
+    const step = index + 1;
+    const progressLabel = `Etapa ${step} de ${order.length}: ${label}`;
+
+    if (mobileStep) mobileStep.textContent = `Etapa ${step} de ${order.length}`;
+    if (mobileTitle) mobileTitle.textContent = label;
+    if (mobileProgress) {
+      mobileProgress.max = order.length;
+      mobileProgress.value = step;
+      mobileProgress.setAttribute("aria-label", progressLabel);
+    }
+    if (mobileStepsToggle) mobileStepsToggle.setAttribute("aria-label", `${progressLabel}. Mudar etapa`);
+  }
+
   function activate(section, { focusTab = false, resetScroll = true } = {}) {
     if (!order.includes(section)) return;
     if (section !== activeSection) visitedSections.add(activeSection);
@@ -1292,6 +1321,8 @@ function createPricingTabs(root) {
       if (focusTab) activeTab.focus({ preventScroll: true });
     }
     if (resetScroll) resetInternalScroll();
+    setMobileStepsOpen(false);
+    updateMobileProgress(section);
     updateCompletion();
   }
 
@@ -1356,6 +1387,12 @@ function createPricingTabs(root) {
     tabList.addEventListener("pointerup", stopDrag);
     tabList.addEventListener("pointercancel", stopDrag);
   }
+
+  mobileStepsToggle?.addEventListener("click", () => {
+    const isOpen = mobileStepsToggle.getAttribute("aria-expanded") !== "true";
+    setMobileStepsOpen(isOpen);
+    if (isOpen) tabs.find((tab) => tab.dataset.pricingTab === activeSection)?.focus();
+  });
 
   root.querySelectorAll("[data-pricing-go]").forEach((button) => {
     button.addEventListener("click", () => activate(button.dataset.pricingGo, { focusTab: true }));

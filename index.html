@@ -126,6 +126,7 @@
           <button type="button" data-app-action="products">Meus Produtos</button>
           <button type="button" data-app-action="about">Sobre</button>
           <button type="button" data-app-action="profile">Meu Perfil</button>
+          <button type="button" class="mobile-menu-theme theme-toggle" data-theme-toggle aria-label="Ativar modo escuro" aria-pressed="false"><span class="theme-symbol" aria-hidden="true">☼</span><span data-theme-label>Modo escuro</span></button>
           <button type="button" class="mobile-menu-logout" data-app-action="logout">Sair</button>
         </div>
       </header>
@@ -143,7 +144,16 @@
             <p class="sidebar-description">Preencha os dados abaixo para calcular seu preço sustentável.</p>
           </header>
 
-          <nav class="pricing-tabs" role="tablist" aria-label="Seções do formulário de precificação">
+          <section class="mobile-pricing-progress" aria-live="polite" aria-label="Progresso da precificação">
+            <div class="mobile-pricing-progress-copy">
+              <span id="mobilePricingStep" data-mobile-pricing-step>Etapa 1 de 8</span>
+              <strong id="mobilePricingTitle" data-mobile-pricing-title>Produto</strong>
+            </div>
+            <button id="mobilePricingStepsButton" class="mobile-pricing-steps-button secondary-button" type="button" data-mobile-steps-toggle aria-controls="pricing-tabs" aria-expanded="false">Etapas</button>
+            <progress id="mobilePricingProgress" data-mobile-pricing-progress max="8" value="1" aria-label="Etapa 1 de 8"></progress>
+          </section>
+
+          <nav id="pricing-tabs" class="pricing-tabs" role="tablist" aria-label="Seções do formulário de precificação">
             <button id="pricing-tab-product" class="pricing-tab is-active" type="button" role="tab" aria-controls="pricing-panel-product" aria-selected="true" data-pricing-tab="product" data-pricing-label="Produto">
               <span class="pricing-tab-status" aria-hidden="true">○</span><span>Produto</span>
             </button>
@@ -481,6 +491,11 @@
 
       <div class="pricing-panel-resizer" data-panel-resizer role="separator" aria-label="Redimensionar área do simulador" aria-orientation="vertical" aria-valuemin="320" aria-valuemax="620" aria-valuenow="390" tabindex="0"><span aria-hidden="true"></span><span class="resizer-hint">Arraste para ajustar</span></div>
 
+      <aside id="mobilePriceSummary" class="mobile-price-summary" aria-label="Resumo do preço calculado">
+        <div><span>Preço sustentável</span><strong id="mobileSuggestedPrice">R$ 0,00</strong></div>
+        <button id="showMobileResultButton" type="button">Abrir resultado</button>
+      </aside>
+
       <section class="workspace" aria-label="Resultado da precificação">
         <header class="topbar">
           <div>
@@ -679,10 +694,6 @@
         </section>
       </section>
 
-      <aside id="mobilePriceSummary" class="mobile-price-summary" aria-label="Resumo do preço calculado">
-        <div><span>Preço sugerido</span><strong id="mobileSuggestedPrice">R$ 0,00</strong></div>
-        <button id="showMobileResultButton" type="button">Ver resultado</button>
-      </aside>
     </main>
 
     <section id="productsView" class="history-view" aria-labelledby="products-title" hidden>
@@ -699,6 +710,7 @@
           <button type="button" data-app-action="products">Meus Produtos</button>
           <button type="button" data-app-action="about">Sobre</button>
           <button type="button" data-app-action="profile">Meu Perfil</button>
+          <button type="button" class="mobile-menu-theme theme-toggle" data-theme-toggle aria-label="Ativar modo escuro" aria-pressed="false"><span class="theme-symbol" aria-hidden="true">☼</span><span data-theme-label>Modo escuro</span></button>
           <button type="button" class="mobile-menu-logout" data-app-action="logout">Sair</button>
         </div>
       </header>
@@ -715,11 +727,16 @@
       <div class="history-controls">
         <label for="productSearch">Pesquisar por nome</label>
         <input id="productSearch" type="search" placeholder="Digite o nome do produto" autocomplete="off" />
-        <label for="productSort">Ordenar por data</label>
-        <select id="productSort">
-          <option value="desc">Mais recentes primeiro</option>
-          <option value="asc">Mais antigos primeiro</option>
-        </select>
+        <details class="history-filter-disclosure" open>
+          <summary>Ordenar produtos</summary>
+          <div class="history-filter-content">
+            <label for="productSort">Ordenar por data</label>
+            <select id="productSort">
+              <option value="desc">Mais recentes primeiro</option>
+              <option value="asc">Mais antigos primeiro</option>
+            </select>
+          </div>
+        </details>
       </div>
       <p id="historyMessage" class="form-message" role="status" hidden></p>
       <div id="productsList" class="products-list" aria-live="polite"></div>
@@ -729,7 +746,7 @@
       <header class="mobile-app-header about-mobile-header" aria-label="Navegação principal">
         <a class="mobile-brand" href="#assistente" aria-label="Ir para o simulador"><span class="brand-mark">PC</span><span>Assistente de<br />Precificação</span></a>
         <button type="button" class="mobile-menu-toggle" data-mobile-menu-toggle aria-label="Abrir menu" aria-expanded="false"><span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span></button>
-        <div class="mobile-menu" data-mobile-menu hidden><button type="button" data-app-action="assistant">Simulador</button><button type="button" data-app-action="products">Meus Produtos</button><button type="button" data-app-action="about">Sobre</button><button type="button" data-app-action="profile">Meu Perfil</button><button type="button" class="mobile-menu-logout" data-app-action="logout">Sair</button></div>
+        <div class="mobile-menu" data-mobile-menu hidden><button type="button" data-app-action="assistant">Simulador</button><button type="button" data-app-action="products">Meus Produtos</button><button type="button" data-app-action="about">Sobre</button><button type="button" data-app-action="profile">Meu Perfil</button><button type="button" class="mobile-menu-theme theme-toggle" data-theme-toggle aria-label="Ativar modo escuro" aria-pressed="false"><span class="theme-symbol" aria-hidden="true">☼</span><span data-theme-label>Modo escuro</span></button><button type="button" class="mobile-menu-logout" data-app-action="logout">Sair</button></div>
       </header>
       <header class="about-topbar"><a class="brand about-brand" href="#assistente" aria-label="Voltar ao simulador"><span class="brand-mark">PC</span><span>Assistente de Precificação</span></a><button id="aboutBackButton" type="button" class="secondary-button"><span aria-hidden="true">←</span> Voltar ao simulador</button></header>
       <main class="about-content">
