@@ -39,29 +39,15 @@ const state = {
   taxAvailability: null,
 };
 
-let focusState = {
-  status: "idle",
-  ncm: null,
-  source: "",
-  environment: "",
-  checkedAt: "",
-  error: "",
-  unavailable: false,
-};
-let marketState = {
-  status: "idle",
-  query: "",
-  items: [],
-  stats: null,
-  selectedItem: null,
-  error: "",
-  tax: { status: "idle", expanded: false, result: null, suggestions: [], code: "", message: "", shortMessage: "" },
-};
+let focusState = emptyFocusState();
+let marketState = emptyMarketState();
 let manualMarketValue = elements.marketPrice.value;
 let productSearchTimer;
 let pendingDetailTarget = "";
 let revealAllPricingErrors = false;
 const touchedPricingFields = new Set();
+let marketSearchRevision = 0;
+let ncmLookupRevision = 0;
 
 function applyTheme(theme, persist = true) {
   const normalizedTheme = theme === "dark" ? "dark" : "light";
@@ -199,6 +185,22 @@ function emptyMarketTaxState(overrides = {}) {
   return { status: "idle", expanded: false, result: null, suggestions: [], code: "", message: "", shortMessage: "", ...overrides };
 }
 
+function emptyFocusState() {
+  return { status: "idle", ncm: null, source: "", environment: "", checkedAt: "", error: "", unavailable: false };
+}
+
+function emptyMarketState() {
+  return {
+    status: "idle",
+    query: "",
+    items: [],
+    stats: null,
+    selectedItem: null,
+    error: "",
+    tax: emptyMarketTaxState(),
+  };
+}
+
 function currentMarketTaxContext() {
   const ncm = String(elements.ncmCode.value || "").replace(/\D/g, "");
   return {
@@ -271,24 +273,26 @@ function renderNcmState() {
 }
 
 async function lookupNcm() {
+  const lookupRevision = ++ncmLookupRevision;
   const code = String(elements.ncmCode.value || "").replace(/\D/g, "");
   elements.ncmCode.value = code;
   if (!/^\d{8}$/.test(code)) {
-    focusState = { status: "error", ncm: null, source: "", environment: "", checkedAt: "", error: "Informe um NCM com exatamente 8 dígitos.", unavailable: false };
+    focusState = { ...emptyFocusState(), status: "error", error: "Informe um NCM com exatamente 8 dígitos." };
     render();
     return;
   }
 
-  focusState = { status: "loading", ncm: null, source: "", environment: "", checkedAt: "", error: "", unavailable: false };
+  focusState = { ...emptyFocusState(), status: "loading" };
   render();
   try {
     const response = await api.get(`/fiscal/ncms/${encodeURIComponent(code)}`);
+    if (lookupRevision !== ncmLookupRevision) return;
     focusState = { status: "success", ncm: response.ncm, source: "Focus NFe", environment: response.environment, checkedAt: new Date().toISOString(), error: "", unavailable: false };
   } catch (error) {
+    if (lookupRevision !== ncmLookupRevision) return;
     focusState = {
+      ...emptyFocusState(),
       status: "error",
-      ncm: null,
-      source: "", environment: "", checkedAt: "",
       error: `${messageFor(error)} O cálculo financeiro foi mantido, mas não está fiscalmente validado.`,
       unavailable: true,
     };
@@ -517,6 +521,7 @@ async function calculateMaximumTaxes() {
 
 async function searchMarket() {
   if (marketState.status === "loading") return;
+  const searchRevision = ++marketSearchRevision;
   const query = $("#marketQuery").value.trim();
   if (query.length < 3) {
     marketState = { ...marketState, status: "error", error: "Informe pelo menos 3 caracteres para pesquisar." };
@@ -529,6 +534,7 @@ async function searchMarket() {
 
   try {
     const data = await market.search(query);
+    if (searchRevision !== marketSearchRevision) return;
     marketState = {
       ...marketState,
       status: data.stats ? "success" : "empty",
@@ -536,6 +542,7 @@ async function searchMarket() {
       error: "",
     };
   } catch (error) {
+    if (searchRevision !== marketSearchRevision) return;
     setMarketError(query, error);
   }
 
@@ -573,6 +580,27 @@ function restoreMarketReferenceFromSession() {
   marketState = { ...marketState, query: saved.query, selectedItem: saved.selectedItem };
   elements.marketReferenceRule.value = "selected-product";
   $("#marketQuery").value = saved.query;
+}
+
+function resetCurrentProductForm() {
+  // Invalida somente respostas locais pendentes; não inicia chamadas externas.
+  marketSearchRevision += 1;
+  ncmLookupRevision += 1;
+  clearPricingInputs(elements);
+  $("#productName").value = "";
+  $("#productDescription").value = "";
+  $("#marketQuery").value = "";
+  elements.marketReferenceRule.value = "manual";
+  document.querySelector(".fiscal-advanced-fields")?.removeAttribute("open");
+  focusState = emptyFocusState();
+  marketState = emptyMarketState();
+  manualMarketValue = "";
+  revealAllPricingErrors = false;
+  touchedPricingFields.clear();
+  clearMarketReference(window.sessionStorage);
+  pricingTabs.activate("product", { resetScroll: true });
+  render();
+  $("#productName").focus({ preventScroll: true });
 }
 
 function productPayloadFromCalculator() {
@@ -624,7 +652,8 @@ async function saveProduct() {
     const response = await api.post("/products", payload);
     // O servidor recalcula e devolve o snapshot que passa a ser a versão salva.
     state.selectedProduct = response.product;
-    setMessage(status, `Produto salvo no histórico com o preço técnico de ${response.product.suggestedPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`, true);
+    resetCurrentProductForm();
+    setMessage(status, "Produto salvo com sucesso. Você já pode cadastrar outro item.", true);
   } catch (error) {
     setMessage(status, messageFor(error));
   } finally {

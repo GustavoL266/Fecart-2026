@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { parseBrazilianNumber, PRICING_FIELD_IDS, validatePricingForm } from "../js/ui/form.js";
+import { CAPACITY_FIELD_IDS, clearPricingInputs, parseBrazilianNumber, PRICING_FIELD_IDS, validatePricingForm } from "../js/ui/form.js";
 
 const values = {
   materialCost: "18,50", wasteRate: "5", packagingCost: "3,50", deliveryCost: "4", insuranceCost: "", otherDirectExpenses: "",
@@ -52,4 +52,18 @@ test("HTML inicia vazio e expõe os novos campos sem desconto legado como custo"
   assert.doesNotMatch(html, /id="discountAmount"/);
   assert.match(html, /Carga tributária estimada/);
   assert.match(html, /Quantidade prevista de unidades por mês/);
+});
+
+test("limpa todos os inputs da precificação, capacidade e contexto fiscal", () => {
+  const fields = elementsFor({
+    ncmCode: "09012100", taxRegime: "simples-nacional", originState: "SP", destinationState: "RJ",
+    cfop: "5102", taxSituation: "102", customerType: "contribuinte", operationPurpose: "venda",
+    workerCount: "2", productiveHoursPerWorkerMonth: "176", unitsPerWorkerHour: "4",
+  });
+  clearPricingInputs(fields);
+
+  for (const id of [...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]) assert.equal(fields[id].value, "", `${id} deve ser limpo`);
+  for (const id of ["ncmCode", "taxRegime", "originState", "destinationState", "cfop", "taxSituation", "customerType", "operationPurpose"]) {
+    assert.equal(fields[id].value, "", `${id} deve voltar ao padrão vazio`);
+  }
 });
