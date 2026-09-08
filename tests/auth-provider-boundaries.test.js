@@ -37,22 +37,21 @@ test("/fiscal/ncms/search usa apenas a busca por descrição da Focus NFe", () =
   assert.doesNotMatch(searchRoute, /FiscalHub|fiscalHubClient|ncmProvider/);
 });
 
-test("FiscalHub só é alcançada após a confirmação de NCM e configuração da empresa", () => {
-  const taxStart = server.indexOf('app.post("/tax/calculate"');
+test("IBPT só calcula após confirmação de NCM e validação do contexto", () => {
+  const taxStart = server.indexOf('app.post("/tax/estimate"');
   const taxRoute = server.slice(taxStart);
   const confirmation = taxRoute.indexOf("FOCUS_NFE_NCM_CONFIRMATION_REQUIRED");
-  const company = taxRoute.indexOf("FISCALHUB_EMPRESA_NOT_CONFIGURED");
   const providerCall = taxRoute.indexOf("taxProvider.calculate(input)");
 
-  assert.ok(confirmation >= 0 && company > confirmation && providerCall > company);
-  assert.match(taxRoute, /configured=\$\{fiscalHubConfig\.isConfigured\}/);
-  assert.match(taxRoute, /companyConfigured=\$\{fiscalHubConfig\.companyConfigured\}/);
-  assert.match(taxRoute, /provider=FiscalHub/);
+  assert.ok(confirmation >= 0 && providerCall > confirmation);
+  assert.match(taxRoute, /provider=IBPT/);
+  assert.match(taxRoute, /productOrigin/);
+  assert.doesNotMatch(taxRoute, /fetch|FiscalHub|FISCALHUB/);
 });
 
-test("as mensagens de sessão, Focus NFe e FiscalHub são específicas", () => {
+test("as mensagens de sessão, Focus NFe e IBPT são específicas", () => {
   assert.match(main, /SESSION_REQUIRED: "Sua sessão expirou\. Entre novamente\."/);
   assert.match(main, /FOCUS_NFE_UNAUTHORIZED: "Não foi possível autenticar na Focus NFe\."/);
-  assert.match(main, /FISCALHUB_UNAUTHORIZED: "Não foi possível autenticar na FiscalHub\."/);
-  assert.match(main, /FISCALHUB_EMPRESA_NOT_CONFIGURED: "A empresa para cálculo tributário ainda não foi configurada\."/);
+  assert.match(main, /IBPT_NCM_NOT_FOUND: "O NCM confirmado não existe na tabela IBPT\."/);
+  assert.match(main, /IBPT_INVALID_FILE: "Não foi possível carregar a tabela tributária\."/);
 });

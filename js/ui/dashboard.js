@@ -3,6 +3,7 @@ import { renderPriceDetails, renderPriceDetailsUnavailable } from "./detail-page
 import { marketTaxPrerequisiteError } from "../services/tax-service.js";
 
 function dashboardMoney(value) { return value === null || value === undefined ? "—" : currency.format(value); }
+function taxPercent(value) { return `${value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`; }
 
 function marketLabel(market) {
   if (!market?.price) return "Sem referência de mercado";
@@ -74,19 +75,19 @@ function renderTaxedMaximumStat(marketState) {
   const prerequisiteError = marketTaxPrerequisiteError(context, maximumPrice, taxAvailability);
   if (prerequisiteError) {
     const needsNcm = prerequisiteError.code === "NCM_REQUIRED";
-    return `<div class="market-tax-stat is-error" title="${escapeHtml(`${marketDetails} · ${prerequisiteError.message}`)}"><span>Maior + tributos</span><strong>—</strong><small>${escapeHtml(prerequisiteError.shortMessage)}</small>${needsNcm ? taxAction("Classificar produto", "data-confirm-market-ncm", true) : ""}</div>`;
+    return `<div class="market-tax-stat is-error" title="${escapeHtml(`${marketDetails} · ${prerequisiteError.message}`)}"><span>Maior + tributos estimados</span><strong>—</strong><small>${escapeHtml(prerequisiteError.shortMessage)}</small>${needsNcm ? taxAction("Classificar produto", "data-confirm-market-ncm", true) : ""}</div>`;
   }
   if (tax.status === "loading") {
-    return '<div class="market-tax-stat is-loading"><span>Maior + tributos</span><strong>—</strong><small>Calculando tributos...</small></div>';
+    return '<div class="market-tax-stat is-loading"><span>Maior + tributos estimados</span><strong>—</strong><small>Calculando estimativa...</small></div>';
   }
   if (tax.status === "success") {
-    return `<div class="market-tax-stat is-success"><span>Maior + tributos</span><strong class="financial-value">${dashboardMoney(tax.result.total)}</strong><small>Calculado pela FiscalHub${tax.result.cached ? " · cache" : ""}</small>${taxAction(tax.expanded ? "Ocultar tributos" : "Ver tributos", "data-toggle-market-taxes")}</div>`;
+    return `<div class="market-tax-stat is-success"><span>Maior + tributos estimados</span><strong class="financial-value">${dashboardMoney(tax.result.total)}</strong><small>Carga estimada ${taxPercent(tax.result.rates.total)} · ${escapeHtml(tax.result.source)}</small>${taxAction(tax.expanded ? "Ocultar estimativa" : "Ver estimativa", "data-toggle-market-taxes")}</div>`;
   }
   if (tax.status === "error") {
-    const companyMissing = tax.code === "FISCALHUB_EMPRESA_NOT_CONFIGURED";
-    return `<div class="market-tax-stat is-error"><span>Maior + tributos</span><strong>—</strong><small>${escapeHtml(tax.shortMessage || "Não foi possível calcular")}</small>${companyMissing ? "" : taxAction("Tentar novamente", "data-calculate-market-taxes", true)}</div>`;
+    const tableUnavailable = ["IBPT_NOT_CONFIGURED", "IBPT_INVALID_FILE"].includes(tax.code);
+    return `<div class="market-tax-stat is-error"><span>Maior + tributos estimados</span><strong>—</strong><small>${escapeHtml(tax.shortMessage || "Não foi possível estimar")}</small>${tableUnavailable ? "" : taxAction("Tentar novamente", "data-calculate-market-taxes", true)}</div>`;
   }
-  return `<div class="market-tax-stat"><span>Maior + tributos</span><strong>—</strong><small>Preparando cálculo tributário...</small>${taxAction("Calcular tributos", "data-calculate-market-taxes")}</div>`;
+  return `<div class="market-tax-stat"><span>Maior + tributos estimados</span><strong>—</strong><small>Preparando estimativa tributária...</small>${taxAction("Calcular estimativa", "data-calculate-market-taxes")}</div>`;
 }
 
 function renderTaxDetails(marketState) {
@@ -94,12 +95,12 @@ function renderTaxDetails(marketState) {
   if (prerequisiteError) return `<div class="market-tax-notice is-error" role="alert"><strong>${escapeHtml(prerequisiteError.message)}</strong></div>`;
   const tax = marketState.tax || { status: "idle" };
   if (tax.status === "ncm-error" || tax.status === "error") {
-    return `<div class="market-tax-notice is-error" role="alert"><strong>${escapeHtml(tax.message || "Não foi possível concluir o cálculo tributário.")}</strong></div>`;
+    return `<div class="market-tax-notice is-error" role="alert"><strong>${escapeHtml(tax.message || "Não foi possível concluir a estimativa tributária.")}</strong></div>`;
   }
   if (tax.status !== "success" || !tax.expanded) return "";
 
-  const rows = tax.result.taxes.map((item) => `<div><dt>${escapeHtml(item.label)}</dt><dd class="financial-value">${dashboardMoney(item.value)}</dd></div>`).join("");
-  return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">FiscalHub</p><h3 id="market-tax-breakdown-title">Detalhes dos tributos</h3></div><dl><div><dt>Preço de mercado</dt><dd class="financial-value">${dashboardMoney(tax.result.marketPrice)}</dd></div>${rows}<div class="market-tax-total"><dt>Total</dt><dd class="financial-value">${dashboardMoney(tax.result.total)}</dd></div></dl><p>NCM ${escapeHtml(tax.result.ncm)} · ${escapeHtml(tax.result.originState)} → ${escapeHtml(tax.result.destinationState)} · quantidade 1</p></section>`;
+  const origin = tax.result.productOrigin === "nacional" ? "Nacional" : "Importado";
+  return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">IBPT / Empresômetro</p><h3 id="market-tax-breakdown-title">Estimativa tributária</h3></div><dl><div><dt>Maior</dt><dd class="financial-value">${dashboardMoney(tax.result.marketPrice)}</dd></div><div><dt>Alíquota federal</dt><dd>${taxPercent(tax.result.rates.federal)}</dd></div><div><dt>Alíquota estadual</dt><dd>${taxPercent(tax.result.rates.state)}</dd></div><div><dt>Alíquota municipal</dt><dd>${taxPercent(tax.result.rates.municipal)}</dd></div><div><dt>Carga tributária estimada</dt><dd>${taxPercent(tax.result.rates.total)}</dd></div><div><dt>Tributos estimados</dt><dd class="financial-value">${dashboardMoney(tax.result.estimatedTaxes)}</dd></div><div class="market-tax-total"><dt>Maior + tributos estimados</dt><dd class="financial-value">${dashboardMoney(tax.result.total)}</dd></div></dl><p>NCM ${escapeHtml(tax.result.ncm)} · Origem: ${origin} · Fonte: ${escapeHtml(tax.result.source)} · Versão: ${escapeHtml(tax.result.version)} · Vigência: ${escapeHtml(tax.result.validFrom)} a ${escapeHtml(tax.result.validTo)}</p></section>`;
 }
 
 function renderMarketPanel(document, marketState) {

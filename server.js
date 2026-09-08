@@ -7,33 +7,29 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
-import { getConfig, getFiscalHubConfig, getFocusNfeConfig, getSearchApiConfig, marketHealth, taxHealth } from "./lib/config.js";
+import { getConfig, getFocusNfeConfig, getSearchApiConfig, marketHealth } from "./lib/config.js";
 import { pool, verifyDatabase } from "./lib/database.js";
 import { runMarketSearch } from "./lib/market-search.js";
 import { createSearchApiMarketProvider, searchApiErrorForClient, SearchApiError, redactSearchApiSensitiveData } from "./lib/searchapi-market-provider.js";
 import { createFocusNFeClient, focusNFeErrorForClient, FocusNFeError, redactFocusNFeSensitiveData } from "./lib/focus-nfe-client.js";
-import { createFiscalHubClient, fiscalHubErrorForClient, FiscalHubError, redactFiscalHubSensitiveData } from "./lib/fiscalhub-client.js";
-import { createFiscalHubTaxProvider } from "./lib/fiscalhub-tax-provider.js";
+import { createIbptTaxProvider, ibptErrorForClient, IbptTaxError } from "./lib/ibpt-tax-provider.js";
 import { searchFiscalNcms, confirmFiscalNcm, hasRelevantFiscalConfirmation } from "./lib/fiscal-classification.js";
 import { productForClient, userForClient } from "./lib/models.js";
 import { hashPassword, verifyPassword } from "./lib/passwords.js";
 import { authoritativeProductSnapshot } from "./lib/pricing-persistence.js";
-import { loginSchema, marketSearchSchema, ncmSearchSchema, productCreateSchema, productIdSchema, productListSchema, productMetadataSchema, registerSchema, taxCalculationSchema, validate } from "./lib/validation.js";
+import { loginSchema, marketSearchSchema, ncmSearchSchema, productCreateSchema, productIdSchema, productListSchema, productMetadataSchema, registerSchema, taxEstimateSchema, validate } from "./lib/validation.js";
 
+const projectRoot = dirname(fileURLToPath(import.meta.url));
 const config = getConfig();
 const focusNfeConfig = getFocusNfeConfig();
 const focusNfeClient = focusNfeConfig.isConfigured ? createFocusNFeClient(focusNfeConfig) : null;
-const fiscalHubConfig = getFiscalHubConfig();
-const fiscalHubClient = fiscalHubConfig.isConfigured ? createFiscalHubClient(fiscalHubConfig) : null;
-const taxProvider = fiscalHubClient ? createFiscalHubTaxProvider(fiscalHubConfig, fiscalHubClient) : null;
+const taxProvider = createIbptTaxProvider({ filePath: resolve(projectRoot, "data", "ibpt", "TabelaIBPTaxSP26.2.A.csv") });
 const searchApiConfig = getSearchApiConfig();
 const marketProvider = searchApiConfig.isConfigured ? createSearchApiMarketProvider(searchApiConfig) : null;
-const projectRoot = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PgSession = connectPgSimple(session);
 
 console.info(`[Fiscal/NCM] provider=FocusNFe configured=${focusNfeConfig.isConfigured} environment=${focusNfeConfig.environment}`);
-console.info(`[Tax] provider=FiscalHub configured=${fiscalHubConfig.isConfigured} companyConfigured=${fiscalHubConfig.companyConfigured}`);
 console.info("[Market] Provider: SearchAPI Google Shopping");
 console.info(`[Market] Configured: ${searchApiConfig.isConfigured}`);
 if (!searchApiConfig.isConfigured) {
@@ -137,7 +133,7 @@ async function authenticateSession(req, user) {
 }
 
 function authenticatedPayload(user) {
-  return { user: userForClient(user), tax: taxHealth(fiscalHubConfig) };
+  return { user: userForClient(user), taxEstimate: taxProvider.health() };
 }
 
 async function currentUser(req) {
@@ -150,8 +146,8 @@ function sessionRequired(req, res) {
   if (req.path.startsWith("/fiscal/ncms")) {
     console.info("[Fiscal/NCM] userAuthenticated=false provider=FocusNFe upstreamStatus=not_called reason=SESSION_REQUIRED");
   }
-  if (req.path === "/tax/calculate") {
-    console.info(`[Tax] userAuthenticated=false provider=FiscalHub configured=${fiscalHubConfig.isConfigured} companyConfigured=${fiscalHubConfig.companyConfigured} upstreamStatus=not_called reason=SESSION_REQUIRED`);
+  if (req.path === "/tax/estimate") {
+    console.info(`[TaxEstimate] userAuthenticated=false provider=IBPT configured=${taxProvider.metadata.configured} reason=SESSION_REQUIRED`);
   }
   console.info(`[Auth] ${req.method} ${req.path} authenticated=false`);
   return res.status(401).json({ error: "Sua sessão expirou. Entre novamente.", code: "SESSION_REQUIRED" });
@@ -243,7 +239,7 @@ app.get("/health", async (req, res, next) => {
         provider: "FocusNFe",
       },
       market: marketHealth(searchApiConfig),
-      tax: taxHealth(fiscalHubConfig),
+      taxEstimate: taxProvider.health(),
     });
   } catch (error) {
     return next(error);
@@ -273,7 +269,7 @@ app.get("/fiscal/ncms/search", requireAuth, fiscalLookupLimiter, async (req, res
     delete req.session.fiscalNcmConfirmation;
     delete req.session.fiscalNcmSearch;
     await sessionSave(req);
-    const result = await searchFiscalNcms(focusNfeClient, input, { secrets: [focusNfeConfig.token, fiscalHubConfig.apiKey, fiscalHubConfig.companyId] });
+    const result = await searchFiscalNcms(focusNfeClient, input, { secrets: [focusNfeConfig.token] });
     const classificationId = randomUUID();
     req.session.fiscalNcmSearch = { ...result, classificationId };
     await sessionSave(req);
@@ -319,56 +315,46 @@ app.get("/fiscal/ncms/:codigo", requireAuth, fiscalLookupLimiter, async (req, re
   }
 });
 
-app.post("/tax/calculate", requireAuth, taxCalculationLimiter, async (req, res, next) => {
+app.post("/tax/estimate", requireAuth, taxCalculationLimiter, async (req, res, next) => {
   try {
-    const parsed = taxCalculationSchema.safeParse(req.body);
+    const parsed = taxEstimateSchema.safeParse(req.body);
     const ncmValid = typeof req.body?.ncm === "string" && /^\d{8}$/.test(req.body.ncm);
     const ncmConfirmed = ncmValid && hasRelevantFiscalConfirmation(req.body, req.session);
-    const safeState = (field) => taxCalculationSchema.shape[field].safeParse(req.body?.[field]).data || "missing_or_invalid";
+    const productOrigin = ["nacional", "importado"].includes(req.body?.productOrigin) ? req.body.productOrigin : "missing_or_invalid";
     const price = Number.isFinite(req.body?.unitValue) ? req.body.unitValue : "missing_or_invalid";
-    console.info("[Tax] requested=true");
-    console.info(`[Tax] configured=${fiscalHubConfig.isConfigured}`);
-    console.info(`[Tax] companyConfigured=${fiscalHubConfig.companyConfigured}`);
-    console.info(`[Tax] ncmConfirmed=${ncmConfirmed}`);
-    console.info(`[Tax] ncmValid=${ncmValid}`);
-    console.info(`[Tax] origin=${safeState("originState")}`);
-    console.info(`[Tax] destination=${safeState("destinationState")}`);
-    console.info(`[Tax] price=${price}`);
+    console.info("[TaxEstimate] requested=true");
+    console.info(`[TaxEstimate] configured=${taxProvider.metadata.configured}`);
+    console.info(`[TaxEstimate] ncmConfirmed=${ncmConfirmed}`);
+    console.info(`[TaxEstimate] ncmValid=${ncmValid}`);
+    console.info(`[TaxEstimate] productOrigin=${productOrigin}`);
+    console.info(`[TaxEstimate] price=${price}`);
     const fieldMessages = {
       ncm: "NCM necessário: confirme um código com 8 dígitos, sem espaços ou outros caracteres.",
-      originState: "Informe uma UF de origem brasileira válida.",
-      destinationState: "Informe uma UF de destino brasileira válida.",
+      productOrigin: "Selecione a origem do produto.",
       unitValue: "Informe um maior preço válido e positivo.",
-      quantity: "A quantidade deve ser 1.",
       classificationId: "Confirme a classificação fiscal atual.",
       originalQuery: "Informe o produto para classificação fiscal.",
       normalizedQuery: "Informe a categoria para classificação fiscal.",
     };
     const issues = parsed.success ? [] : parsed.error.issues.map((issue) => fieldMessages[issue.path[0]] || "Revise os dados fiscais.");
     const ncmMissing = !/^\d{8}$/.test(req.body?.ncm || "");
-    if (!ncmConfirmed && !ncmMissing) issues.push("Confirme o NCM para calcular os tributos.");
+    if (!ncmConfirmed && !ncmMissing) issues.push("Confirme o NCM para estimar os tributos.");
     const confirmationCode = "FOCUS_NFE_NCM_CONFIRMATION_REQUIRED";
-    if (!fiscalHubConfig.companyConfigured) {
-      issues.push("Empresa FiscalHub não configurada: configure FISCALHUB_EMPRESA_ID no backend.");
-    }
-    if (!fiscalHubConfig.isConfigured || !taxProvider) {
-      issues.push("Chave FiscalHub não configurada: configure FISCALHUB_API_KEY no backend.");
-    }
     if (issues.length) {
-      console.info("[Tax] requestStarted=false");
-      console.info("[Tax] upstreamStatus=not_called");
-      throw new FiscalHubError([...new Set(issues)].join(" "), {
-        code: !fiscalHubConfig.companyConfigured ? "FISCALHUB_EMPRESA_NOT_CONFIGURED"
-          : !fiscalHubConfig.isConfigured || !taxProvider ? "FISCALHUB_NOT_CONFIGURED"
-          : ncmMissing ? "NCM_REQUIRED" : !parsed.success ? "INVALID_TAX_CONTEXT" : confirmationCode,
-        status: !fiscalHubConfig.companyConfigured || !fiscalHubConfig.isConfigured || !taxProvider ? 503 : 400,
+      console.info("[TaxEstimate] calculationStarted=false");
+      throw new IbptTaxError([...new Set(issues)].join(" "), {
+        code: ncmMissing ? "NCM_REQUIRED"
+          : req.body?.productOrigin === undefined || req.body?.productOrigin === "" ? "PRODUCT_ORIGIN_REQUIRED"
+          : !parsed.success ? "INVALID_TAX_CONTEXT" : confirmationCode,
+        status: 400,
       });
     }
     const input = parsed.data;
-    const calculation = await taxProvider.calculate(input);
+    const calculation = taxProvider.calculate(input);
+    console.info(`[TaxEstimate] calculated=true ncm=${calculation.ncm} version=${calculation.version}`);
     return res.json({ calculation });
   } catch (error) {
-    console.info(`[Tax] provider=FiscalHub code=${error.code || "UNKNOWN"}`);
+    console.info(`[TaxEstimate] provider=IBPT code=${error.code || "UNKNOWN"}`);
     return next(error);
   }
 });
@@ -466,9 +452,7 @@ function isDatabaseError(error) {
 }
 
 app.use((error, req, res, next) => {
-  const safeLogMessage = error instanceof FiscalHubError
-    ? redactFiscalHubSensitiveData(error.message, [fiscalHubConfig.apiKey])
-    : error instanceof FocusNFeError
+  const safeLogMessage = error instanceof FocusNFeError
     ? redactFocusNFeSensitiveData(error.message, [focusNfeConfig.token])
     : error instanceof SearchApiError
       ? redactSearchApiSensitiveData(error.message, [searchApiConfig.apiKey])
@@ -484,8 +468,8 @@ app.use((error, req, res, next) => {
         : status >= 500
           ? "Não foi possível concluir a operação. Tente novamente em instantes."
           : error.message;
-  const payload = error instanceof FiscalHubError
-    ? fiscalHubErrorForClient(error, [fiscalHubConfig.apiKey])
+  const payload = error instanceof IbptTaxError
+    ? ibptErrorForClient(error)
     : error instanceof FocusNFeError
     ? focusNFeErrorForClient(error, [focusNfeConfig.token])
     : error instanceof SearchApiError

@@ -31,7 +31,7 @@ test("dashboard lê o resultado canônico e distingue produto individual", () =>
   assert.match(document.nodes.get("#marketDashboardStatus").textContent, /2 referências encontradas/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /Média/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /Maior \+ tributos/);
-  assert.match(document.nodes.get("#marketStats").innerHTML, /Classificação fiscal necessária/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /NCM necessário/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /Produto alternativo/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /Preço de mercado: R\$\s32,00/);
   assert.doesNotMatch(document.nodes.get("#marketStats").innerHTML, /Fonte fiscal: Focus NFe/);
@@ -42,7 +42,7 @@ test("dashboard lê o resultado canônico e distingue produto individual", () =>
   assert.match(document.nodes.get("#primaryMarketSource").textContent, /Produto principal.*Loja Exemplo.*Google Shopping/);
 });
 
-test("dashboard atualiza Maior + tributos e mostra somente tributos retornados", () => {
+test("dashboard atualiza Maior + tributos estimados com os componentes IBPT", () => {
   const maximum = { id: "produto-maximo", title: "Produto máximo", price: 100, source: "Loja", seller: "Loja", currency: "BRL", url: "https://example.com/max" };
   const result = calculatePricing(inputs, null);
   const document = documentStub();
@@ -52,26 +52,31 @@ test("dashboard atualiza Maior + tributos e mostra somente tributos retornados",
     items: [maximum],
     stats: { count: 1, average: 100, median: 100, min: 100, max: 100 },
     marketplace: "Google Shopping",
-    taxContext: { ncm: "09012100", ncmConfirmed: true, originState: "SP", destinationState: "RJ" },
+    taxContext: { ncm: "09012100", ncmConfirmed: true, productOrigin: "nacional" },
+    taxAvailability: { provider: "IBPT", configured: true, version: "26.2.A" },
     tax: {
       status: "success",
       expanded: true,
       result: {
         marketPrice: 100,
-        total: 120,
+        total: 131.45,
+        estimatedTaxes: 31.45,
         ncm: "09012100",
-        originState: "SP",
-        destinationState: "RJ",
-        cached: false,
-        taxes: [{ key: "valorIcms", label: "ICMS", value: 18 }],
+        productOrigin: "nacional",
+        source: "IBPT / Empresômetro",
+        version: "26.2.A",
+        validFrom: "20/08/2026",
+        validTo: "30/09/2026",
+        rates: { federal: 13.45, state: 18, municipal: 0, total: 31.45 },
       },
     },
   }, new ConfiguredTaxRuleEngine().assess(inputs));
 
-  assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s120,00/);
-  assert.match(document.nodes.get("#marketStats").innerHTML, /Calculado pela FiscalHub/);
-  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Preço de mercado/);
-  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /ICMS/);
-  assert.doesNotMatch(document.nodes.get("#marketTaxDetails").innerHTML, /COFINS/);
-  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Total/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s131,45/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /IBPT \/ Empresômetro/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Maior/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Carga tributária estimada/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Tributos estimados/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Versão: 26\.2\.A/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Vigência: 20\/08\/2026 a 30\/09\/2026/);
 });

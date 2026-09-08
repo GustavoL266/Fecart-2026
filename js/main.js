@@ -20,6 +20,7 @@ const taxService = new TaxService();
 const taxRuleEngine = new ConfiguredTaxRuleEngine();
 const formFieldIds = [
   "ncmCode",
+  "productOrigin",
   "taxRegime",
   "originState",
   "destinationState",
@@ -80,9 +81,10 @@ function toggleTheme() {
 const apiMessages = Object.freeze({
   SESSION_REQUIRED: "Sua sessão expirou. Entre novamente.",
   FOCUS_NFE_UNAUTHORIZED: "Não foi possível autenticar na Focus NFe.",
-  FISCALHUB_UNAUTHORIZED: "Não foi possível autenticar na FiscalHub.",
-  FISCALHUB_EMPRESA_NOT_CONFIGURED: "A empresa para cálculo tributário ainda não foi configurada.",
-  FOCUS_NFE_NCM_CONFIRMATION_REQUIRED: "Confirme o NCM para calcular os tributos.",
+  FOCUS_NFE_NCM_CONFIRMATION_REQUIRED: "Confirme o NCM para estimar os tributos.",
+  IBPT_NCM_NOT_FOUND: "O NCM confirmado não existe na tabela IBPT.",
+  IBPT_NOT_CONFIGURED: "A tabela IBPT não foi encontrada no servidor.",
+  IBPT_INVALID_FILE: "Não foi possível carregar a tabela tributária.",
 });
 
 function messageFor(error) {
@@ -219,6 +221,7 @@ function prepareFiscalClassification(originalQuery) {
   ncmLookupRevision += 1;
   ncmSearchRevision += 1;
   elements.ncmCode.value = "";
+  elements.productOrigin.value = "";
   focusState = emptyFocusState();
   ncmSearchState = emptyNcmSearchState({ ...classification, query: classification.normalizedQuery, editing: false });
   $("#ncmProductQuery").value = classification.normalizedQuery;
@@ -237,15 +240,14 @@ function currentMarketTaxContext() {
     classificationId: focusState.classificationId || "",
     originalQuery: classification.originalQuery,
     normalizedQuery: classification.normalizedQuery,
-    originState: normalizeFiscalState(elements.originState.value),
-    destinationState: normalizeFiscalState(elements.destinationState.value),
+    productOrigin: elements.productOrigin.value,
   };
 }
 
 function marketTaxSignature() {
   const maximumItem = maximumMarketItem();
   const context = currentMarketTaxContext();
-  return JSON.stringify([maximumItem?.id, maximumItem?.price, context.ncm, context.ncmConfirmed, context.originState, context.destinationState, context.classificationId, context.originalQuery, context.normalizedQuery]);
+  return JSON.stringify([maximumItem?.id, maximumItem?.price, context.ncm, context.ncmConfirmed, context.productOrigin, context.classificationId, context.originalQuery, context.normalizedQuery]);
 }
 
 function marketStateForRender() {
@@ -264,9 +266,9 @@ function renderMarketTaxContextStatus() {
   const context = currentMarketTaxContext();
   const status = $("#marketTaxContextStatus");
   const prerequisiteError = marketTaxPrerequisiteError(context, maximumMarketItem()?.price, state.taxAvailability);
-  if (!context.ncmConfirmed) status.textContent = "Classifique o produto para calcular os tributos.";
+  if (!context.ncmConfirmed) status.textContent = "Classifique o produto para estimar os tributos.";
   else if (prerequisiteError) status.textContent = prerequisiteError.message;
-  else status.textContent = `Pronto para calcular 1 unidade do maior preço: NCM ${context.ncm}, ${context.originState} → ${context.destinationState}.`;
+  else status.textContent = `Pronto para estimar sobre o maior preço: NCM ${context.ncm}, produto ${context.productOrigin}.`;
 }
 
 function marketReferenceFromState(inputs) {
@@ -639,15 +641,14 @@ async function calculateMaximumTaxes() {
   try {
     const response = await taxService.calculateMaximum({
       ncm: context.ncm,
-      originState: context.originState,
-      destinationState: context.destinationState,
+      productOrigin: context.productOrigin,
       unitValue: maximumItem.price,
       classificationId: context.classificationId,
       originalQuery: context.originalQuery,
       normalizedQuery: context.normalizedQuery,
     });
     if (!requestIsCurrent()) return;
-    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "success", result: response.calculation, signature }) };
+    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "success", expanded: true, result: response.calculation, signature }) };
   } catch (error) {
     if (!requestIsCurrent()) return;
     setMarketTaxError(error);
@@ -726,6 +727,7 @@ function resetCurrentProductForm() {
   ncmLookupRevision += 1;
   ncmSearchRevision += 1;
   clearPricingInputs(elements);
+  elements.productOrigin.value = "";
   $("#productName").value = "";
   $("#productDescription").value = "";
   $("#marketQuery").value = "";
@@ -870,6 +872,7 @@ async function getProduct(id) {
 function reuseProduct(product) {
   // Nunca deixa valores da simulação anterior sobreviverem a campos ausentes.
   clearPricingInputs(elements);
+  elements.productOrigin.value = "";
   $("#productName").value = "";
   $("#productDescription").value = "";
   const data = product.calculationData || {};
@@ -994,7 +997,7 @@ async function submitLogin(event) {
       password: $("#loginPassword").value,
     }, { handleUnauthorized: false });
     form.reset();
-    setAuthenticatedUser(response.user, response.tax);
+    setAuthenticatedUser(response.user, response.taxEstimate);
   } catch (error) {
     setMessage($("#authMessage"), messageFor(error));
   } finally {
@@ -1022,7 +1025,7 @@ async function submitRegistration(event) {
     }, { handleUnauthorized: false });
     form.reset();
     updatePasswordRequirements();
-    setAuthenticatedUser(response.user, response.tax);
+    setAuthenticatedUser(response.user, response.taxEstimate);
   } catch (error) {
     if (error instanceof ApiError && error.status === 409) {
       setFieldError("registerEmail", "Já existe uma conta cadastrada com este e-mail.");
@@ -1057,10 +1060,15 @@ async function submitRegistration(event) {
       marketStateForRender();
     }
     render();
-    if (field === elements.originState || field === elements.destinationState) void maybeCalculateMaximumTaxes();
   };
   field.addEventListener("input", updateField);
   field.addEventListener("change", updateField);
+});
+
+elements.productOrigin.addEventListener("change", () => {
+  marketStateForRender();
+  render();
+  void maybeCalculateMaximumTaxes();
 });
 
 $("#ncmSearchButton").addEventListener("click", () => void searchNcmSuggestions());
@@ -1243,7 +1251,7 @@ render();
 async function bootstrap(attempt = 0) {
   try {
     const response = await api.get("/auth/me", { handleUnauthorized: false });
-    setAuthenticatedUser(response.user, response.tax);
+    setAuthenticatedUser(response.user, response.taxEstimate);
   } catch (error) {
     if (error instanceof ApiError && error.code === "STATIC_HOSTING") {
       showAuth("login", error.message);

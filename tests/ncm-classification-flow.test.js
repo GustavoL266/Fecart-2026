@@ -65,10 +65,10 @@ test("alterar ou salvar limpa a classificação atual sem nova chamada fiscal", 
   assert.match(resetForm, /ncmSearchState = emptyNcmSearchState/);
 });
 
-test("o endpoint de sugestões não confirma sessão e a FiscalHub continua condicionada ao NCM confirmado", () => {
+test("o endpoint de sugestões não confirma sessão e a estimativa IBPT exige NCM confirmado", () => {
   const searchStart = server.indexOf('app.get("/fiscal/ncms/search"');
   const validateStart = server.indexOf('app.get("/fiscal/ncms/:codigo"');
-  const taxStart = server.indexOf('app.post("/tax/calculate"');
+  const taxStart = server.indexOf('app.post("/tax/estimate"');
   const searchRoute = server.slice(searchStart, validateStart);
   const taxRoute = server.slice(taxStart);
 

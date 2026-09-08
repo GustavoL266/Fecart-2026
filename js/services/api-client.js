@@ -41,7 +41,7 @@ async function request(path, options = {}) {
 
   const error = new ApiError(payload?.error || "Não foi possível concluir a operação.", response.status, payload?.code || "", payload || {});
   // A provider can legitimately return HTTP 401 (for example Focus NFe or
-  // FiscalHub). Only our explicit session code may reset the local account.
+  // externos). Only our explicit session code may reset the local account.
   if (handleUnauthorized && error.code === "SESSION_REQUIRED") window.dispatchEvent(new CustomEvent("app:session-expired"));
   throw error;
 }

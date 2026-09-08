@@ -387,9 +387,9 @@
 
             <section class="market-tax-context" aria-labelledby="market-tax-context-title">
               <div class="tab-panel-heading compact">
-                <p class="eyebrow">FiscalHub</p>
-                <p class="section-title" id="market-tax-context-title">Dados para cálculo tributário</p>
-                <p class="section-description">O cálculo usa uma unidade do produto de maior preço. O regime tributário vem da empresa cadastrada na FiscalHub.</p>
+                <p class="eyebrow">IBPT / Empresômetro</p>
+                <p class="section-title" id="market-tax-context-title">Dados para estimativa tributária</p>
+                <p class="section-description">A estimativa local usa o produto de maior preço, o NCM confirmado e a origem informada.</p>
               </div>
               <div class="sidebar-field">
                 <p class="helper-text">Produto pesquisado: <strong id="fiscalOriginalProduct">Nenhum produto pesquisado</strong></p>
@@ -402,11 +402,20 @@
                 <p id="ncmDescription" class="fiscal-description" hidden></p>
                 <button id="ncmChangeButton" class="secondary-button" type="button" hidden>Alterar categoria</button>
               </div>
+              <div class="sidebar-field">
+                <label for="productOrigin">Origem do produto</label>
+                <select id="productOrigin">
+                  <option value="">Selecione a origem</option>
+                  <option value="nacional">Nacional</option>
+                  <option value="importado">Importado</option>
+                </select>
+                <p class="helper-text">A origem define a alíquota federal da tabela IBPT e deve ser escolhida explicitamente.</p>
+              </div>
               <div class="sidebar-grid sidebar-grid--two">
                 <div class="sidebar-field"><label for="originState">UF de origem</label><select id="originState"><option value="">Selecione a UF</option><option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option><option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option><option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option><option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option><option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option><option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option></select></div>
                 <div class="sidebar-field"><label for="destinationState">UF de destino</label><select id="destinationState"><option value="">Selecione a UF</option><option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option><option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option><option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option><option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option><option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option><option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option></select></div>
               </div>
-              <p id="marketTaxContextStatus" class="helper-text" role="status">Confirme o NCM e as UFs para habilitar o cálculo.</p>
+              <p id="marketTaxContextStatus" class="helper-text" role="status">Confirme o NCM e selecione a origem do produto para estimar os tributos.</p>
             </section>
 
             <section class="manual-market-fallback" aria-labelledby="manual-market-title">

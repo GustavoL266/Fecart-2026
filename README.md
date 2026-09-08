@@ -18,7 +18,7 @@ Aplicação web para calcular preço de venda sustentável, comparar referência
 - Salvamento de todos os campos relevantes da consulta (entradas, memória do cálculo e referência de mercado) em `calculation_data`.
 - Normalização editável do produto em categoria fiscal, com sugestões reais da Focus NFe filtradas por relevância e confirmação explícita de NCM.
 - Consulta opcional de produtos e preços do Google Shopping pela SearchAPI.io, sempre através do backend.
-- Cálculo dos tributos do produto de maior preço pela FiscalHub após classificação confirmada e UFs preenchidas, com cache curto e detalhamento dos campos retornados.
+- Estimativa local dos tributos do produto de maior preço pela tabela IBPT após confirmação do NCM e escolha explícita entre origem nacional e importada.
 - Cálculo técnico canônico no mesmo módulo puro para navegador e servidor, com validação em ambos os lados e sem arredondamentos intermediários.
 - Validação no navegador e no servidor, limitação de tentativas de autenticação, cabeçalhos de segurança e respostas sem hashes/senhas.
 
@@ -73,19 +73,11 @@ SEARCHAPI_TIMEOUT_MS=15000
 
 O endpoint diferencia configuração ausente (`503`), consulta inválida (`400`), credencial recusada ou sem permissão (`401/403`), limite (`429`), resposta externa inválida (`502`), falhas externas (`5xx`) e timeout (`504`). Os logs registram apenas consulta, provedor, status, contagem e uso de cache — nunca a chave ou o cabeçalho de autorização. Consulte [docs/searchapi.md](docs/searchapi.md) para o contrato externo e o teste real.
 
-### FiscalHub
+### Estimativa IBPT
 
-O navegador chama somente `POST /tax/calculate`. O backend envia `X-Api-Key` para `POST https://api.fiscalhub.com.br/api/v1/tributario/calcular` com `empresaId`, UFs e um item: o produto de maior preço da pesquisa atual, `quantidade: 1`. O cálculo inicia após a confirmação explícita de um NCM relevante e o preenchimento das UFs, desde que a integração esteja configurada. O botão permite nova tentativa. O cache dura cinco minutos quando NCM, preço, UFs e empresa não mudam.
+O navegador chama `POST /tax/estimate`. O backend consulta localmente `data/ibpt/TabelaIBPTaxSP26.2.A.csv`, carregada uma vez em Windows-1252 e indexada por NCM. A busca no arquivo é exata e só acontece após o usuário confirmar um NCM relevante pela Focus NFe e escolher a origem do produto.
 
-Configure somente no ambiente do servidor:
-
-```text
-FISCALHUB_API_KEY=
-FISCALHUB_EMPRESA_ID=
-FISCALHUB_TIMEOUT_MS=10000
-```
-
-`FISCALHUB_EMPRESA_ID` é o UUID da empresa cadastrada no portal FiscalHub. O regime tributário usado pelo motor pertence a esse cadastro; ele não é inventado pelo frontend. A FiscalHub só é chamada depois de o NCM exato ter sido confirmado pela Focus NFe na mesma sessão, com UFs e preço válidos. O sistema usa o total final explícito da FiscalHub; agregados de tributos e componentes não são somados ao preço sem semântica documentada de acréscimo. Consulte [docs/fiscalhub.md](docs/fiscalhub.md).
+Para origem nacional, a alíquota federal vem de `nacionalfederal`; para importada, de `importadosfederal`. A carga aproximada é `federal + estadual + municipal`, e o card soma ao maior preço apenas o valor calculado por essa alíquota. A versão, vigência e fonte acompanham o resultado. Não há chave, empresa ou chamada externa para calcular esse card. Consulte [docs/ibpt.md](docs/ibpt.md).
 
 ## Publicação a partir do GitHub
 
@@ -98,10 +90,9 @@ O repositório contém [`render.yaml`](render.yaml), que publica a aplicação c
 3. O serviço cria o PostgreSQL, injeta `DATABASE_URL`, gera `SESSION_SECRET`, executa `npm run migrate` antes de cada publicação e inicia `npm start`.
 4. Configure no Web Service um `FOCUS_NFE_TOKEN` de produção. O Blueprint já seleciona `https://api.focusnfe.com.br` e o backend registra apenas `configured=true/false`, nunca o token.
 5. Para habilitar a pesquisa de mercado, preencha manualmente `SEARCHAPI_API_KEY` no Web Service. O Blueprint define `SEARCHAPI_TIMEOUT_MS=15000`; a existência de `sync: false` não preenche o segredo.
-6. Preencha `FISCALHUB_API_KEY` e `FISCALHUB_EMPRESA_ID` no Web Service para habilitar o cálculo tributário.
-7. Abra a URL `https://…onrender.com` fornecida pelo Render. Essa é a URL que deve ser compartilhada e usada para criar contas.
+6. Abra a URL `https://…onrender.com` fornecida pelo Render. Essa é a URL que deve ser compartilhada e usada para criar contas.
 
-Em um serviço Render já existente, abra **Environment**, confira `SEARCHAPI_API_KEY`, `FISCALHUB_API_KEY` e `FISCALHUB_EMPRESA_ID` e escolha **Save Changes**. Em seguida execute **Manual Deploy → Deploy latest commit**. Nunca grave os valores no GitHub ou no frontend.
+Em um serviço Render já existente, abra **Environment**, confira `SEARCHAPI_API_KEY` e escolha **Save Changes**. Em seguida execute **Manual Deploy → Deploy latest commit**. Nunca grave o valor no GitHub ou no frontend.
 
 Não é preciso (nem correto) colocar credenciais no GitHub, no código ou no GitHub Pages. Se o Pages já estiver ativo no repositório, desative-o em **Settings → Pages** para evitar que usuários cheguem à cópia estática sem API.
 
@@ -114,7 +105,7 @@ O frontend e a API são servidos pelo mesmo processo; não há um segundo servid
 - `MIGRATIONS_PENDING`: execute `npm run migrate` (ou `pnpm migrate`) antes de iniciar a aplicação.
 - `market.configured: false` no `/health`: confira se `SEARCHAPI_API_KEY` foi configurada no backend. O endpoint nunca mostra a chave.
 - `market.configured: true` confirma somente que a variável existe. Depois de uma pesquisa, consulte os logs `[Market] Status` e `[Market] Results` para distinguir credencial inválida (`401`), falta de permissão (`403`), limite (`429`) e falha externa (`5xx`).
-- `tax.configured: false` no `/health`: confira `FISCALHUB_API_KEY`; `tax.companyConfigured: false`: cadastre/selecione a empresa no portal FiscalHub e configure seu UUID em `FISCALHUB_EMPRESA_ID`.
+- `taxEstimate.configured: false` no `/health`: confira se `data/ibpt/TabelaIBPTaxSP26.2.A.csv` foi incluído sem conversão. `errorCode` distingue arquivo ausente de arquivo inválido.
 
 Na inicialização, o servidor testa a conexão com o PostgreSQL e confirma que as tabelas exigidas existem. Assim, uma configuração incompleta aparece no terminal com a causa concreta, em vez de falhar apenas ao enviar o formulário.
 
@@ -174,7 +165,7 @@ O relacionamento `products.user_id → users.id` usa chave estrangeira com `ON D
 | GET | `/fiscal/ncms/:codigo` | Obrigatória; proxy backend para Focus NFe |
 | GET | `/fiscal/ncms/search?q=descricao` | Obrigatória; sugestões fiscais por descrição da Focus NFe, sem confirmação automática |
 | GET | `/market/search?q=termos` | Obrigatória; proxy backend para SearchAPI Google Shopping |
-| POST | `/tax/calculate` | Obrigatória; calcula na FiscalHub somente o maior preço informado pelo state |
+| POST | `/tax/estimate` | Obrigatória; estima localmente a carga IBPT sobre o maior preço informado pelo state |
 | POST | `/products` | Obrigatória |
 | PATCH | `/products/:id` | Obrigatória + dono |
 | DELETE | `/products/:id` | Obrigatória + dono |
