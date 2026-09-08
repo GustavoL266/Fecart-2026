@@ -75,6 +75,52 @@ test("consulta e valida um NCM existente", async () => {
   assert.deepEqual(await client.getNcm("0901.21.00"), validNcm);
 });
 
+test("busca sugestões exclusivamente pela descrição oficial da Focus NFe", async () => {
+  const requestedUrls = [];
+  const secondNcm = { ...validNcm, codigo: "19059090", descricao_completa: "Produtos de padaria, pastelaria ou da indústria de bolachas e biscoitos" };
+  const client = clientWith(async (url) => {
+    requestedUrls.push(url);
+    return response(200, [validNcm, secondNcm]);
+  });
+
+  for (const query of ["bolo", "bolo de chocolate", "iPhone 15 Pro Max"]) {
+    assert.deepEqual(await client.searchNcms(query), [validNcm, secondNcm]);
+  }
+  assert.deepEqual(requestedUrls, [
+    "https://homologacao.focusnfe.com.br/v2/ncms?descricao=bolo",
+    "https://homologacao.focusnfe.com.br/v2/ncms?descricao=bolo%20de%20chocolate",
+    "https://homologacao.focusnfe.com.br/v2/ncms?descricao=iPhone%2015%20Pro%20Max",
+  ]);
+});
+
+test("não chama a Focus NFe para uma descrição fiscal curta", async () => {
+  let calls = 0;
+  const client = clientWith(async () => {
+    calls += 1;
+    return response(200, []);
+  });
+
+  await assert.rejects(() => client.searchNcms("bo"), { code: "FOCUS_NFE_INVALID_QUERY", status: 400 });
+  assert.equal(calls, 0);
+});
+
+test("mantém buscas por descrição em cache sem escolher NCM automaticamente", async () => {
+  let calls = 0;
+  const client = clientWith(async () => {
+    calls += 1;
+    return response(200, [validNcm]);
+  });
+
+  assert.deepEqual(await client.searchNcms("bolo"), [validNcm]);
+  assert.deepEqual(await client.searchNcms("Bolo"), [validNcm]);
+  assert.equal(calls, 1);
+});
+
+test("aceita resultado vazio de busca por descrição", async () => {
+  const client = clientWith(async () => response(200, []));
+  assert.deepEqual(await client.searchNcms("produto sem classificação"), []);
+});
+
 test("rejeita NCM inválido localmente sem chamar a API", async () => {
   let calls = 0;
   const client = clientWith(async () => {

@@ -26,6 +26,7 @@ export class ConfiguredTaxRuleEngine extends TaxRuleEngine {
       missingFields,
       ncm,
       ncmSource: ncmVerified ? "Focus NFe" : code ? "Usuário (não validado nesta simulação)" : "Não informado",
+      productNameForNcmSearch: ncmVerified ? String(focusState.productNameForNcmSearch || "") : "",
       ncmValidation: ncmVerified ? {
         status: "success", source: "Focus NFe", environment: focusState.environment || "não informado", checkedAt: focusState.checkedAt || new Date().toISOString(), code,
       } : { status: "unverified", source: code ? "Usuário" : null, environment: null, checkedAt: null, code: code || null },
@@ -52,6 +53,9 @@ export function fiscalDataForStorage(assessment, memory) {
     context: assessment.fiscalContext,
     ncm: assessment.ncm,
     ncmSource: assessment.ncmSource,
+    productNameForNcmSearch: assessment.productNameForNcmSearch || null,
+    ncmDescription: assessment.ncm?.descricao_completa || null,
+    ncmConfirmedAt: assessment.ncmValidation?.status === "success" ? assessment.ncmValidation.checkedAt : null,
     ncmValidation: assessment.ncmValidation,
     unresolvedTaxes: assessment.unresolvedTaxes,
     memory,

@@ -172,7 +172,7 @@ O relacionamento `products.user_id → users.id` usa chave estrangeira com `ON D
 | GET | `/products` | Obrigatória |
 | GET | `/products/:id` | Obrigatória + dono |
 | GET | `/fiscal/ncms/:codigo` | Obrigatória; proxy backend para Focus NFe |
-| GET | `/fiscal/ncms/search?q=XXXXXXXX` | Obrigatória; validação de NCM exato pela Focus NFe |
+| GET | `/fiscal/ncms/search?q=descricao` | Obrigatória; sugestões fiscais por descrição da Focus NFe, sem confirmação automática |
 | GET | `/market/search?q=termos` | Obrigatória; proxy backend para SearchAPI Google Shopping |
 | POST | `/tax/calculate` | Obrigatória; calcula na FiscalHub somente o maior preço informado pelo state |
 | POST | `/products` | Obrigatória |

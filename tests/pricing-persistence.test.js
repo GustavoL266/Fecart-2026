@@ -20,8 +20,12 @@ test("backend repete a validação e não deixa preço existir com input inváli
 });
 
 test("NCM só é salvo como Focus validado se o código e a prova coincidem", () => {
-  const valid = authoritativeProductSnapshot({ name: "X", description: "", category: "C", pricing: { inputs, market: {}, fiscalValidation: { status: "success", source: "Focus NFe", code: "18061000", ncm: { codigo: "18061000", descricao_completa: "Cacau" }, environment: "homologação", checkedAt: "2026-01-01" } } });
+  const valid = authoritativeProductSnapshot({ name: "X", description: "", category: "C", pricing: { inputs, market: {}, fiscalValidation: { status: "success", source: "Focus NFe", code: "18061000", ncm: { codigo: "18061000", descricao_completa: "Cacau" }, environment: "homologação", checkedAt: "2026-01-01", productNameForNcmSearch: "Bolo de chocolate" } } });
   assert.equal(valid.calculationData.fiscal.ncmValidation.status, "success");
+  assert.equal(valid.calculationData.fiscal.productNameForNcmSearch, "Bolo de chocolate");
+  assert.equal(valid.calculationData.fiscal.ncmDescription, "Cacau");
+  assert.equal(valid.calculationData.fiscal.ncmSource, "Focus NFe");
+  assert.equal(valid.calculationData.fiscal.ncmConfirmedAt, "2026-01-01");
   const stale = authoritativeProductSnapshot({ name: "X", description: "", category: "C", pricing: { inputs: { ...inputs, fiscalContext: { ncmCode: "12345678" } }, market: {}, fiscalValidation: { status: "success", source: "Focus NFe", code: "18061000", ncm: { codigo: "18061000" } } } });
   assert.equal(stale.calculationData.fiscal.ncmValidation.status, "unverified");
 });

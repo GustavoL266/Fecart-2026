@@ -29,7 +29,7 @@ test("dashboard apresenta estados, ação manual e detalhamento responsivo", () 
   assert.match(dashboard, /Calculado pela FiscalHub/);
   assert.match(dashboard, /Ver tributos/);
   assert.match(dashboard, /NCM necessário/);
-  assert.match(dashboard, /Informar\/confirmar NCM/);
+  assert.match(dashboard, /Classificar produto/);
   assert.match(dashboard, /Cálculo tributário indisponível/);
   assert.doesNotMatch(dashboard, /Buscar sugestões|FiscalHub encontrou possibilidades/);
   assert.match(dashboard, /Preço de mercado/);

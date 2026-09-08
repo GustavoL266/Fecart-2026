@@ -19,10 +19,11 @@ O token é usado como usuário do HTTP Basic, com senha vazia. Ele não é persi
 ## O que a Focus NFe fornece nesta integração
 
 - Consulta oficial de um NCM exato em `GET /v2/ncms/{codigo}`.
+- Busca oficial por trechos da descrição fiscal em `GET /v2/ncms?descricao=...`.
 - Código, descrição completa e partes estruturais da classificação NCM.
 - Dados completos de NF-e recebidas, inclusive itens e valores fiscais, quando a conta/CNPJ tem acesso e a nota possui XML completo.
 
-Como a API documentada pela Focus NFe consulta NCM por código exato, o endpoint local `/fiscal/ncms/search` aceita somente oito dígitos e retorna a confirmação da Focus NFe; ele não usa a FiscalHub nem tenta inferir classificações pela descrição. A confirmação fica registrada na sessão e é exigida antes do cálculo tributário.
+O endpoint local `/fiscal/ncms/search?q=descricao` encaminha somente a descrição para a busca oficial da Focus NFe e devolve sugestões sem escolher nenhuma delas. O navegador confirma a opção escolhida em `GET /fiscal/ncms/:codigo`; somente essa confirmação registra o NCM na sessão e libera o cálculo tributário. Nenhuma classificação é inferida, gerada ou buscada na FiscalHub.
 
 O fluxo atual não possui cadastro de CNPJ, vínculo seguro de empresas ou importação de notas de fornecedores. Por isso a integração de NF-e recebidas foi avaliada, mas não ativada: fazê-lo agora exigiria coletar CNPJ, controlar versões, garantir autorização da conta e definir a conciliação entre itens da nota e produtos internos. Nenhuma manifestação, emissão, cancelamento ou alteração de documento fiscal é realizada.
 
@@ -56,5 +57,6 @@ Os testes usam mocks e não chamam a API externa. Se `FOCUS_NFE_TOKEN` de homolo
 - [Ambientes](https://doc.focusnfe.com.br/reference/ambiente)
 - [Autenticação](https://doc.focusnfe.com.br/reference/autenticacao)
 - [Consulta de NCM por código](https://doc.focusnfe.com.br/reference/consultar_ncm_especifico)
+- [Consulta de NCM por descrição](https://doc.focusnfe.com.br/reference/consultar_ncms)
 - [NF-e recebidas](https://doc.focusnfe.com.br/reference/nfe-recebidas)
 - [Consulta de NF-e recebidas](https://doc.focusnfe.com.br/reference/consultar_nfes_recebidas)

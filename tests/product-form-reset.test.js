@@ -18,6 +18,7 @@ test("resetCurrentProductForm centraliza a limpeza do cálculo atual sem chamada
   assert.match(reset, /#productName/);
   assert.match(reset, /#productDescription/);
   assert.match(reset, /#marketQuery/);
+  assert.match(reset, /#ncmProductQuery/);
   assert.match(reset, /marketReferenceRule\.value = "manual"/);
   assert.match(reset, /focusState = emptyFocusState\(\)/);
   assert.match(reset, /marketState = emptyMarketState\(\)/);
@@ -39,11 +40,12 @@ test("o reset ocorre somente depois da resposta bem-sucedida de salvar", () => {
 });
 
 test("respostas pendentes de NCM ou mercado não restauram dados após o reset", () => {
-  const ncm = sourceBetween("async function lookupNcm()", "function closeMobileMenus");
+  const ncm = sourceBetween("async function lookupNcm(code)", "function resetNcmClassification");
   const market = sourceBetween("async function searchMarket()", "function selectMarketProduct");
 
   assert.match(ncm, /lookupRevision !== ncmLookupRevision/);
   assert.match(market, /searchRevision !== marketSearchRevision/);
   assert.match(main, /marketSearchRevision \+= 1/);
   assert.match(main, /ncmLookupRevision \+= 1/);
+  assert.match(main, /ncmSearchRevision \+= 1/);
 });

@@ -332,6 +332,7 @@ class ConfiguredTaxRuleEngine extends TaxRuleEngine {
       missingFields,
       ncm,
       ncmSource: ncmVerified ? "Focus NFe" : code ? "Usuário (não validado nesta simulação)" : "Não informado",
+      productNameForNcmSearch: ncmVerified ? String(focusState.productNameForNcmSearch || "") : "",
       ncmValidation: ncmVerified ? {
         status: "success", source: "Focus NFe", environment: focusState.environment || "não informado", checkedAt: focusState.checkedAt || new Date().toISOString(), code,
       } : { status: "unverified", source: code ? "Usuário" : null, environment: null, checkedAt: null, code: code || null },
@@ -358,6 +359,9 @@ function fiscalDataForStorage(assessment, memory) {
     context: assessment.fiscalContext,
     ncm: assessment.ncm,
     ncmSource: assessment.ncmSource,
+    productNameForNcmSearch: assessment.productNameForNcmSearch || null,
+    ncmDescription: assessment.ncm?.descricao_completa || null,
+    ncmConfirmedAt: assessment.ncmValidation?.status === "success" ? assessment.ncmValidation.checkedAt : null,
     ncmValidation: assessment.ncmValidation,
     unresolvedTaxes: assessment.unresolvedTaxes,
     memory,
@@ -947,7 +951,7 @@ function renderTaxedMaximumStat(marketState) {
     return `<div class="market-tax-stat is-error"><span>Maior + tributos</span><strong>—</strong><small>${escapeHtml(tax.shortMessage || "Não foi possível calcular")}</small>${companyMissing ? "" : taxAction("Tentar novamente", "data-calculate-market-taxes", true)}</div>`;
   }
   if (!context.ncmConfirmed) {
-    return `<div class="market-tax-stat" title="${escapeHtml(marketDetails)}" aria-label="${escapeHtml(`${marketDetails} · NCM necessário`)}"><span>Maior + tributos</span><strong>—</strong><small>NCM necessário</small><span class="market-tax-actions">${taxAction("Informar/confirmar NCM", "data-confirm-market-ncm", true)}</span></div>`;
+    return `<div class="market-tax-stat" title="${escapeHtml(marketDetails)}" aria-label="${escapeHtml(`${marketDetails} · NCM necessário`)}"><span>Maior + tributos</span><strong>—</strong><small>NCM necessário</small><span class="market-tax-actions">${taxAction("Classificar produto", "data-confirm-market-ncm", true)}</span></div>`;
   }
   if (taxAvailability && (!taxAvailability.configured || !taxAvailability.companyConfigured)) {
     return '<div class="market-tax-stat is-error"><span>Maior + tributos</span><strong>—</strong><small>Cálculo tributário indisponível</small></div>';
@@ -1516,6 +1520,8 @@ let revealAllPricingErrors = false;
 const touchedPricingFields = new Set();
 let marketSearchRevision = 0;
 let ncmLookupRevision = 0;
+let ncmSearchRevision = 0;
+let ncmSearchState = emptyNcmSearchState();
 
 function applyTheme(theme, persist = true) {
   const normalizedTheme = theme === "dark" ? "dark" : "light";
@@ -1654,7 +1660,11 @@ function emptyMarketTaxState(overrides = {}) {
 }
 
 function emptyFocusState() {
-  return { status: "idle", ncm: null, source: "", environment: "", checkedAt: "", error: "", unavailable: false };
+  return { status: "idle", ncm: null, source: "", environment: "", checkedAt: "", productNameForNcmSearch: "", error: "", unavailable: false };
+}
+
+function emptyNcmSearchState(overrides = {}) {
+  return { status: "idle", query: "", results: [], error: "", ...overrides };
 }
 
 function emptyMarketState() {
@@ -1691,7 +1701,7 @@ function marketStateForRender() {
 function renderMarketTaxContextStatus() {
   const context = currentMarketTaxContext();
   const status = $("#marketTaxContextStatus");
-  if (!context.ncmConfirmed) status.textContent = "NCM necessário: informe uma classificação e confirme-a pela Focus NFe.";
+  if (!context.ncmConfirmed) status.textContent = "Classifique o produto para calcular os tributos.";
   else if (!context.originState || !context.destinationState) status.textContent = "Informe UF de origem e UF de destino para calcular.";
   else status.textContent = `Pronto para calcular 1 unidade do maior preço: NCM ${context.ncm}, ${context.originState} → ${context.destinationState}.`;
 }
@@ -1727,35 +1737,107 @@ function render() {
 function renderNcmState() {
   const status = $("#ncmLookupStatus");
   const description = $("#ncmDescription");
-  const button = $("#ncmLookupButton");
-  button.disabled = focusState.status === "loading";
-  button.textContent = focusState.status === "loading" ? "Consultando..." : "Validar NCM";
+  const queryInput = $("#ncmProductQuery");
+  const searchButton = $("#ncmSearchButton");
+  const changeButton = $("#ncmChangeButton");
+  const suggestionsHeading = $("#ncmSuggestionsHeading");
+  const suggestions = $("#ncmSuggestions");
+  const isConfirming = focusState.status === "loading";
+  const isSearching = ncmSearchState.status === "loading";
+  const isConfirmed = focusState.status === "success";
 
-  if (focusState.status === "loading") status.textContent = "Consultando o NCM na Focus NFe…";
-  else if (focusState.status === "success") status.textContent = `NCM confirmado pela Focus NFe em ${focusState.environment}. Isso não calcula a tributação.`;
+  queryInput.readOnly = isConfirmed;
+  queryInput.setAttribute("aria-readonly", String(isConfirmed));
+  searchButton.disabled = isSearching || isConfirming || isConfirmed;
+  searchButton.textContent = isSearching ? "Buscando..." : "Buscar NCM";
+  changeButton.hidden = !isConfirmed;
+
+  if (isConfirming) status.textContent = "Confirmando a classificação na Focus NFe…";
+  else if (isConfirmed) status.textContent = `✓ NCM confirmado · ${focusState.ncm.codigo} · Focus NFe (${focusState.environment}).`;
+  else if (ncmSearchState.status === "loading") status.textContent = "Buscando classificações na Focus NFe…";
+  else if (ncmSearchState.status === "empty") status.textContent = "Nenhuma classificação NCM foi encontrada para esse produto. Experimente informar mais detalhes, como tipo, composição ou modelo.";
+  else if (ncmSearchState.status === "error") status.textContent = ncmSearchState.error;
   else if (focusState.status === "error") status.textContent = focusState.error;
-  else status.textContent = "Consulte a classificação na Focus NFe. O NCM isolado não determina impostos.";
+  else status.textContent = "Pesquise pelo produto e confirme uma sugestão da Focus NFe. O nome serve apenas para buscar opções.";
 
   description.hidden = !focusState.ncm?.descricao_completa;
   description.textContent = focusState.ncm?.descricao_completa || "";
+  suggestions.replaceChildren();
+  suggestions.hidden = ncmSearchState.status !== "success" || ncmSearchState.results.length === 0 || isConfirmed;
+  suggestionsHeading.hidden = suggestions.hidden;
+  if (!suggestions.hidden) {
+    for (const result of ncmSearchState.results) {
+      const item = document.createElement("li");
+      const content = document.createElement("div");
+      const code = document.createElement("strong");
+      const descriptionText = document.createElement("span");
+      const useButton = document.createElement("button");
+      code.textContent = result.code;
+      descriptionText.textContent = result.description;
+      useButton.type = "button";
+      useButton.className = "secondary-button";
+      useButton.dataset.ncmSelect = result.code;
+      useButton.disabled = isConfirming;
+      useButton.textContent = "Usar este NCM";
+      content.append(code, descriptionText);
+      item.append(content, useButton);
+      suggestions.append(item);
+    }
+  }
 }
 
-async function lookupNcm() {
-  const lookupRevision = ++ncmLookupRevision;
-  const code = String(elements.ncmCode.value || "").replace(/\D/g, "");
-  elements.ncmCode.value = code;
-  if (!/^\d{8}$/.test(code)) {
-    focusState = { ...emptyFocusState(), status: "error", error: "Informe um NCM com exatamente 8 dígitos." };
+function ncmSearchErrorMessage(error) {
+  if (error instanceof ApiError && ["FOCUS_NFE_UNAVAILABLE", "FOCUS_NFE_TIMEOUT", "FOCUS_NFE_NOT_CONFIGURED"].includes(error.code)) {
+    return "Não foi possível consultar a classificação fiscal agora.";
+  }
+  return messageFor(error);
+}
+
+async function searchNcmSuggestions() {
+  if (ncmSearchState.status === "loading") return;
+  const query = $("#ncmProductQuery").value.trim().replace(/\s+/g, " ");
+  const searchRevision = ++ncmSearchRevision;
+  if (query.length < 3) {
+    ncmSearchState = emptyNcmSearchState({ status: "error", query, error: "Informe pelo menos 3 caracteres para buscar a classificação fiscal." });
     render();
     return;
   }
 
+  ncmSearchState = emptyNcmSearchState({ status: "loading", query });
+  render();
+  try {
+    const response = await api.get(`/fiscal/ncms/search?q=${encodeURIComponent(query)}`);
+    if (searchRevision !== ncmSearchRevision) return;
+    const results = Array.isArray(response.results) ? response.results : [];
+    ncmSearchState = emptyNcmSearchState({ status: results.length ? "success" : "empty", query, results });
+  } catch (error) {
+    if (searchRevision !== ncmSearchRevision) return;
+    ncmSearchState = emptyNcmSearchState({ status: "error", query, error: ncmSearchErrorMessage(error) });
+  }
+  render();
+}
+
+async function lookupNcm(code) {
+  const lookupRevision = ++ncmLookupRevision;
+  const normalizedCode = String(code || "").replace(/\D/g, "");
+  if (!/^\d{8}$/.test(normalizedCode)) return;
+
   focusState = { ...emptyFocusState(), status: "loading" };
   render();
   try {
-    const response = await api.get(`/fiscal/ncms/${encodeURIComponent(code)}`);
+    const response = await api.get(`/fiscal/ncms/${encodeURIComponent(normalizedCode)}`);
     if (lookupRevision !== ncmLookupRevision) return;
-    focusState = { status: "success", ncm: response.ncm, source: "Focus NFe", environment: response.environment, checkedAt: new Date().toISOString(), error: "", unavailable: false };
+    elements.ncmCode.value = response.ncm.codigo;
+    focusState = {
+      status: "success",
+      ncm: response.ncm,
+      source: "Focus NFe",
+      environment: response.environment,
+      checkedAt: new Date().toISOString(),
+      productNameForNcmSearch: ncmSearchState.query || $("#ncmProductQuery").value.trim(),
+      error: "",
+      unavailable: false,
+    };
   } catch (error) {
     if (lookupRevision !== ncmLookupRevision) return;
     focusState = {
@@ -1766,6 +1848,17 @@ async function lookupNcm() {
     };
   }
   render();
+}
+
+function resetNcmClassification({ focusInput = false } = {}) {
+  ncmLookupRevision += 1;
+  ncmSearchRevision += 1;
+  elements.ncmCode.value = "";
+  focusState = emptyFocusState();
+  ncmSearchState = emptyNcmSearchState({ query: $("#ncmProductQuery").value.trim() });
+  marketState = { ...marketState, tax: emptyMarketTaxState() };
+  render();
+  if (focusInput) $("#ncmProductQuery").focus();
 }
 
 function closeMobileMenus({ restoreFocus = false } = {}) {
@@ -1952,9 +2045,9 @@ async function calculateMaximumTaxes() {
   if (!maximumItem) return;
   const context = currentMarketTaxContext();
   if (!context.ncmConfirmed) {
-    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "ncm-error", message: "NCM necessário. Informe a classificação fiscal e confirme-a pela Focus NFe." }) };
+    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "ncm-error", message: "Classifique o produto para calcular os tributos." }) };
     render();
-    elements.ncmCode.focus();
+    $("#ncmProductQuery").focus();
     return;
   }
   if (!/^[A-Z]{2}$/.test(context.originState) || !/^[A-Z]{2}$/.test(context.destinationState)) {
@@ -2009,6 +2102,12 @@ async function searchMarket() {
       ...data,
       error: "",
     };
+    // Reaproveita o termo já confirmado pelo usuário na pesquisa de mercado, mas
+    // nunca consulta a Focus NFe até que ele pressione "Buscar NCM".
+    if (focusState.status !== "success" && !$("#ncmProductQuery").value.trim()) {
+      $("#ncmProductQuery").value = query;
+      ncmSearchState = emptyNcmSearchState({ query });
+    }
   } catch (error) {
     if (searchRevision !== marketSearchRevision) return;
     setMarketError(query, error);
@@ -2054,13 +2153,16 @@ function resetCurrentProductForm() {
   // Invalida somente respostas locais pendentes; não inicia chamadas externas.
   marketSearchRevision += 1;
   ncmLookupRevision += 1;
+  ncmSearchRevision += 1;
   clearPricingInputs(elements);
   $("#productName").value = "";
   $("#productDescription").value = "";
   $("#marketQuery").value = "";
+  $("#ncmProductQuery").value = "";
   elements.marketReferenceRule.value = "manual";
   document.querySelector(".fiscal-advanced-fields")?.removeAttribute("open");
   focusState = emptyFocusState();
+  ncmSearchState = emptyNcmSearchState();
   marketState = emptyMarketState();
   manualMarketValue = "";
   revealAllPricingErrors = false;
@@ -2104,7 +2206,15 @@ function productPayloadFromCalculator() {
         provider: marketState.provider || "SearchAPI / Google Shopping",
       },
       fiscalValidation: focusState.status === "success" && focusState.ncm?.codigo === inputs.fiscalContext.ncmCode
-        ? { status: "success", source: "Focus NFe", code: focusState.ncm.codigo, ncm: focusState.ncm, environment: focusState.environment, checkedAt: focusState.checkedAt }
+        ? {
+          status: "success",
+          source: "Focus NFe",
+          code: focusState.ncm.codigo,
+          ncm: focusState.ncm,
+          environment: focusState.environment,
+          checkedAt: focusState.checkedAt,
+          productNameForNcmSearch: focusState.productNameForNcmSearch,
+        }
         : null,
     },
   };
@@ -2204,9 +2314,12 @@ function reuseProduct(product) {
   // Um v5 não possuía prova de validação; ele nunca é promovido para Focus validado.
   const savedValidation = !isLegacy ? data.fiscal?.ncmValidation : null;
   const savedNcm = data.fiscal?.ncm;
+  const savedNcmQuery = !isLegacy ? String(data.fiscal?.productNameForNcmSearch || "") : "";
   focusState = savedValidation?.status === "success" && savedValidation.code === savedInputs?.fiscalContext?.ncmCode
-    ? { status: "success", ncm: savedNcm, source: "Focus NFe", environment: savedValidation.environment, checkedAt: savedValidation.checkedAt, error: "", unavailable: false }
-    : { status: "idle", ncm: null, source: "", environment: "", checkedAt: "", error: "", unavailable: false };
+    ? { status: "success", ncm: savedNcm, source: "Focus NFe", environment: savedValidation.environment, checkedAt: savedValidation.checkedAt, productNameForNcmSearch: savedNcmQuery, error: "", unavailable: false }
+    : emptyFocusState();
+  ncmSearchState = emptyNcmSearchState({ query: savedNcmQuery });
+  $("#ncmProductQuery").value = savedNcmQuery;
   const savedMarket = data.market;
   const reference = data.pricingResult?.market?.reference || savedMarket;
   const savedManualValue = savedInputs?.marketPrice;
@@ -2378,19 +2491,21 @@ async function submitRegistration(event) {
   field.addEventListener("change", updateField);
 });
 
-elements.ncmCode.addEventListener("input", () => {
-  const currentCode = String(elements.ncmCode.value || "").replace(/\D/g, "");
-  if (focusState.ncm?.codigo !== currentCode) focusState = { status: "idle", ncm: null, source: "", environment: "", checkedAt: "", error: "", unavailable: false };
-  marketState = { ...marketState, tax: emptyMarketTaxState() };
-  render();
-});
-
-$("#ncmLookupButton").addEventListener("click", lookupNcm);
-elements.ncmCode.addEventListener("keydown", (event) => {
+$("#ncmSearchButton").addEventListener("click", () => void searchNcmSuggestions());
+$("#ncmProductQuery").addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
   event.preventDefault();
-  void lookupNcm();
+  void searchNcmSuggestions();
 });
+$("#ncmProductQuery").addEventListener("input", () => {
+  ncmSearchState = emptyNcmSearchState({ query: $("#ncmProductQuery").value.trim() });
+  render();
+});
+$("#ncmSuggestions").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-ncm-select]");
+  if (button) void lookupNcm(button.dataset.ncmSelect);
+});
+$("#ncmChangeButton").addEventListener("click", () => resetNcmClassification({ focusInput: true }));
 
 elements.marketPrice.addEventListener("input", () => {
   touchedPricingFields.add("marketPrice");
@@ -2416,7 +2531,7 @@ $("#marketPanel").addEventListener("click", (event) => {
   if (event.target.closest("[data-calculate-market-taxes]")) void calculateMaximumTaxes();
   if (event.target.closest("[data-confirm-market-ncm]")) {
     pricingTabs.activate("market");
-    elements.ncmCode.focus();
+    $("#ncmProductQuery").focus();
   }
   if (event.target.closest("[data-toggle-market-taxes]")) {
     marketState = { ...marketState, tax: { ...marketState.tax, expanded: !marketState.tax.expanded } };

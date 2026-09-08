@@ -262,13 +262,6 @@ app.get("/market/search", requireAuth, marketSearchLimiter, async (req, res, nex
 app.get("/fiscal/ncms/search", requireAuth, fiscalLookupLimiter, async (req, res, next) => {
   try {
     const { q } = validate(ncmSearchSchema, req.query, { code: "INVALID_NCM_QUERY" });
-    const code = String(q || "").replace(/\D/g, "");
-    if (!/^\d{8}$/.test(code)) {
-      throw new FocusNFeError("A Focus NFe valida NCMs exatos. Informe os 8 dígitos do NCM para confirmar.", {
-        code: "FOCUS_NFE_EXACT_CODE_REQUIRED",
-        status: 400,
-      });
-    }
     if (!focusNfeClient) {
       throw new FocusNFeError("A consulta fiscal ainda não foi configurada neste ambiente.", {
         code: "FOCUS_NFE_NOT_CONFIGURED",
@@ -276,13 +269,11 @@ app.get("/fiscal/ncms/search", requireAuth, fiscalLookupLimiter, async (req, res
       });
     }
     console.info("[Fiscal/NCM] userAuthenticated=true provider=FocusNFe upstreamStatus=pending route=search");
-    const ncm = await focusNfeClient.getNcm(code);
-    req.session.confirmedNcm = ncm.codigo;
-    await sessionSave(req);
+    const results = await focusNfeClient.searchNcms(q);
     console.info("[Fiscal/NCM] userAuthenticated=true provider=FocusNFe upstreamStatus=200 route=search");
     return res.json({
-      query: code,
-      results: [{ code: ncm.codigo, description: ncm.descricao_completa }],
+      query: q,
+      results: results.map((ncm) => ({ code: ncm.codigo, description: ncm.descricao_completa })),
       source: "Focus NFe",
     });
   } catch (error) {

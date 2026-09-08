@@ -25,14 +25,14 @@ test("o navegador envia cookie e só encerra a conta para SESSION_REQUIRED", () 
   assert.match(main, /endSession\(\)/);
 });
 
-test("/fiscal/ncms/search usa apenas Focus NFe para NCM exato", () => {
+test("/fiscal/ncms/search usa apenas a busca por descrição da Focus NFe", () => {
   const searchStart = server.indexOf('app.get("/fiscal/ncms/search"');
   const validationStart = server.indexOf('app.get("/fiscal/ncms/:codigo"');
   const searchRoute = server.slice(searchStart, validationStart);
 
   assert.ok(searchStart >= 0 && validationStart > searchStart);
-  assert.match(searchRoute, /FOCUS_NFE_EXACT_CODE_REQUIRED/);
-  assert.match(searchRoute, /focusNfeClient\.getNcm\(code\)/);
+  assert.match(searchRoute, /focusNfeClient\.searchNcms\(q\)/);
+  assert.doesNotMatch(searchRoute, /confirmedNcm/);
   assert.match(searchRoute, /provider=FocusNFe/);
   assert.doesNotMatch(searchRoute, /FiscalHub|fiscalHubClient|ncmProvider/);
 });

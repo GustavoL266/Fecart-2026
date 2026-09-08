@@ -392,10 +392,14 @@
                 <p class="section-description">O cálculo usa uma unidade do produto de maior preço. O regime tributário vem da empresa cadastrada na FiscalHub.</p>
               </div>
               <div class="sidebar-field">
-                <label for="ncmCode">NCM confirmado (8 dígitos)</label>
-                <div class="search-row fiscal-search-row"><input id="ncmCode" type="text" inputmode="numeric" maxlength="8" pattern="[0-9]{8}" placeholder="Confirme com seu contador" autocomplete="off" /><button id="ncmLookupButton" class="market-search-button" type="button">Validar NCM</button></div>
-                <p id="ncmLookupStatus" class="helper-text" role="status">A classificação fiscal precisa ser confirmada; o nome do produto não determina um NCM confiável.</p>
+                <label for="ncmProductQuery">Produto para classificação fiscal</label>
+                <div class="search-row fiscal-search-row"><input id="ncmProductQuery" type="text" placeholder="Ex.: bolo de chocolate" autocomplete="off" aria-describedby="ncmLookupStatus" /><button id="ncmSearchButton" class="market-search-button" type="button">Buscar NCM</button></div>
+                <input id="ncmCode" type="hidden" />
+                <p id="ncmLookupStatus" class="helper-text" role="status">Pesquise pelo produto e confirme uma sugestão fiscal.</p>
+                <p id="ncmSuggestionsHeading" class="helper-text" hidden><strong>Sugestões de NCM</strong></p>
+                <ul id="ncmSuggestions" class="ncm-suggestion-list" aria-label="Sugestões de NCM" aria-live="polite" hidden></ul>
                 <p id="ncmDescription" class="fiscal-description" hidden></p>
+                <button id="ncmChangeButton" class="secondary-button" type="button" hidden>Alterar classificação</button>
               </div>
               <div class="sidebar-grid sidebar-grid--two">
                 <div class="sidebar-field"><label for="originState">UF de origem</label><input id="originState" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="SP" autocomplete="off" /></div>
