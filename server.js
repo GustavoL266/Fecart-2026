@@ -315,32 +315,48 @@ app.get("/fiscal/ncms/:codigo", requireAuth, fiscalLookupLimiter, async (req, re
 
 app.post("/tax/calculate", requireAuth, taxCalculationLimiter, async (req, res, next) => {
   try {
-    console.info(`[Tax] userAuthenticated=true provider=FiscalHub configured=${fiscalHubConfig.isConfigured} companyConfigured=${fiscalHubConfig.companyConfigured} upstreamStatus=not_called`);
-    const input = validate(taxCalculationSchema, req.body, { code: "INVALID_TAX_CONTEXT" });
-    if (req.session.confirmedNcm !== input.ncm) {
-      const error = new Error("Confirme o NCM para calcular os tributos.");
-      error.code = "FOCUS_NFE_NCM_CONFIRMATION_REQUIRED";
-      error.status = 400;
-      throw error;
+    const parsed = taxCalculationSchema.safeParse(req.body);
+    const ncmConfirmed = /^\d{8}$/.test(req.body?.ncm || "") && req.session.confirmedNcm === req.body?.ncm;
+    const safeState = (field) => taxCalculationSchema.shape[field].safeParse(req.body?.[field]).data || "missing_or_invalid";
+    const price = Number.isFinite(req.body?.unitValue) ? req.body.unitValue : "missing_or_invalid";
+    console.info("[Tax] requested=true");
+    console.info(`[Tax] configured=${fiscalHubConfig.isConfigured}`);
+    console.info(`[Tax] companyConfigured=${fiscalHubConfig.companyConfigured}`);
+    console.info(`[Tax] ncmConfirmed=${ncmConfirmed}`);
+    console.info(`[Tax] origin=${safeState("originState")}`);
+    console.info(`[Tax] destination=${safeState("destinationState")}`);
+    console.info(`[Tax] price=${price}`);
+    const fieldMessages = {
+      ncm: "NCM necessário: confirme um código com 8 dígitos, sem espaços ou outros caracteres.",
+      originState: "Informe uma UF de origem brasileira válida.",
+      destinationState: "Informe uma UF de destino brasileira válida.",
+      unitValue: "Informe um maior preço válido e positivo.",
+      quantity: "A quantidade deve ser 1.",
+    };
+    const issues = parsed.success ? [] : parsed.error.issues.map((issue) => fieldMessages[issue.path[0]] || "Revise os dados fiscais.");
+    const ncmMissing = !/^\d{8}$/.test(req.body?.ncm || "");
+    if (!ncmConfirmed && !ncmMissing) issues.push("Confirme o NCM para calcular os tributos.");
+    const confirmationCode = "FOCUS_NFE_NCM_CONFIRMATION_REQUIRED";
+    if (!fiscalHubConfig.companyConfigured) {
+      issues.push("Empresa FiscalHub não configurada: configure FISCALHUB_EMPRESA_ID no backend.");
     }
     if (!fiscalHubConfig.isConfigured || !taxProvider) {
-      throw new FiscalHubError("A integração FiscalHub não foi configurada.", {
-        code: "FISCALHUB_NOT_CONFIGURED",
-        status: 503,
+      issues.push("Chave FiscalHub não configurada: configure FISCALHUB_API_KEY no backend.");
+    }
+    if (issues.length) {
+      console.info("[Tax] upstreamStatus=not_called");
+      throw new FiscalHubError([...new Set(issues)].join(" "), {
+        code: !fiscalHubConfig.companyConfigured ? "FISCALHUB_EMPRESA_NOT_CONFIGURED"
+          : !fiscalHubConfig.isConfigured || !taxProvider ? "FISCALHUB_NOT_CONFIGURED"
+          : ncmMissing ? "NCM_REQUIRED" : !parsed.success ? "INVALID_TAX_CONTEXT" : confirmationCode,
+        status: !fiscalHubConfig.companyConfigured || !fiscalHubConfig.isConfigured || !taxProvider ? 503 : 400,
       });
     }
-    if (!fiscalHubConfig.companyConfigured) {
-      throw new FiscalHubError("A empresa para cálculo tributário ainda não foi configurada.", {
-        code: "FISCALHUB_EMPRESA_NOT_CONFIGURED",
-        status: 503,
-      });
-    }
-    console.info(`[Tax] userAuthenticated=true provider=FiscalHub configured=true companyConfigured=true upstreamStatus=pending ncmConfirmed=true`);
+    const input = parsed.data;
     const calculation = await taxProvider.calculate(input);
-    console.info("[Tax] userAuthenticated=true provider=FiscalHub configured=true companyConfigured=true upstreamStatus=200");
     return res.json({ calculation });
   } catch (error) {
-    console.info(`[Tax] userAuthenticated=true provider=FiscalHub configured=${fiscalHubConfig.isConfigured} companyConfigured=${fiscalHubConfig.companyConfigured} upstreamStatus=${error instanceof FiscalHubError ? error.upstreamStatus ?? "not_called" : "not_called"} code=${error.code || "UNKNOWN"}`);
+    console.info(`[Tax] provider=FiscalHub code=${error.code || "UNKNOWN"}`);
     return next(error);
   }
 });

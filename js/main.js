@@ -2,7 +2,7 @@ import { calculatePricing } from "./domain/pricing-calculator.js";
 import { ConfiguredTaxRuleEngine } from "./domain/tax-rule-engine.js";
 import { MarketService } from "./services/market-service.js";
 import { ApiError, api } from "./services/api-client.js";
-import { TaxService } from "./services/tax-service.js";
+import { TaxService, marketTaxError, marketTaxPrerequisiteError } from "./services/tax-service.js";
 import { clearMarketReference, loadMarketReference, saveMarketReference } from "./services/market-reference-store.js";
 import { applySavedInputs, CAPACITY_FIELD_IDS, clearPricingInputs, migrateLegacyV5Inputs, PRICING_FIELD_IDS, renderPricingErrors, validatePricingForm } from "./ui/form.js";
 import { renderDashboard, renderIncompleteDashboard } from "./ui/dashboard.js";
@@ -208,16 +208,25 @@ function emptyMarketState() {
 }
 
 function currentMarketTaxContext() {
-  const ncm = String(elements.ncmCode.value || "").replace(/\D/g, "");
+  const ncm = String(elements.ncmCode.value || "");
   return {
     ncm,
-    ncmConfirmed: focusState.status === "success" && focusState.ncm?.codigo === ncm,
+    ncmConfirmed: /^\d{8}$/.test(ncm) && focusState.status === "success" && focusState.ncm?.codigo === ncm,
     originState: String(elements.originState.value || "").trim().toUpperCase(),
     destinationState: String(elements.destinationState.value || "").trim().toUpperCase(),
   };
 }
 
+function marketTaxSignature() {
+  const maximumItem = maximumMarketItem();
+  const context = currentMarketTaxContext();
+  return JSON.stringify([maximumItem?.id, maximumItem?.price, context.ncm, context.ncmConfirmed, context.originState, context.destinationState]);
+}
+
 function marketStateForRender() {
+  if (marketState.tax?.signature && marketState.tax.signature !== marketTaxSignature()) {
+    marketState = { ...marketState, tax: emptyMarketTaxState() };
+  }
   return {
     ...marketState,
     tax: marketState.tax || emptyMarketTaxState(),
@@ -229,8 +238,9 @@ function marketStateForRender() {
 function renderMarketTaxContextStatus() {
   const context = currentMarketTaxContext();
   const status = $("#marketTaxContextStatus");
+  const prerequisiteError = marketTaxPrerequisiteError(context, maximumMarketItem()?.price, state.taxAvailability);
   if (!context.ncmConfirmed) status.textContent = "Classifique o produto para calcular os tributos.";
-  else if (!context.originState || !context.destinationState) status.textContent = "Informe UF de origem e UF de destino para calcular.";
+  else if (prerequisiteError) status.textContent = prerequisiteError.message;
   else status.textContent = `Pronto para calcular 1 unidade do maior preço: NCM ${context.ncm}, ${context.originState} → ${context.destinationState}.`;
 }
 
@@ -549,48 +559,25 @@ function maximumMarketItem() {
 }
 
 function setMarketTaxError(error) {
-  const messages = {
-    FISCALHUB_NOT_CONFIGURED: ["FiscalHub não configurada", "Configure FISCALHUB_API_KEY no ambiente do backend."],
-    FISCALHUB_EMPRESA_NOT_CONFIGURED: ["Cálculo tributário indisponível", "A empresa para cálculo tributário ainda não foi configurada."],
-    FISCALHUB_UNAUTHORIZED: ["Falha de autenticação", "Não foi possível autenticar na FiscalHub."],
-    FISCALHUB_FORBIDDEN: ["Sem permissão", "A empresa ou o recurso não está autorizado na FiscalHub."],
-    FISCALHUB_NOT_FOUND: ["Empresa não encontrada", "A empresa ou o recurso não foi encontrado na FiscalHub."],
-    FISCALHUB_INVALID_OPERATION: ["Dados inválidos", "Revise o NCM e as UFs da operação."],
-    FISCALHUB_ERROR: ["Erro na FiscalHub", "A FiscalHub não conseguiu concluir o cálculo."],
-    FISCALHUB_TOTAL_NOT_PROVIDED: ["Total indisponível", "A FiscalHub não informou um total final seguro; os impostos não foram somados manualmente."],
-    FOCUS_NFE_NCM_CONFIRMATION_REQUIRED: ["NCM necessário", "Confirme o NCM para calcular os tributos."],
-    SESSION_REQUIRED: ["Sessão expirada", "Sua sessão expirou. Entre novamente."],
-  };
-  const code = error instanceof ApiError ? error.code : "";
-  const mapped = messages[code];
-  const [shortMessage, fallback] = mapped || ["Cálculo indisponível", messageFor(error)];
-  marketState = { ...marketState, tax: emptyMarketTaxState({ status: "error", code, message: mapped ? fallback : error.message || fallback, shortMessage }) };
+  marketState = { ...marketState, tax: emptyMarketTaxState({ status: "error", ...marketTaxError(error), signature: marketTaxSignature() }) };
 }
 
 async function calculateMaximumTaxes() {
+  marketStateForRender();
   if (marketState.tax?.status === "loading") return;
   const maximumItem = maximumMarketItem();
-  if (!maximumItem) return;
   const context = currentMarketTaxContext();
-  if (!context.ncmConfirmed) {
-    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "ncm-error", message: "Classifique o produto para calcular os tributos." }) };
+  const prerequisiteError = marketTaxPrerequisiteError(context, maximumItem?.price, state.taxAvailability);
+  if (prerequisiteError) {
+    setMarketTaxError(prerequisiteError);
     render();
-    $("#ncmProductQuery").focus();
+    if (prerequisiteError.code === "NCM_REQUIRED") $("#ncmProductQuery").focus();
     return;
   }
-  if (!/^[A-Z]{2}$/.test(context.originState) || !/^[A-Z]{2}$/.test(context.destinationState)) {
-    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "error", shortMessage: "Informe as UFs", message: "Informe UF de origem e UF de destino antes de calcular." }) };
-    render();
-    return;
-  }
-  const requestSignature = [maximumItem.id, maximumItem.price, context.ncm, context.originState, context.destinationState].join("|");
-  const requestIsCurrent = () => {
-    const currentMaximum = maximumMarketItem();
-    const currentContext = currentMarketTaxContext();
-    return [currentMaximum?.id, currentMaximum?.price, currentContext.ncm, currentContext.originState, currentContext.destinationState].join("|") === requestSignature;
-  };
-
-  marketState = { ...marketState, tax: emptyMarketTaxState({ status: "loading" }) };
+  const signature = marketTaxSignature();
+  const pendingTax = emptyMarketTaxState({ status: "loading", signature });
+  const requestIsCurrent = () => marketState.tax === pendingTax && marketTaxSignature() === signature;
+  marketState = { ...marketState, tax: pendingTax };
   render();
   try {
     const response = await taxService.calculateMaximum({
@@ -600,7 +587,7 @@ async function calculateMaximumTaxes() {
       unitValue: maximumItem.price,
     });
     if (!requestIsCurrent()) return;
-    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "success", result: response.calculation }) };
+    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "success", result: response.calculation, signature }) };
   } catch (error) {
     if (!requestIsCurrent()) return;
     setMarketTaxError(error);

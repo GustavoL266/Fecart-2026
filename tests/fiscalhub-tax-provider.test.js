@@ -65,10 +65,10 @@ test("envia o maior preço uma única vez ao endpoint oficial", async () => {
   const client = clientWith(async (url, options) => {
     captured = { url, options };
     return response(200, successfulPayload);
-  });
+  }, { apiKey: "  fh_test_chave-ficticia  " });
   const provider = new FiscalHubTaxProvider({ client, companyId: "empresa-uuid", logger: { info() {} } });
   const result = await provider.calculate({
-    ncm: "0901.21.00",
+    ncm: "09012100",
     quantity: 1,
     unitValue: 1_000,
     originState: "sp",
@@ -78,6 +78,8 @@ test("envia o maior preço uma única vez ao endpoint oficial", async () => {
   assert.equal(captured.url, "https://api.fiscalhub.com.br/api/v1/tributario/calcular");
   assert.equal(captured.options.method, "POST");
   assert.equal(captured.options.headers["X-Api-Key"], "fh_test_chave-ficticia");
+  assert.equal(captured.options.headers.Authorization, undefined);
+  assert.equal(new URL(captured.url).search, "");
   assert.deepEqual(JSON.parse(captured.options.body), {
     empresaId: "empresa-uuid",
     ufOrigem: "SP",
@@ -121,11 +123,14 @@ test("preserva os status públicos relevantes da FiscalHub", async (context) => 
     [401, "FISCALHUB_UNAUTHORIZED"],
     [403, "FISCALHUB_FORBIDDEN"],
     [404, "FISCALHUB_NOT_FOUND"],
+    [422, "FISCALHUB_REJECTED"],
+    [429, "FISCALHUB_RATE_LIMITED"],
     [500, "FISCALHUB_ERROR"],
+    [503, "FISCALHUB_ERROR"],
   ]) {
     await context.test(String(status), async () => {
       const client = clientWith(async () => response(status, { detalhe: "não deve vazar" }));
-      await assert.rejects(() => client.request("/api/v1/tributario/calcular", { method: "POST", body: {} }), { code, status });
+      await assert.rejects(() => client.request("/api/v1/tributario/calcular", { method: "POST", body: {} }), { code, status, upstreamStatus: status });
     });
   }
 });
@@ -136,12 +141,10 @@ test("não soma automaticamente tributos granulares antigos e IBS/CBS", () => {
   }, 100), { code: "FISCALHUB_TOTAL_NOT_PROVIDED", status: 502 });
 });
 
-test("aceita total tributário explícito como composição segura", () => {
-  const normalized = normalizeFiscalHubTaxResponse({
+test("não presume que totalTributos seja um acréscimo ao preço", () => {
+  assert.throws(() => normalizeFiscalHubTaxResponse({
     totais: { valorIcms: 18, valorTotalTributos: 20 },
-  }, 100);
-  assert.equal(normalized.taxTotal, 20);
-  assert.equal(normalized.total, 120);
+  }, 100), { code: "FISCALHUB_TOTAL_NOT_PROVIDED" });
 });
 
 test("reutiliza cálculo idêntico no cache", async () => {

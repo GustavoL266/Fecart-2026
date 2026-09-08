@@ -72,6 +72,6 @@ test("o endpoint de sugestões não confirma sessão e a FiscalHub continua cond
 
   assert.match(searchRoute, /focusNfeClient\.searchNcms\(q\)/);
   assert.doesNotMatch(searchRoute, /req\.session\.confirmedNcm/);
-  assert.match(taxRoute, /req\.session\.confirmedNcm !== input\.ncm/);
+  assert.match(taxRoute, /req\.session\.confirmedNcm === req\.body\?\.ncm/);
   assert.match(taxRoute, /taxProvider\.calculate\(input\)/);
 });

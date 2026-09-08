@@ -85,7 +85,7 @@ FISCALHUB_EMPRESA_ID=
 FISCALHUB_TIMEOUT_MS=10000
 ```
 
-`FISCALHUB_EMPRESA_ID` é o UUID da empresa cadastrada no portal FiscalHub. O regime tributário usado pelo motor pertence a esse cadastro; ele não é inventado pelo frontend. A FiscalHub só é chamada depois de o NCM exato ter sido confirmado pela Focus NFe na mesma sessão, com UFs e preço válidos. O sistema usa o total final explícito da FiscalHub, ou um total de tributos explícito quando fornecido; ele não soma ICMS/PIS/COFINS e IBS/CBS granularmente. Consulte [docs/fiscalhub.md](docs/fiscalhub.md).
+`FISCALHUB_EMPRESA_ID` é o UUID da empresa cadastrada no portal FiscalHub. O regime tributário usado pelo motor pertence a esse cadastro; ele não é inventado pelo frontend. A FiscalHub só é chamada depois de o NCM exato ter sido confirmado pela Focus NFe na mesma sessão, com UFs e preço válidos. O sistema usa o total final explícito da FiscalHub; agregados de tributos e componentes não são somados ao preço sem semântica documentada de acréscimo. Consulte [docs/fiscalhub.md](docs/fiscalhub.md).
 
 ## Publicação a partir do GitHub
 

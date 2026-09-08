@@ -546,6 +546,47 @@ const api = {
 
 
 
+const taxMessages = Object.freeze({
+  NCM_REQUIRED: ["NCM necessário", "Confirme um NCM com 8 dígitos, sem espaços ou outros caracteres."],
+  FOCUS_NFE_NCM_CONFIRMATION_REQUIRED: ["NCM necessário", "Confirme o NCM para calcular os tributos."],
+  FISCALHUB_NOT_CONFIGURED: ["Chave FiscalHub não configurada", "A chave de acesso da FiscalHub precisa ser configurada no servidor."],
+  FISCALHUB_EMPRESA_NOT_CONFIGURED: ["Empresa FiscalHub não configurada", "A empresa para cálculo tributário precisa ser configurada no servidor."],
+  FISCALHUB_UNAUTHORIZED: ["Erro de autenticação FiscalHub", "A FiscalHub recusou a chave de acesso."],
+  FISCALHUB_FORBIDDEN: ["Sem permissão na FiscalHub", "A empresa ou o recurso não está autorizado na FiscalHub."],
+  FISCALHUB_NOT_FOUND: ["Empresa/recurso não encontrado", "A empresa ou o recurso não foi encontrado na FiscalHub."],
+  INVALID_TAX_CONTEXT: ["Revise os dados fiscais", "Revise o NCM, as UFs e o maior preço."],
+  FISCALHUB_INVALID_OPERATION: ["Revise os dados fiscais", "A FiscalHub rejeitou os dados da operação."],
+  FISCALHUB_REJECTED: ["Revise os dados fiscais", "A FiscalHub informou dados fiscais insuficientes ou inválidos."],
+  FISCALHUB_ERROR: ["Erro na FiscalHub", "A FiscalHub não conseguiu concluir o cálculo."],
+  FISCALHUB_TOTAL_NOT_PROVIDED: ["Total final não informado", "A FiscalHub não informou um total final seguro; a resposta não permite somar os impostos ao preço."],
+  FISCALHUB_INVALID_RESPONSE: ["Resposta inválida da FiscalHub", "A FiscalHub retornou dados em formato inesperado."],
+  FISCALHUB_BAD_GATEWAY: ["Resposta inesperada da FiscalHub", "A FiscalHub retornou um status inesperado."],
+  FISCALHUB_TIMEOUT: ["FiscalHub demorou a responder", "Tente calcular novamente em instantes."],
+  FISCALHUB_UNAVAILABLE: ["Falha de conexão com a FiscalHub", "Não foi possível conectar à FiscalHub."],
+  FISCALHUB_RATE_LIMITED: ["Limite de consultas FiscalHub", "Aguarde antes de tentar novamente."],
+  SESSION_REQUIRED: ["Sessão expirada", "Sua sessão expirou. Entre novamente."],
+});
+
+function marketTaxError(error) {
+  const code = error?.code || "";
+  const [shortMessage, message] = taxMessages[code] || ["Não foi possível calcular", "Tente novamente em instantes."];
+  return { code, shortMessage, message: error?.message || message };
+}
+
+function marketTaxPrerequisiteError(context, unitValue, availability) {
+  if (!context.ncmConfirmed || !/^\d{8}$/.test(context.ncm || "")) return marketTaxError({ code: "NCM_REQUIRED" });
+  const issues = [];
+  if (availability?.companyConfigured === false) issues.push(marketTaxError({ code: "FISCALHUB_EMPRESA_NOT_CONFIGURED" }));
+  if (availability?.configured === false) issues.push(marketTaxError({ code: "FISCALHUB_NOT_CONFIGURED" }));
+  const validState = /^(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)$/;
+  const fields = [];
+  if (!validState.test(context.originState || "")) fields.push("Informe uma UF de origem brasileira válida.");
+  if (!validState.test(context.destinationState || "")) fields.push("Informe uma UF de destino brasileira válida.");
+  if (!Number.isFinite(unitValue) || unitValue <= 0) fields.push("Informe um maior preço válido e positivo.");
+  if (fields.length) issues.push(marketTaxError({ code: "INVALID_TAX_CONTEXT", message: fields.join(" ") }));
+  return issues.length ? { ...issues[0], message: issues.map((issue) => issue.message).join(" ") } : null;
+}
+
 class TaxService {
   #api;
 
@@ -940,6 +981,11 @@ function renderTaxedMaximumStat(marketState) {
     "Fonte de mercado: Google Shopping",
   ].filter(Boolean).join(" · ");
 
+  const prerequisiteError = marketTaxPrerequisiteError(context, maximumPrice, taxAvailability);
+  if (prerequisiteError) {
+    const needsNcm = prerequisiteError.code === "NCM_REQUIRED";
+    return `<div class="market-tax-stat is-error" title="${escapeHtml(`${marketDetails} · ${prerequisiteError.message}`)}"><span>Maior + tributos</span><strong>—</strong><small>${escapeHtml(prerequisiteError.shortMessage)}</small>${needsNcm ? taxAction("Classificar produto", "data-confirm-market-ncm", true) : ""}</div>`;
+  }
   if (tax.status === "loading") {
     return '<div class="market-tax-stat is-loading"><span>Maior + tributos</span><strong>—</strong><small>Calculando na FiscalHub…</small></div>';
   }
@@ -950,20 +996,12 @@ function renderTaxedMaximumStat(marketState) {
     const companyMissing = tax.code === "FISCALHUB_EMPRESA_NOT_CONFIGURED";
     return `<div class="market-tax-stat is-error"><span>Maior + tributos</span><strong>—</strong><small>${escapeHtml(tax.shortMessage || "Não foi possível calcular")}</small>${companyMissing ? "" : taxAction("Tentar novamente", "data-calculate-market-taxes", true)}</div>`;
   }
-  if (!context.ncmConfirmed) {
-    return `<div class="market-tax-stat" title="${escapeHtml(marketDetails)}" aria-label="${escapeHtml(`${marketDetails} · NCM necessário`)}"><span>Maior + tributos</span><strong>—</strong><small>NCM necessário</small><span class="market-tax-actions">${taxAction("Classificar produto", "data-confirm-market-ncm", true)}</span></div>`;
-  }
-  if (taxAvailability && (!taxAvailability.configured || !taxAvailability.companyConfigured)) {
-    return '<div class="market-tax-stat is-error"><span>Maior + tributos</span><strong>—</strong><small>Cálculo tributário indisponível</small></div>';
-  }
-  if (!context.originState || !context.destinationState) {
-    return `<div class="market-tax-stat"><span>Maior + tributos</span><strong>—</strong><small>Informe as UFs</small></div>`;
-  }
-
   return `<div class="market-tax-stat"><span>Maior + tributos</span><strong>—</strong><small>${escapeHtml(maximumItem?.title || dashboardMoney(maximumPrice))}</small>${taxAction("Calcular tributos", "data-calculate-market-taxes")}</div>`;
 }
 
 function renderTaxDetails(marketState) {
+  const prerequisiteError = marketTaxPrerequisiteError(marketState.taxContext || {}, maximumMarketItemForDisplay(marketState)?.price ?? marketState.stats?.max, marketState.taxAvailability);
+  if (prerequisiteError) return `<div class="market-tax-notice is-error" role="alert"><strong>${escapeHtml(prerequisiteError.message)}</strong></div>`;
   const tax = marketState.tax || { status: "idle" };
   if (tax.status === "ncm-error" || tax.status === "error") {
     return `<div class="market-tax-notice is-error" role="alert"><strong>${escapeHtml(tax.message || "Não foi possível concluir o cálculo tributário.")}</strong></div>`;
@@ -1680,16 +1718,25 @@ function emptyMarketState() {
 }
 
 function currentMarketTaxContext() {
-  const ncm = String(elements.ncmCode.value || "").replace(/\D/g, "");
+  const ncm = String(elements.ncmCode.value || "");
   return {
     ncm,
-    ncmConfirmed: focusState.status === "success" && focusState.ncm?.codigo === ncm,
+    ncmConfirmed: /^\d{8}$/.test(ncm) && focusState.status === "success" && focusState.ncm?.codigo === ncm,
     originState: String(elements.originState.value || "").trim().toUpperCase(),
     destinationState: String(elements.destinationState.value || "").trim().toUpperCase(),
   };
 }
 
+function marketTaxSignature() {
+  const maximumItem = maximumMarketItem();
+  const context = currentMarketTaxContext();
+  return JSON.stringify([maximumItem?.id, maximumItem?.price, context.ncm, context.ncmConfirmed, context.originState, context.destinationState]);
+}
+
 function marketStateForRender() {
+  if (marketState.tax?.signature && marketState.tax.signature !== marketTaxSignature()) {
+    marketState = { ...marketState, tax: emptyMarketTaxState() };
+  }
   return {
     ...marketState,
     tax: marketState.tax || emptyMarketTaxState(),
@@ -1701,8 +1748,9 @@ function marketStateForRender() {
 function renderMarketTaxContextStatus() {
   const context = currentMarketTaxContext();
   const status = $("#marketTaxContextStatus");
+  const prerequisiteError = marketTaxPrerequisiteError(context, maximumMarketItem()?.price, state.taxAvailability);
   if (!context.ncmConfirmed) status.textContent = "Classifique o produto para calcular os tributos.";
-  else if (!context.originState || !context.destinationState) status.textContent = "Informe UF de origem e UF de destino para calcular.";
+  else if (prerequisiteError) status.textContent = prerequisiteError.message;
   else status.textContent = `Pronto para calcular 1 unidade do maior preço: NCM ${context.ncm}, ${context.originState} → ${context.destinationState}.`;
 }
 
@@ -2021,48 +2069,25 @@ function maximumMarketItem() {
 }
 
 function setMarketTaxError(error) {
-  const messages = {
-    FISCALHUB_NOT_CONFIGURED: ["FiscalHub não configurada", "Configure FISCALHUB_API_KEY no ambiente do backend."],
-    FISCALHUB_EMPRESA_NOT_CONFIGURED: ["Cálculo tributário indisponível", "A empresa para cálculo tributário ainda não foi configurada."],
-    FISCALHUB_UNAUTHORIZED: ["Falha de autenticação", "Não foi possível autenticar na FiscalHub."],
-    FISCALHUB_FORBIDDEN: ["Sem permissão", "A empresa ou o recurso não está autorizado na FiscalHub."],
-    FISCALHUB_NOT_FOUND: ["Empresa não encontrada", "A empresa ou o recurso não foi encontrado na FiscalHub."],
-    FISCALHUB_INVALID_OPERATION: ["Dados inválidos", "Revise o NCM e as UFs da operação."],
-    FISCALHUB_ERROR: ["Erro na FiscalHub", "A FiscalHub não conseguiu concluir o cálculo."],
-    FISCALHUB_TOTAL_NOT_PROVIDED: ["Total indisponível", "A FiscalHub não informou um total final seguro; os impostos não foram somados manualmente."],
-    FOCUS_NFE_NCM_CONFIRMATION_REQUIRED: ["NCM necessário", "Confirme o NCM para calcular os tributos."],
-    SESSION_REQUIRED: ["Sessão expirada", "Sua sessão expirou. Entre novamente."],
-  };
-  const code = error instanceof ApiError ? error.code : "";
-  const mapped = messages[code];
-  const [shortMessage, fallback] = mapped || ["Cálculo indisponível", messageFor(error)];
-  marketState = { ...marketState, tax: emptyMarketTaxState({ status: "error", code, message: mapped ? fallback : error.message || fallback, shortMessage }) };
+  marketState = { ...marketState, tax: emptyMarketTaxState({ status: "error", ...marketTaxError(error), signature: marketTaxSignature() }) };
 }
 
 async function calculateMaximumTaxes() {
+  marketStateForRender();
   if (marketState.tax?.status === "loading") return;
   const maximumItem = maximumMarketItem();
-  if (!maximumItem) return;
   const context = currentMarketTaxContext();
-  if (!context.ncmConfirmed) {
-    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "ncm-error", message: "Classifique o produto para calcular os tributos." }) };
+  const prerequisiteError = marketTaxPrerequisiteError(context, maximumItem?.price, state.taxAvailability);
+  if (prerequisiteError) {
+    setMarketTaxError(prerequisiteError);
     render();
-    $("#ncmProductQuery").focus();
+    if (prerequisiteError.code === "NCM_REQUIRED") $("#ncmProductQuery").focus();
     return;
   }
-  if (!/^[A-Z]{2}$/.test(context.originState) || !/^[A-Z]{2}$/.test(context.destinationState)) {
-    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "error", shortMessage: "Informe as UFs", message: "Informe UF de origem e UF de destino antes de calcular." }) };
-    render();
-    return;
-  }
-  const requestSignature = [maximumItem.id, maximumItem.price, context.ncm, context.originState, context.destinationState].join("|");
-  const requestIsCurrent = () => {
-    const currentMaximum = maximumMarketItem();
-    const currentContext = currentMarketTaxContext();
-    return [currentMaximum?.id, currentMaximum?.price, currentContext.ncm, currentContext.originState, currentContext.destinationState].join("|") === requestSignature;
-  };
-
-  marketState = { ...marketState, tax: emptyMarketTaxState({ status: "loading" }) };
+  const signature = marketTaxSignature();
+  const pendingTax = emptyMarketTaxState({ status: "loading", signature });
+  const requestIsCurrent = () => marketState.tax === pendingTax && marketTaxSignature() === signature;
+  marketState = { ...marketState, tax: pendingTax };
   render();
   try {
     const response = await taxService.calculateMaximum({
@@ -2072,7 +2097,7 @@ async function calculateMaximumTaxes() {
       unitValue: maximumItem.price,
     });
     if (!requestIsCurrent()) return;
-    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "success", result: response.calculation }) };
+    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "success", result: response.calculation, signature }) };
   } catch (error) {
     if (!requestIsCurrent()) return;
     setMarketTaxError(error);

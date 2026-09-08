@@ -28,9 +28,12 @@ test("dashboard apresenta estados, ação manual e detalhamento responsivo", () 
   assert.match(dashboard, /Maior \+ tributos/);
   assert.match(dashboard, /Calculado pela FiscalHub/);
   assert.match(dashboard, /Ver tributos/);
-  assert.match(dashboard, /NCM necessário/);
+  assert.match(bundle, /NCM necessário/);
   assert.match(dashboard, /Classificar produto/);
-  assert.match(dashboard, /Cálculo tributário indisponível/);
+  assert.doesNotMatch(bundle, /Cálculo tributário indisponível/);
+  assert.match(bundle, /Empresa FiscalHub não configurada/);
+  assert.match(bundle, /Erro de autenticação FiscalHub/);
+  assert.match(bundle, /Revise os dados fiscais/);
   assert.doesNotMatch(dashboard, /Buscar sugestões|FiscalHub encontrou possibilidades/);
   assert.match(dashboard, /Preço de mercado/);
   assert.match(styles, /\.market-tax-breakdown/);
