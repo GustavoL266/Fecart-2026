@@ -22,6 +22,8 @@ O token é usado como usuário do HTTP Basic, com senha vazia. Ele não é persi
 - Código, descrição completa e partes estruturais da classificação NCM.
 - Dados completos de NF-e recebidas, inclusive itens e valores fiscais, quando a conta/CNPJ tem acesso e a nota possui XML completo.
 
+Como a API documentada pela Focus NFe consulta NCM por código exato, o endpoint local `/fiscal/ncms/search` aceita somente oito dígitos e retorna a confirmação da Focus NFe; ele não usa a FiscalHub nem tenta inferir classificações pela descrição. A confirmação fica registrada na sessão e é exigida antes do cálculo tributário.
+
 O fluxo atual não possui cadastro de CNPJ, vínculo seguro de empresas ou importação de notas de fornecedores. Por isso a integração de NF-e recebidas foi avaliada, mas não ativada: fazê-lo agora exigiria coletar CNPJ, controlar versões, garantir autorização da conta e definir a conciliação entre itens da nota e produtos internos. Nenhuma manifestação, emissão, cancelamento ou alteração de documento fiscal é realizada.
 
 ## O que a Focus NFe não fornece como cálculo

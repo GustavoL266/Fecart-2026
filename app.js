@@ -512,7 +512,9 @@ async function request(path, options = {}) {
   try {
     response = await fetch(path, {
       method,
-      credentials: "same-origin",
+      // API and interface share the Render domain. "include" also keeps the
+      // cookie explicit if this client is ever embedded by a same-site origin.
+      credentials: "include",
       headers: body ? { "Content-Type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -525,7 +527,9 @@ async function request(path, options = {}) {
   if (response.ok) return payload;
 
   const error = new ApiError(payload?.error || "Não foi possível concluir a operação.", response.status, payload?.code || "", payload || {});
-  if (handleUnauthorized && response.status === 401) window.dispatchEvent(new CustomEvent("app:session-expired"));
+  // A provider can legitimately return HTTP 401 (for example Focus NFe or
+  // FiscalHub). Only our explicit session code may reset the local account.
+  if (handleUnauthorized && error.code === "SESSION_REQUIRED") window.dispatchEvent(new CustomEvent("app:session-expired"));
   throw error;
 }
 
@@ -552,12 +556,7 @@ class TaxService {
       destinationState,
       quantity: 1,
       unitValue,
-    }, { handleUnauthorized: false });
-  }
-
-  searchNcmSuggestions(description) {
-    const query = String(description || "").trim().replace(/\s+/g, " ").slice(0, 120);
-    return this.#api.get(`/fiscal/ncms/search?q=${encodeURIComponent(query)}`, { handleUnauthorized: false });
+    });
   }
 }
 
@@ -930,6 +929,7 @@ function renderTaxedMaximumStat(marketState) {
   const maximumPrice = maximumItem?.price ?? marketState.stats.max;
   const tax = marketState.tax || { status: "idle" };
   const context = marketState.taxContext || {};
+  const taxAvailability = marketState.taxAvailability;
   const marketDetails = [
     maximumItem ? `Produto: ${maximumItem.title}` : null,
     `Preço de mercado: ${dashboardMoney(maximumPrice)}`,
@@ -947,7 +947,10 @@ function renderTaxedMaximumStat(marketState) {
     return `<div class="market-tax-stat is-error"><span>Maior + tributos</span><strong>—</strong><small>${escapeHtml(tax.shortMessage || "Não foi possível calcular")}</small>${companyMissing ? "" : taxAction("Tentar novamente", "data-calculate-market-taxes", true)}</div>`;
   }
   if (!context.ncmConfirmed) {
-    return `<div class="market-tax-stat" title="${escapeHtml(marketDetails)}" aria-label="${escapeHtml(`${marketDetails} · NCM necessário`)}"><span>Maior + tributos</span><strong>—</strong><small>NCM necessário</small><span class="market-tax-actions">${taxAction("Informar/confirmar NCM", "data-confirm-market-ncm", true)}${taxAction("Buscar sugestões", "data-search-ncm-suggestions", true)}</span></div>`;
+    return `<div class="market-tax-stat" title="${escapeHtml(marketDetails)}" aria-label="${escapeHtml(`${marketDetails} · NCM necessário`)}"><span>Maior + tributos</span><strong>—</strong><small>NCM necessário</small><span class="market-tax-actions">${taxAction("Informar/confirmar NCM", "data-confirm-market-ncm", true)}</span></div>`;
+  }
+  if (taxAvailability && (!taxAvailability.configured || !taxAvailability.companyConfigured)) {
+    return '<div class="market-tax-stat is-error"><span>Maior + tributos</span><strong>—</strong><small>Cálculo tributário indisponível</small></div>';
   }
   if (!context.originState || !context.destinationState) {
     return `<div class="market-tax-stat"><span>Maior + tributos</span><strong>—</strong><small>Informe as UFs</small></div>`;
@@ -958,16 +961,6 @@ function renderTaxedMaximumStat(marketState) {
 
 function renderTaxDetails(marketState) {
   const tax = marketState.tax || { status: "idle" };
-  if (tax.status === "ncm-loading") {
-    return '<div class="market-tax-notice"><strong>Buscando classificações possíveis…</strong><p>A seleção continuará dependendo da sua confirmação.</p></div>';
-  }
-  if (tax.status === "ncm-suggestions") {
-    if (!tax.suggestions.length) {
-      return '<div class="market-tax-notice"><strong>Nenhuma sugestão confiável foi encontrada.</strong><p>Informe o NCM confirmado pelo seu contador.</p></div>';
-    }
-    const suggestions = tax.suggestions.map((item) => `<li><div><strong>${escapeHtml(item.code)}</strong><span>${escapeHtml(item.description)}</span></div><button type="button" class="secondary-button" data-use-ncm-suggestion="${escapeHtml(item.code)}">Usar e validar</button></li>`).join("");
-    return `<div class="market-tax-notice"><strong>Classificação fiscal precisa ser confirmada.</strong><p>A FiscalHub encontrou possibilidades pela descrição; escolha apenas se corresponder ao produto.</p><ul class="ncm-suggestion-list">${suggestions}</ul></div>`;
-  }
   if (tax.status === "ncm-error" || tax.status === "error") {
     return `<div class="market-tax-notice is-error" role="alert"><strong>${escapeHtml(tax.message || "Não foi possível concluir o cálculo tributário.")}</strong></div>`;
   }
@@ -1511,6 +1504,7 @@ const state = {
   user: null,
   products: [],
   selectedProduct: null,
+  taxAvailability: null,
 };
 
 let focusState = {
@@ -1561,8 +1555,17 @@ function toggleTheme() {
   applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
 }
 
+const apiMessages = Object.freeze({
+  SESSION_REQUIRED: "Sua sessão expirou. Entre novamente.",
+  FOCUS_NFE_UNAUTHORIZED: "Não foi possível autenticar na Focus NFe.",
+  FISCALHUB_UNAUTHORIZED: "Não foi possível autenticar na FiscalHub.",
+  FISCALHUB_EMPRESA_NOT_CONFIGURED: "A empresa para cálculo tributário ainda não foi configurada.",
+  FOCUS_NFE_NCM_CONFIRMATION_REQUIRED: "Confirme o NCM para calcular os tributos.",
+});
+
 function messageFor(error) {
-  return error instanceof ApiError ? error.message : "Não foi possível concluir a operação. Tente novamente.";
+  if (error instanceof ApiError) return apiMessages[error.code] || error.message;
+  return "Não foi possível concluir a operação. Tente novamente.";
 }
 
 function setMessage(element, message = "", success = false) {
@@ -1675,7 +1678,12 @@ function currentMarketTaxContext() {
 }
 
 function marketStateForRender() {
-  return { ...marketState, tax: marketState.tax || emptyMarketTaxState(), taxContext: currentMarketTaxContext() };
+  return {
+    ...marketState,
+    tax: marketState.tax || emptyMarketTaxState(),
+    taxContext: currentMarketTaxContext(),
+    taxAvailability: state.taxAvailability,
+  };
 }
 
 function renderMarketTaxContextStatus() {
@@ -1742,7 +1750,7 @@ async function lookupNcm() {
   focusState = { status: "loading", ncm: null, source: "", environment: "", checkedAt: "", error: "", unavailable: false };
   render();
   try {
-    const response = await api.get(`/fiscal/ncms/${encodeURIComponent(code)}`, { handleUnauthorized: false });
+    const response = await api.get(`/fiscal/ncms/${encodeURIComponent(code)}`);
     focusState = { status: "success", ncm: response.ncm, source: "Focus NFe", environment: response.environment, checkedAt: new Date().toISOString(), error: "", unavailable: false };
   } catch (error) {
     focusState = {
@@ -1861,10 +1869,27 @@ function navigate(view, detailTarget = "") {
   }
 }
 
-function setAuthenticatedUser(user) {
+function setAuthenticatedUser(user, taxAvailability = null) {
   state.user = user;
+  state.taxAvailability = taxAvailability;
   $("#currentUserName").textContent = user.name;
   void syncRoute();
+}
+
+function clearAuthenticatedState() {
+  state.user = null;
+  state.products = [];
+  state.selectedProduct = null;
+  state.taxAvailability = null;
+  $("#currentUserName").textContent = "Conta";
+  $("#profileDetails").replaceChildren();
+  clearMarketReference(window.sessionStorage);
+  window.history.replaceState(null, "", window.location.pathname);
+}
+
+function endSession(message = "Sua sessão expirou. Entre novamente.") {
+  clearAuthenticatedState();
+  showAuth("login", message);
 }
 
 function setMarketError(query, caughtError) {
@@ -1901,16 +1926,20 @@ function maximumMarketItem() {
 function setMarketTaxError(error) {
   const messages = {
     FISCALHUB_NOT_CONFIGURED: ["FiscalHub não configurada", "Configure FISCALHUB_API_KEY no ambiente do backend."],
-    FISCALHUB_EMPRESA_NOT_CONFIGURED: ["Empresa não configurada", "Configure a empresa utilizada para o cálculo tributário."],
-    FISCALHUB_UNAUTHORIZED: ["Falha de autenticação", "A API Key da FiscalHub é inválida ou foi revogada."],
+    FISCALHUB_EMPRESA_NOT_CONFIGURED: ["Cálculo tributário indisponível", "A empresa para cálculo tributário ainda não foi configurada."],
+    FISCALHUB_UNAUTHORIZED: ["Falha de autenticação", "Não foi possível autenticar na FiscalHub."],
     FISCALHUB_FORBIDDEN: ["Sem permissão", "A empresa ou o recurso não está autorizado na FiscalHub."],
     FISCALHUB_NOT_FOUND: ["Empresa não encontrada", "A empresa ou o recurso não foi encontrado na FiscalHub."],
     FISCALHUB_INVALID_OPERATION: ["Dados inválidos", "Revise o NCM e as UFs da operação."],
     FISCALHUB_ERROR: ["Erro na FiscalHub", "A FiscalHub não conseguiu concluir o cálculo."],
     FISCALHUB_TOTAL_NOT_PROVIDED: ["Total indisponível", "A FiscalHub não informou um total final seguro; os impostos não foram somados manualmente."],
+    FOCUS_NFE_NCM_CONFIRMATION_REQUIRED: ["NCM necessário", "Confirme o NCM para calcular os tributos."],
+    SESSION_REQUIRED: ["Sessão expirada", "Sua sessão expirou. Entre novamente."],
   };
-  const [shortMessage, fallback] = messages[error instanceof ApiError ? error.code : ""] || ["Cálculo indisponível", messageFor(error)];
-  marketState = { ...marketState, tax: emptyMarketTaxState({ status: "error", code: error.code || "", message: error.message || fallback, shortMessage }) };
+  const code = error instanceof ApiError ? error.code : "";
+  const mapped = messages[code];
+  const [shortMessage, fallback] = mapped || ["Cálculo indisponível", messageFor(error)];
+  marketState = { ...marketState, tax: emptyMarketTaxState({ status: "error", code, message: mapped ? fallback : error.message || fallback, shortMessage }) };
 }
 
 async function calculateMaximumTaxes() {
@@ -1952,28 +1981,6 @@ async function calculateMaximumTaxes() {
     setMarketTaxError(error);
   }
   render();
-}
-
-async function searchNcmSuggestions() {
-  if (marketState.tax?.status === "ncm-loading") return;
-  const maximumItem = maximumMarketItem();
-  const description = maximumItem?.title || marketState.query;
-  if (!description) return;
-  marketState = { ...marketState, tax: emptyMarketTaxState({ status: "ncm-loading" }) };
-  render();
-  try {
-    const response = await taxService.searchNcmSuggestions(description);
-    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "ncm-suggestions", suggestions: response.results || [] }) };
-  } catch (error) {
-    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "ncm-error", code: error.code || "", message: messageFor(error) }) };
-  }
-  render();
-}
-
-async function useNcmSuggestion(code) {
-  elements.ncmCode.value = String(code || "").replace(/\D/g, "");
-  marketState = { ...marketState, tax: emptyMarketTaxState() };
-  await lookupNcm();
 }
 
 async function searchMarket() {
@@ -2255,11 +2262,7 @@ async function logout() {
     return;
   }
 
-  state.user = null;
-  state.products = [];
-  state.selectedProduct = null;
-  clearMarketReference(window.sessionStorage);
-  window.history.replaceState(null, "", window.location.pathname);
+  clearAuthenticatedState();
   showAuth("login", "Você saiu da sua conta.");
 }
 
@@ -2278,7 +2281,7 @@ async function submitLogin(event) {
       password: $("#loginPassword").value,
     }, { handleUnauthorized: false });
     form.reset();
-    setAuthenticatedUser(response.user);
+    setAuthenticatedUser(response.user, response.tax);
   } catch (error) {
     setMessage($("#authMessage"), messageFor(error));
   } finally {
@@ -2306,7 +2309,7 @@ async function submitRegistration(event) {
     }, { handleUnauthorized: false });
     form.reset();
     updatePasswordRequirements();
-    setAuthenticatedUser(response.user);
+    setAuthenticatedUser(response.user, response.tax);
   } catch (error) {
     if (error instanceof ApiError && error.status === 409) {
       setFieldError("registerEmail", "Já existe uma conta cadastrada com este e-mail.");
@@ -2382,13 +2385,10 @@ $("#marketPanel").addEventListener("click", (event) => {
   if (button) selectMarketProduct(button.dataset.marketSelect);
   if (event.target.closest("[data-market-retry]")) void searchMarket();
   if (event.target.closest("[data-calculate-market-taxes]")) void calculateMaximumTaxes();
-  if (event.target.closest("[data-search-ncm-suggestions]")) void searchNcmSuggestions();
   if (event.target.closest("[data-confirm-market-ncm]")) {
     pricingTabs.activate("market");
     elements.ncmCode.focus();
   }
-  const suggestion = event.target.closest("[data-use-ncm-suggestion]");
-  if (suggestion) void useNcmSuggestion(suggestion.dataset.useNcmSuggestion);
   if (event.target.closest("[data-toggle-market-taxes]")) {
     marketState = { ...marketState, tax: { ...marketState.tax, expanded: !marketState.tax.expanded } };
     render();
@@ -2518,12 +2518,7 @@ document.addEventListener("click", (event) => {
 });
 window.addEventListener("hashchange", () => void syncRoute());
 window.addEventListener("app:session-expired", () => {
-  state.user = null;
-  state.products = [];
-  state.selectedProduct = null;
-  clearMarketReference(window.sessionStorage);
-  window.history.replaceState(null, "", window.location.pathname);
-  showAuth("login", "Sua sessão expirou. Entre novamente para continuar.");
+  endSession();
 });
 
 restoreMarketReferenceFromSession();
@@ -2533,7 +2528,7 @@ render();
 async function bootstrap(attempt = 0) {
   try {
     const response = await api.get("/auth/me", { handleUnauthorized: false });
-    setAuthenticatedUser(response.user);
+    setAuthenticatedUser(response.user, response.tax);
   } catch (error) {
     if (error instanceof ApiError && error.code === "STATIC_HOSTING") {
       showAuth("login", error.message);
@@ -2544,10 +2539,11 @@ async function bootstrap(attempt = 0) {
       window.setTimeout(() => void bootstrap(attempt + 1), 800);
       return;
     }
-    const message = error instanceof ApiError && error.status === 401
-      ? ""
-      : "Não foi possível conectar ao servidor.";
-    showAuth("login", message);
+    if (isInactiveSession) {
+      endSession();
+      return;
+    }
+    showAuth("login", "Não foi possível conectar ao servidor.");
   }
 }
 

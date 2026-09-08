@@ -14,11 +14,6 @@ export class TaxService {
       destinationState,
       quantity: 1,
       unitValue,
-    }, { handleUnauthorized: false });
-  }
-
-  searchNcmSuggestions(description) {
-    const query = String(description || "").trim().replace(/\s+/g, " ").slice(0, 120);
-    return this.#api.get(`/fiscal/ncms/search?q=${encodeURIComponent(query)}`, { handleUnauthorized: false });
+    });
   }
 }

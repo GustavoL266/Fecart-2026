@@ -13,9 +13,6 @@ import { runMarketSearch } from "./lib/market-search.js";
 import { createSearchApiMarketProvider, searchApiErrorForClient, SearchApiError, redactSearchApiSensitiveData } from "./lib/searchapi-market-provider.js";
 import { createFocusNFeClient, focusNFeErrorForClient, FocusNFeError, redactFocusNFeSensitiveData } from "./lib/focus-nfe-client.js";
 import { createFiscalHubClient, fiscalHubErrorForClient, FiscalHubError, redactFiscalHubSensitiveData } from "./lib/fiscalhub-client.js";
-// TEMPORARY DIAGNOSTIC: remove this import and the marked route after validating the Render key.
-import { diagnoseFiscalHub } from "./lib/fiscalhub-diagnostic.js";
-import { createFiscalHubNcmProvider } from "./lib/fiscalhub-ncm-provider.js";
 import { createFiscalHubTaxProvider } from "./lib/fiscalhub-tax-provider.js";
 import { productForClient, userForClient } from "./lib/models.js";
 import { hashPassword, verifyPassword } from "./lib/passwords.js";
@@ -27,7 +24,6 @@ const focusNfeConfig = getFocusNfeConfig();
 const focusNfeClient = focusNfeConfig.isConfigured ? createFocusNFeClient(focusNfeConfig) : null;
 const fiscalHubConfig = getFiscalHubConfig();
 const fiscalHubClient = fiscalHubConfig.isConfigured ? createFiscalHubClient(fiscalHubConfig) : null;
-const ncmProvider = fiscalHubClient ? createFiscalHubNcmProvider(fiscalHubClient) : null;
 const taxProvider = fiscalHubClient ? createFiscalHubTaxProvider(fiscalHubConfig, fiscalHubClient) : null;
 const searchApiConfig = getSearchApiConfig();
 const marketProvider = searchApiConfig.isConfigured ? createSearchApiMarketProvider(searchApiConfig) : null;
@@ -35,12 +31,8 @@ const projectRoot = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PgSession = connectPgSimple(session);
 
-console.info(
-  `[Fiscal] Provider: FocusNFe | configured=${focusNfeConfig.isConfigured} | environment=${focusNfeConfig.environment}`,
-);
-console.info(
-  `[Tax] Provider: FiscalHub | configured=${fiscalHubConfig.isConfigured} | companyConfigured=${fiscalHubConfig.companyConfigured}`,
-);
+console.info(`[Fiscal/NCM] provider=FocusNFe configured=${focusNfeConfig.isConfigured} environment=${focusNfeConfig.environment}`);
+console.info(`[Tax] provider=FiscalHub configured=${fiscalHubConfig.isConfigured} companyConfigured=${fiscalHubConfig.companyConfigured}`);
 console.info("[Market] Provider: SearchAPI Google Shopping");
 console.info(`[Market] Configured: ${searchApiConfig.isConfigured}`);
 if (!searchApiConfig.isConfigured) {
@@ -48,7 +40,10 @@ if (!searchApiConfig.isConfigured) {
 }
 
 app.disable("x-powered-by");
+// Render terminates HTTPS before forwarding the request. Express must trust that
+// single proxy hop before it is allowed to issue a Secure session cookie.
 if (config.secureCookie) app.set("trust proxy", 1);
+console.info(`[Session] store=PostgreSQL secure=${config.secureCookie} sameSite=lax trustProxy=${config.secureCookie}`);
 
 app.use(
   helmet({
@@ -140,16 +135,31 @@ async function authenticateSession(req, user) {
   await sessionSave(req);
 }
 
+function authenticatedPayload(user) {
+  return { user: userForClient(user), tax: taxHealth(fiscalHubConfig) };
+}
+
 async function currentUser(req) {
   if (!req.session.userId) return null;
   const { rows } = await pool.query("SELECT id, name, email, created_at, updated_at FROM users WHERE id = $1", [req.session.userId]);
   return rows[0] || null;
 }
 
+function sessionRequired(req, res) {
+  if (req.path.startsWith("/fiscal/ncms")) {
+    console.info("[Fiscal/NCM] userAuthenticated=false provider=FocusNFe upstreamStatus=not_called reason=SESSION_REQUIRED");
+  }
+  if (req.path === "/tax/calculate") {
+    console.info(`[Tax] userAuthenticated=false provider=FiscalHub configured=${fiscalHubConfig.isConfigured} companyConfigured=${fiscalHubConfig.companyConfigured} upstreamStatus=not_called reason=SESSION_REQUIRED`);
+  }
+  console.info(`[Auth] ${req.method} ${req.path} authenticated=false`);
+  return res.status(401).json({ error: "Sua sessão expirou. Entre novamente.", code: "SESSION_REQUIRED" });
+}
+
 async function requireAuth(req, res, next) {
   try {
     const user = await currentUser(req);
-    if (!user) return res.status(401).json({ error: "Sua sessão expirou. Entre novamente para continuar." });
+    if (!user) return sessionRequired(req, res);
     req.user = user;
     return next();
   } catch (error) {
@@ -173,7 +183,7 @@ app.post("/auth/register", authLimiter, async (req, res, next) => {
     const user = rows[0];
     await authenticateSession(req, user);
     console.info(`[auth] Conta criada com sucesso: ${user.id}`);
-    return res.status(201).json({ user: userForClient(user) });
+    return res.status(201).json(authenticatedPayload(user));
   } catch (error) {
     if (error.code === "23505") return res.status(409).json({ error: "Já existe uma conta cadastrada com este e-mail." });
     return next(error);
@@ -189,7 +199,7 @@ app.post("/auth/login", authLimiter, async (req, res, next) => {
     if (!validPassword) return res.status(401).json({ error: "E-mail ou senha inválidos." });
 
     await authenticateSession(req, user);
-    return res.json({ user: userForClient(user) });
+    return res.json(authenticatedPayload(user));
   } catch (error) {
     return next(error);
   }
@@ -209,8 +219,12 @@ app.post("/auth/logout", async (req, res, next) => {
 app.get("/auth/me", async (req, res, next) => {
   try {
     const user = await currentUser(req);
-    if (!user) return res.status(401).json({ error: "Nenhuma sessão ativa." });
-    return res.json({ user: userForClient(user) });
+    if (!user) {
+      console.info("[Auth] /auth/me authenticated=false");
+      return res.status(401).json({ error: "Sua sessão expirou. Entre novamente.", code: "SESSION_REQUIRED" });
+    }
+    console.info("[Auth] /auth/me authenticated=true");
+    return res.json(authenticatedPayload(user));
   } catch (error) {
     return next(error);
   }
@@ -245,34 +259,36 @@ app.get("/market/search", requireAuth, marketSearchLimiter, async (req, res, nex
   }
 });
 
-// TEMPORARY DIAGNOSTIC: protected by the existing authenticated session and fiscal rate limit.
-// Remove this block, the import above and lib/fiscalhub-diagnostic.js after the production check.
-app.get("/diagnostics/fiscalhub", requireAuth, fiscalLookupLimiter, async (req, res, next) => {
-  try {
-    const diagnostic = await diagnoseFiscalHub({
-      apiKey: process.env.FISCALHUB_API_KEY
-        ? process.env.FISCALHUB_API_KEY.trim()
-        : "",
-      timeoutMs: fiscalHubConfig.timeoutMs,
-    });
-    return res.json(diagnostic);
-  } catch (error) {
-    return next(error);
-  }
-});
-
 app.get("/fiscal/ncms/search", requireAuth, fiscalLookupLimiter, async (req, res, next) => {
   try {
-    if (!ncmProvider) {
-      throw new FiscalHubError("A integração FiscalHub não foi configurada.", {
-        code: "FISCALHUB_NOT_CONFIGURED",
+    const { q } = validate(ncmSearchSchema, req.query, { code: "INVALID_NCM_QUERY" });
+    const code = String(q || "").replace(/\D/g, "");
+    if (!/^\d{8}$/.test(code)) {
+      throw new FocusNFeError("A Focus NFe valida NCMs exatos. Informe os 8 dígitos do NCM para confirmar.", {
+        code: "FOCUS_NFE_EXACT_CODE_REQUIRED",
+        status: 400,
+      });
+    }
+    if (!focusNfeClient) {
+      throw new FocusNFeError("A consulta fiscal ainda não foi configurada neste ambiente.", {
+        code: "FOCUS_NFE_NOT_CONFIGURED",
         status: 503,
       });
     }
-    const { q } = validate(ncmSearchSchema, req.query, { code: "INVALID_NCM_QUERY" });
-    const result = await ncmProvider.search(q);
-    return res.json(result);
+    console.info("[Fiscal/NCM] userAuthenticated=true provider=FocusNFe upstreamStatus=pending route=search");
+    const ncm = await focusNfeClient.getNcm(code);
+    req.session.confirmedNcm = ncm.codigo;
+    await sessionSave(req);
+    console.info("[Fiscal/NCM] userAuthenticated=true provider=FocusNFe upstreamStatus=200 route=search");
+    return res.json({
+      query: code,
+      results: [{ code: ncm.codigo, description: ncm.descricao_completa }],
+      source: "Focus NFe",
+    });
   } catch (error) {
+    if (error instanceof FocusNFeError) {
+      console.info(`[Fiscal/NCM] userAuthenticated=true provider=FocusNFe upstreamStatus=${error.upstreamStatus ?? "not_called"} code=${error.code} route=search`);
+    }
     return next(error);
   }
 });
@@ -280,10 +296,6 @@ app.get("/fiscal/ncms/search", requireAuth, fiscalLookupLimiter, async (req, res
 app.get("/fiscal/ncms/:codigo", requireAuth, fiscalLookupLimiter, async (req, res, next) => {
   try {
     const normalizedCode = String(req.params.codigo || "").replace(/\D/g, "");
-    console.info(`[Fiscal] Consultando NCM ${normalizedCode || "inválido"}`, {
-      environment: focusNfeConfig.environment,
-      provider: "FocusNFe",
-    });
     if (!focusNfeClient) {
       throw new FocusNFeError("A consulta fiscal ainda não foi configurada neste ambiente.", {
         code: "FOCUS_NFE_NOT_CONFIGURED",
@@ -291,8 +303,11 @@ app.get("/fiscal/ncms/:codigo", requireAuth, fiscalLookupLimiter, async (req, re
       });
     }
 
+    console.info("[Fiscal/NCM] userAuthenticated=true provider=FocusNFe upstreamStatus=pending route=validate");
     const ncm = await focusNfeClient.getNcm(normalizedCode);
-    console.info(`[Fiscal] Consulta concluída para NCM ${ncm.codigo}`, { provider: "FocusNFe" });
+    req.session.confirmedNcm = ncm.codigo;
+    await sessionSave(req);
+    console.info("[Fiscal/NCM] userAuthenticated=true provider=FocusNFe upstreamStatus=200 route=validate");
     return res.json({
       ncm,
       source: "Focus NFe",
@@ -300,22 +315,41 @@ app.get("/fiscal/ncms/:codigo", requireAuth, fiscalLookupLimiter, async (req, re
       taxCalculationAvailable: false,
     });
   } catch (error) {
+    if (error instanceof FocusNFeError) {
+      console.info(`[Fiscal/NCM] userAuthenticated=true provider=FocusNFe upstreamStatus=${error.upstreamStatus ?? "not_called"} code=${error.code} route=validate`);
+    }
     return next(error);
   }
 });
 
 app.post("/tax/calculate", requireAuth, taxCalculationLimiter, async (req, res, next) => {
   try {
-    if (!taxProvider) {
+    console.info(`[Tax] userAuthenticated=true provider=FiscalHub configured=${fiscalHubConfig.isConfigured} companyConfigured=${fiscalHubConfig.companyConfigured} upstreamStatus=not_called`);
+    const input = validate(taxCalculationSchema, req.body, { code: "INVALID_TAX_CONTEXT" });
+    if (req.session.confirmedNcm !== input.ncm) {
+      const error = new Error("Confirme o NCM para calcular os tributos.");
+      error.code = "FOCUS_NFE_NCM_CONFIRMATION_REQUIRED";
+      error.status = 400;
+      throw error;
+    }
+    if (!fiscalHubConfig.isConfigured || !taxProvider) {
       throw new FiscalHubError("A integração FiscalHub não foi configurada.", {
         code: "FISCALHUB_NOT_CONFIGURED",
         status: 503,
       });
     }
-    const input = validate(taxCalculationSchema, req.body, { code: "INVALID_TAX_CONTEXT" });
+    if (!fiscalHubConfig.companyConfigured) {
+      throw new FiscalHubError("A empresa para cálculo tributário ainda não foi configurada.", {
+        code: "FISCALHUB_EMPRESA_NOT_CONFIGURED",
+        status: 503,
+      });
+    }
+    console.info(`[Tax] userAuthenticated=true provider=FiscalHub configured=true companyConfigured=true upstreamStatus=pending ncmConfirmed=true`);
     const calculation = await taxProvider.calculate(input);
+    console.info("[Tax] userAuthenticated=true provider=FiscalHub configured=true companyConfigured=true upstreamStatus=200");
     return res.json({ calculation });
   } catch (error) {
+    console.info(`[Tax] userAuthenticated=true provider=FiscalHub configured=${fiscalHubConfig.isConfigured} companyConfigured=${fiscalHubConfig.companyConfigured} upstreamStatus=${error instanceof FiscalHubError ? error.upstreamStatus ?? "not_called" : "not_called"} code=${error.code || "UNKNOWN"}`);
     return next(error);
   }
 });

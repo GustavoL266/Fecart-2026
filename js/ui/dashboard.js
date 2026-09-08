@@ -63,6 +63,7 @@ function renderTaxedMaximumStat(marketState) {
   const maximumPrice = maximumItem?.price ?? marketState.stats.max;
   const tax = marketState.tax || { status: "idle" };
   const context = marketState.taxContext || {};
+  const taxAvailability = marketState.taxAvailability;
   const marketDetails = [
     maximumItem ? `Produto: ${maximumItem.title}` : null,
     `Preço de mercado: ${dashboardMoney(maximumPrice)}`,
@@ -80,7 +81,10 @@ function renderTaxedMaximumStat(marketState) {
     return `<div class="market-tax-stat is-error"><span>Maior + tributos</span><strong>—</strong><small>${escapeHtml(tax.shortMessage || "Não foi possível calcular")}</small>${companyMissing ? "" : taxAction("Tentar novamente", "data-calculate-market-taxes", true)}</div>`;
   }
   if (!context.ncmConfirmed) {
-    return `<div class="market-tax-stat" title="${escapeHtml(marketDetails)}" aria-label="${escapeHtml(`${marketDetails} · NCM necessário`)}"><span>Maior + tributos</span><strong>—</strong><small>NCM necessário</small><span class="market-tax-actions">${taxAction("Informar/confirmar NCM", "data-confirm-market-ncm", true)}${taxAction("Buscar sugestões", "data-search-ncm-suggestions", true)}</span></div>`;
+    return `<div class="market-tax-stat" title="${escapeHtml(marketDetails)}" aria-label="${escapeHtml(`${marketDetails} · NCM necessário`)}"><span>Maior + tributos</span><strong>—</strong><small>NCM necessário</small><span class="market-tax-actions">${taxAction("Informar/confirmar NCM", "data-confirm-market-ncm", true)}</span></div>`;
+  }
+  if (taxAvailability && (!taxAvailability.configured || !taxAvailability.companyConfigured)) {
+    return '<div class="market-tax-stat is-error"><span>Maior + tributos</span><strong>—</strong><small>Cálculo tributário indisponível</small></div>';
   }
   if (!context.originState || !context.destinationState) {
     return `<div class="market-tax-stat"><span>Maior + tributos</span><strong>—</strong><small>Informe as UFs</small></div>`;
@@ -91,16 +95,6 @@ function renderTaxedMaximumStat(marketState) {
 
 function renderTaxDetails(marketState) {
   const tax = marketState.tax || { status: "idle" };
-  if (tax.status === "ncm-loading") {
-    return '<div class="market-tax-notice"><strong>Buscando classificações possíveis…</strong><p>A seleção continuará dependendo da sua confirmação.</p></div>';
-  }
-  if (tax.status === "ncm-suggestions") {
-    if (!tax.suggestions.length) {
-      return '<div class="market-tax-notice"><strong>Nenhuma sugestão confiável foi encontrada.</strong><p>Informe o NCM confirmado pelo seu contador.</p></div>';
-    }
-    const suggestions = tax.suggestions.map((item) => `<li><div><strong>${escapeHtml(item.code)}</strong><span>${escapeHtml(item.description)}</span></div><button type="button" class="secondary-button" data-use-ncm-suggestion="${escapeHtml(item.code)}">Usar e validar</button></li>`).join("");
-    return `<div class="market-tax-notice"><strong>Classificação fiscal precisa ser confirmada.</strong><p>A FiscalHub encontrou possibilidades pela descrição; escolha apenas se corresponder ao produto.</p><ul class="ncm-suggestion-list">${suggestions}</ul></div>`;
-  }
   if (tax.status === "ncm-error" || tax.status === "error") {
     return `<div class="market-tax-notice is-error" role="alert"><strong>${escapeHtml(tax.message || "Não foi possível concluir o cálculo tributário.")}</strong></div>`;
   }

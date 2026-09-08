@@ -5,7 +5,6 @@ Contrato consultado na [documentação oficial da FiscalHub](https://fiscalhub.c
 ## Responsabilidades
 
 - `MarketProvider`: a SearchAPI continua responsável exclusivamente pela pesquisa Google Shopping.
-- `NcmProvider`: a FiscalHub pode sugerir códigos com `GET /api/v1/ncm/buscar?q=...`; a sugestão não é aceita automaticamente. A Focus NFe confirma o código exato informado pelo usuário.
 - `TaxProvider`: a FiscalHub calcula os tributos com `POST /api/v1/tributario/calcular`.
 
 O request contém somente os campos documentados para esse cálculo:
@@ -41,7 +40,7 @@ FISCALHUB_EMPRESA_ID=
 FISCALHUB_TIMEOUT_MS=10000
 ```
 
-O `empresaId` é obrigatório e corresponde ao UUID da empresa cadastrada no portal FiscalHub. `GET /health` informa apenas os booleanos `tax.configured` e `tax.companyConfigured`, nunca os valores.
+O `empresaId` é obrigatório e corresponde ao UUID da empresa cadastrada no portal FiscalHub. `GET /health` informa apenas os booleanos `tax.configured` e `tax.companyConfigured`, nunca os valores. Sem chave ou empresa, o endpoint retorna o código específico sem chamar a FiscalHub. Sem uma confirmação de NCM feita pela Focus NFe na mesma sessão, o endpoint retorna `FOCUS_NFE_NCM_CONFIRMATION_REQUIRED` sem chamar a FiscalHub.
 
 Os erros externos preservam 400, 401, 403, 404, 422, 429 e 500. Falha de rede usa 503, timeout usa 504 e contrato de resposta inválido usa 502. Os logs registram NCM, UFs e status HTTP, mas nunca a API Key, o cabeçalho ou o `empresaId`.
 
@@ -53,11 +52,3 @@ Os erros externos preservam 400, 401, 403, 404, 422, 429 e 500. Falha de rede us
 4. Informe UF de origem e destino.
 5. Clique em **Calcular tributos** no cartão **Maior + tributos**.
 6. Abra **Ver tributos** e confira os valores com o retorno/painel da FiscalHub.
-
-## Diagnóstico temporário da API Key
-
-Enquanto o Shell não estiver disponível no Render, um usuário autenticado pode abrir `GET /diagnostics/fiscalhub`. A rota consulta somente o NCM fixo `84713012`, não lê parâmetros do navegador e retorna apenas configuração, status, autorização e permissão.
-
-Interpretação: `200` confirma chave aceita; `401` indica chave ausente/inválida/revogada na FiscalHub; `403` indica chave reconhecida, mas sem permissão para o recurso. `status: null` com `configured: false` indica variável ausente no Render. Com `configured: true`, indica timeout ou indisponibilidade de rede.
-
-Para remover o diagnóstico, exclua o bloco marcado `TEMPORARY DIAGNOSTIC` e seu import em `server.js`, remova `lib/fiscalhub-diagnostic.js`, este trecho da documentação e `tests/fiscalhub-diagnostic.test.js`.

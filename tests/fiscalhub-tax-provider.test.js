@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { FISCALHUB_BASE_URL, getFiscalHubConfig, taxHealth } from "../lib/config.js";
 import { fiscalHubErrorForClient, FiscalHubClient, FiscalHubError, redactFiscalHubSensitiveData } from "../lib/fiscalhub-client.js";
-import { FiscalHubNcmProvider } from "../lib/fiscalhub-ncm-provider.js";
 import { FiscalHubTaxProvider, normalizeFiscalHubTaxResponse } from "../lib/fiscalhub-tax-provider.js";
 import { TaxService } from "../js/services/tax-service.js";
 
@@ -158,19 +157,6 @@ test("reutiliza cálculo idêntico no cache", async () => {
   assert.equal(calls, 1);
 });
 
-test("busca NCM por descrição sem selecionar classificação", async () => {
-  const provider = new FiscalHubNcmProvider({ client: { async request(path) {
-    assert.equal(path, "/api/v1/ncm/buscar?q=iPhone%2017%20Pro%20Max");
-    return { resultados: [
-      { codigo: "85171300", descricao: "Telefones inteligentes" },
-      { codigo: "85177900", descricao: "Outras partes" },
-    ] };
-  } } });
-  const result = await provider.search("iPhone 17 Pro Max");
-  assert.equal(result.results.length, 2);
-  assert.equal(Object.hasOwn(result, "selected"), false);
-});
-
 test("serviço do navegador envia somente uma unidade e reaproveita o preço recebido", async () => {
   const calls = [];
   const service = new TaxService({ apiClient: {
@@ -181,7 +167,7 @@ test("serviço do navegador envia somente uma unidade e reaproveita o preço rec
   assert.deepEqual(calls[0], {
     path: "/tax/calculate",
     body: { ncm: "09012100", originState: "SP", destinationState: "RJ", quantity: 1, unitValue: 100 },
-    options: { handleUnauthorized: false },
+    options: undefined,
   });
 });
 

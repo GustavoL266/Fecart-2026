@@ -30,7 +30,8 @@ test("dashboard apresenta estados, ação manual e detalhamento responsivo", () 
   assert.match(dashboard, /Ver tributos/);
   assert.match(dashboard, /NCM necessário/);
   assert.match(dashboard, /Informar\/confirmar NCM/);
-  assert.match(dashboard, /Classificação fiscal precisa ser confirmada/);
+  assert.match(dashboard, /Cálculo tributário indisponível/);
+  assert.doesNotMatch(dashboard, /Buscar sugestões|FiscalHub encontrou possibilidades/);
   assert.match(dashboard, /Preço de mercado/);
   assert.match(styles, /\.market-tax-breakdown/);
   assert.match(styles, /@media \(max-width: 620px\)[\s\S]*\.market-dashboard-section \.market-stats\s*{\s*grid-template-columns: 1fr;/);

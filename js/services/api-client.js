@@ -25,7 +25,9 @@ async function request(path, options = {}) {
   try {
     response = await fetch(path, {
       method,
-      credentials: "same-origin",
+      // API and interface share the Render domain. "include" also keeps the
+      // cookie explicit if this client is ever embedded by a same-site origin.
+      credentials: "include",
       headers: body ? { "Content-Type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -38,7 +40,9 @@ async function request(path, options = {}) {
   if (response.ok) return payload;
 
   const error = new ApiError(payload?.error || "Não foi possível concluir a operação.", response.status, payload?.code || "", payload || {});
-  if (handleUnauthorized && response.status === 401) window.dispatchEvent(new CustomEvent("app:session-expired"));
+  // A provider can legitimately return HTTP 401 (for example Focus NFe or
+  // FiscalHub). Only our explicit session code may reset the local account.
+  if (handleUnauthorized && error.code === "SESSION_REQUIRED") window.dispatchEvent(new CustomEvent("app:session-expired"));
   throw error;
 }
 

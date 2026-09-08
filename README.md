@@ -85,7 +85,7 @@ FISCALHUB_EMPRESA_ID=
 FISCALHUB_TIMEOUT_MS=10000
 ```
 
-`FISCALHUB_EMPRESA_ID` é o UUID da empresa cadastrada no portal FiscalHub. O regime tributário usado pelo motor pertence a esse cadastro; ele não é inventado pelo frontend. A busca descritiva de NCM serve apenas para sugestões e sempre exige confirmação pela Focus NFe. O sistema usa o total final explícito da FiscalHub, ou um total de tributos explícito quando fornecido; ele não soma ICMS/PIS/COFINS e IBS/CBS granularmente. Consulte [docs/fiscalhub.md](docs/fiscalhub.md).
+`FISCALHUB_EMPRESA_ID` é o UUID da empresa cadastrada no portal FiscalHub. O regime tributário usado pelo motor pertence a esse cadastro; ele não é inventado pelo frontend. A FiscalHub só é chamada depois de o NCM exato ter sido confirmado pela Focus NFe na mesma sessão, com UFs e preço válidos. O sistema usa o total final explícito da FiscalHub, ou um total de tributos explícito quando fornecido; ele não soma ICMS/PIS/COFINS e IBS/CBS granularmente. Consulte [docs/fiscalhub.md](docs/fiscalhub.md).
 
 ## Publicação a partir do GitHub
 
@@ -172,14 +172,14 @@ O relacionamento `products.user_id → users.id` usa chave estrangeira com `ON D
 | GET | `/products` | Obrigatória |
 | GET | `/products/:id` | Obrigatória + dono |
 | GET | `/fiscal/ncms/:codigo` | Obrigatória; proxy backend para Focus NFe |
-| GET | `/fiscal/ncms/search?q=termos` | Obrigatória; sugestões de NCM via FiscalHub, sem confirmação automática |
+| GET | `/fiscal/ncms/search?q=XXXXXXXX` | Obrigatória; validação de NCM exato pela Focus NFe |
 | GET | `/market/search?q=termos` | Obrigatória; proxy backend para SearchAPI Google Shopping |
 | POST | `/tax/calculate` | Obrigatória; calcula na FiscalHub somente o maior preço informado pelo state |
 | POST | `/products` | Obrigatória |
 | PATCH | `/products/:id` | Obrigatória + dono |
 | DELETE | `/products/:id` | Obrigatória + dono |
 
-O frontend sempre envia cookies com `credentials: "same-origin"`. A API nunca retorna `password_hash` e utiliza parâmetros do PostgreSQL em todas as queries.
+O frontend sempre envia cookies com `credentials: "include"`. Em produção, o Render usa o mesmo domínio para interface e API, cookie `Secure`, `SameSite=Lax`, `HttpOnly`, sessão no PostgreSQL e `trust proxy` para o único proxy do Render. A API nunca retorna `password_hash` e utiliza parâmetros do PostgreSQL em todas as queries.
 
 ## Verificação manual do fluxo
 
