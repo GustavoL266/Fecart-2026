@@ -5,7 +5,8 @@ const taxMessages = Object.freeze({
   FOCUS_NFE_NCM_CONFIRMATION_REQUIRED: ["NCM necessário", "Confirme o NCM relacionado à categoria atual para estimar os tributos."],
   NCM_CLASSIFICATION_REQUIRED: ["NCM necessário", "Pesquise a categoria e confirme uma sugestão atual."],
   NCM_IRRELEVANT: ["Classificação fiscal inválida", "A descrição do NCM não corresponde à categoria atual."],
-  PRODUCT_ORIGIN_REQUIRED: ["Origem do produto necessária", "Selecione se o produto é nacional ou importado."],
+  PRODUCT_ORIGIN_REQUIRED: ["Origem do produto necessária", "Selecione se o produto é nacional ou importado (fora do país)."],
+  COUNTRY_OF_ORIGIN_REQUIRED: ["País de origem necessário", "Selecione ou informe o país de origem do produto importado."],
   IBPT_NCM_NOT_FOUND: ["NCM não encontrado na tabela IBPT", "O NCM confirmado não existe na versão local da tabela IBPT."],
   IBPT_NOT_CONFIGURED: ["Tabela IBPT não configurada", "O arquivo da tabela IBPT não foi encontrado no servidor."],
   IBPT_INVALID_FILE: ["Não foi possível carregar a tabela tributária", "O arquivo IBPT está ausente ou possui formato inválido."],
@@ -23,6 +24,7 @@ export function marketTaxError(error) {
 export function marketTaxPrerequisiteError(context, unitValue, availability) {
   if (!context.ncmConfirmed || !/^\d{8}$/.test(context.ncm || "")) return marketTaxError({ code: "NCM_REQUIRED" });
   if (!["nacional", "importado"].includes(context.productOrigin)) return marketTaxError({ code: "PRODUCT_ORIGIN_REQUIRED" });
+  if (context.productOrigin === "importado" && !String(context.countryOfOrigin || "").trim()) return marketTaxError({ code: "COUNTRY_OF_ORIGIN_REQUIRED" });
   if (availability?.configured === false) return marketTaxError({ code: availability.errorCode || "IBPT_NOT_CONFIGURED" });
   if (!Number.isFinite(unitValue) || unitValue <= 0) return marketTaxError({ code: "INVALID_TAX_CONTEXT", message: "Informe um maior preço válido e positivo." });
   return null;

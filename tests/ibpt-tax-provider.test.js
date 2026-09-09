@@ -79,9 +79,11 @@ test("serviço do navegador envia somente os dados da estimativa local", async (
   assert.deepEqual(request, { path: "/tax/estimate", body: { ncm: "85171300", productOrigin: "nacional", unitValue: 100, classificationId: "proof", originalQuery: "iPhone", normalizedQuery: "telefone celular smartphone" } });
 });
 
-test("pré-requisitos e mensagens cobrem NCM, origem, tabela e NCM ausente", () => {
+test("pré-requisitos e mensagens cobrem NCM, origem, país, tabela e NCM ausente", () => {
   assert.equal(marketTaxPrerequisiteError({}, 100, { configured: true }).code, "NCM_REQUIRED");
   assert.equal(marketTaxPrerequisiteError({ ncm: "85171300", ncmConfirmed: true }, 100, { configured: true }).code, "PRODUCT_ORIGIN_REQUIRED");
+  assert.equal(marketTaxPrerequisiteError({ ncm: "85171300", ncmConfirmed: true, productOrigin: "importado" }, 100, { configured: true }).code, "COUNTRY_OF_ORIGIN_REQUIRED");
+  assert.equal(marketTaxPrerequisiteError({ ncm: "85171300", ncmConfirmed: true, productOrigin: "importado", countryOfOrigin: "China" }, 100, { configured: true }), null);
   assert.equal(marketTaxPrerequisiteError({ ncm: "85171300", ncmConfirmed: true, productOrigin: "nacional" }, 100, { configured: false, errorCode: "IBPT_INVALID_FILE" }).code, "IBPT_INVALID_FILE");
   assert.equal(marketTaxError({ code: "IBPT_NCM_NOT_FOUND" }).shortMessage, "NCM não encontrado na tabela IBPT");
 });

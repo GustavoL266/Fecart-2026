@@ -13,8 +13,21 @@ test("interface identifica a estimativa IBPT e exige escolha explícita da orige
   assert.match(section, /id="productOrigin"/);
   assert.match(section, /value="">Selecione a origem/);
   assert.match(section, /value="nacional">Nacional/);
-  assert.match(section, /value="importado">Importado/);
+  assert.match(section, /value="importado">Importado \(Fora do País\)/);
+  assert.match(section, /id="originStateField"[^>]+hidden/);
+  assert.match(section, /id="countryOfOriginField"[^>]+hidden/);
+  assert.match(section, /id="countryOfOrigin"[^>]+list="countryOfOriginOptions"/);
+  for (const country of ["China", "Estados Unidos", "Japão", "Coreia do Sul", "Alemanha", "França", "Itália", "México", "Canadá", "Argentina", "Chile", "Reino Unido", "Índia", "Vietnã", "Taiwan"]) {
+    assert.match(section, new RegExp(`<option value="${country}">`));
+  }
   assert.doesNotMatch(section, /id="productOrigin"[^]*?<option[^>]+selected/);
+});
+
+test("país de origem possui estado separado e não altera o payload enviado ao IBPT", () => {
+  assert.match(main, /countryOfOrigin:\s*""/);
+  assert.match(main, /countryOfOrigin:\s*elements\.productOrigin\.value === "importado" \? state\.countryOfOrigin : ""/);
+  assert.match(main, /elements\.countryOfOrigin\.addEventListener\("change"/);
+  assert.doesNotMatch(main.match(/taxService\.calculateMaximum\(\{[\s\S]*?\}\);/)?.[0] || "", /countryOfOrigin/);
 });
 
 test("card e detalhamento mostram carga, tributos, total, fonte, versão e vigência", () => {

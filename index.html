@@ -411,18 +411,26 @@
                   <button id="ncmChangeButton" class="secondary-button" type="button">Alterar categoria</button>
                 </div>
               </div>
-              <div class="sidebar-grid sidebar-grid--two">
-                <div class="sidebar-field"><label for="originState">UF de origem</label><select id="originState"><option value="">Selecione a UF</option><option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option><option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option><option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option><option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option><option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option><option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option></select></div>
-                <div class="sidebar-field"><label for="destinationState">UF de destino</label><select id="destinationState"><option value="">Selecione a UF</option><option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option><option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option><option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option><option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option><option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option><option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option></select></div>
-              </div>
               <div class="sidebar-field">
                 <label for="productOrigin">Origem do produto</label>
                 <select id="productOrigin">
                   <option value="">Selecione a origem</option>
                   <option value="nacional">Nacional</option>
-                  <option value="importado">Importado</option>
+                  <option value="importado">Importado (Fora do País)</option>
                 </select>
                 <p class="helper-text">A origem define a alíquota federal da tabela IBPT e deve ser escolhida explicitamente.</p>
+              </div>
+              <div class="sidebar-grid sidebar-grid--two geographic-origin-grid">
+                <div id="originStateField" class="sidebar-field" hidden><label for="originState">UF de origem</label><select id="originState"><option value="">Selecione a UF</option><option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option><option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option><option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option><option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option><option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option><option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option></select></div>
+                <div id="countryOfOriginField" class="sidebar-field" hidden>
+                  <label for="countryOfOrigin">País de origem</label>
+                  <input id="countryOfOrigin" type="text" list="countryOfOriginOptions" maxlength="80" placeholder="Ex.: China" autocomplete="country-name" />
+                  <datalist id="countryOfOriginOptions">
+                    <option value="China"></option><option value="Estados Unidos"></option><option value="Japão"></option><option value="Coreia do Sul"></option><option value="Alemanha"></option><option value="França"></option><option value="Itália"></option><option value="México"></option><option value="Canadá"></option><option value="Argentina"></option><option value="Chile"></option><option value="Reino Unido"></option><option value="Índia"></option><option value="Vietnã"></option><option value="Taiwan"></option>
+                  </datalist>
+                  <p class="helper-text">Pesquise na lista ou informe outro país.</p>
+                </div>
+                <div class="sidebar-field"><label for="destinationState">UF de destino</label><select id="destinationState"><option value="">Selecione a UF</option><option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option><option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option><option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option><option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option><option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option><option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option></select></div>
               </div>
               <p id="marketTaxContextStatus" class="helper-text" role="status">Confirme o NCM e selecione a origem do produto para estimar os tributos.</p>
             </section>

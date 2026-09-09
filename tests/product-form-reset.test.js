@@ -15,6 +15,7 @@ test("resetCurrentProductForm centraliza a limpeza do cálculo atual sem chamada
   const reset = sourceBetween("function resetCurrentProductForm()", "function productPayloadFromCalculator()");
 
   assert.match(reset, /clearPricingInputs\(elements\)/);
+  assert.match(reset, /clearProductOriginGeography\(\)/);
   assert.match(reset, /#productName/);
   assert.match(reset, /#productDescription/);
   assert.match(reset, /#marketQuery/);

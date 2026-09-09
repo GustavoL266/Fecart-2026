@@ -3926,6 +3926,30 @@ tr:last-child td {
   padding-top: 5px;
 }
 
+.market-tax-origin-section {
+  display: grid;
+  gap: 9px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  padding: 12px;
+}
+
+.market-tax-origin-section h4 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.market-tax-origin-details > div {
+  flex-wrap: wrap;
+}
+
+.market-tax-origin-details dd {
+  max-width: 65%;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
 .market-dashboard-section .market-results {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;

@@ -21,6 +21,7 @@ const taxRuleEngine = new ConfiguredTaxRuleEngine();
 const formFieldIds = [
   "ncmCode",
   "productOrigin",
+  "countryOfOrigin",
   "taxRegime",
   "originState",
   "destinationState",
@@ -40,6 +41,7 @@ const state = {
   products: [],
   selectedProduct: null,
   taxAvailability: null,
+  countryOfOrigin: "",
 };
 
 let focusState = emptyFocusState();
@@ -227,12 +229,33 @@ function fiscalCategoryLabel(classification) {
   return labels[category] || (category ? `${category[0].toLocaleUpperCase("pt-BR")}${category.slice(1)}` : "Categoria não informada");
 }
 
+function normalizeCountryOfOrigin(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").slice(0, 80);
+}
+
+function clearProductOriginGeography() {
+  elements.originState.value = "";
+  elements.countryOfOrigin.value = "";
+  state.countryOfOrigin = "";
+}
+
+function renderProductOriginFields() {
+  const isNational = elements.productOrigin.value === "nacional";
+  const isImported = elements.productOrigin.value === "importado";
+  $("#originStateField").hidden = !isNational;
+  $("#countryOfOriginField").hidden = !isImported;
+  elements.originState.disabled = !isNational;
+  elements.countryOfOrigin.disabled = !isImported;
+  elements.countryOfOrigin.value = state.countryOfOrigin;
+}
+
 function prepareFiscalClassification(originalQuery) {
   const classification = normalizeProductForFiscalSearch(originalQuery);
   ncmLookupRevision += 1;
   ncmSearchRevision += 1;
   elements.ncmCode.value = "";
   elements.productOrigin.value = "";
+  clearProductOriginGeography();
   focusState = emptyFocusState();
   ncmSearchState = emptyNcmSearchState({ ...classification, query: classification.normalizedQuery, editing: false });
   $("#ncmProductQuery").value = classification.normalizedQuery;
@@ -252,13 +275,16 @@ function currentMarketTaxContext() {
     originalQuery: classification.originalQuery,
     normalizedQuery: classification.normalizedQuery,
     productOrigin: elements.productOrigin.value,
+    countryOfOrigin: elements.productOrigin.value === "importado" ? state.countryOfOrigin : "",
+    originState: elements.productOrigin.value === "nacional" ? elements.originState.value : "",
+    destinationState: elements.destinationState.value,
   };
 }
 
 function marketTaxSignature() {
   const maximumItem = maximumMarketItem();
   const context = currentMarketTaxContext();
-  return JSON.stringify([maximumItem?.id, maximumItem?.price, context.ncm, context.ncmConfirmed, context.productOrigin, context.classificationId, context.originalQuery, context.normalizedQuery]);
+  return JSON.stringify([maximumItem?.id, maximumItem?.price, context.ncm, context.ncmConfirmed, context.productOrigin, context.countryOfOrigin, context.classificationId, context.originalQuery, context.normalizedQuery]);
 }
 
 function marketStateForRender() {
@@ -279,7 +305,11 @@ function renderMarketTaxContextStatus() {
   const prerequisiteError = marketTaxPrerequisiteError(context, maximumMarketItem()?.price, state.taxAvailability);
   if (!context.ncmConfirmed) status.textContent = "Classifique o produto para estimar os tributos.";
   else if (prerequisiteError) status.textContent = prerequisiteError.message;
-  else status.textContent = `Pronto para estimar sobre o maior preço: NCM ${context.ncm}, produto ${context.productOrigin}.`;
+  else {
+    const origin = context.productOrigin === "nacional" ? "Nacional" : "Importado (Fora do País)";
+    const geography = context.productOrigin === "nacional" ? `UF de origem ${context.originState || "não informada"}` : `país ${context.countryOfOrigin}`;
+    status.textContent = `Pronto para estimar sobre o maior preço: NCM ${context.ncm} · Origem: ${origin} · ${geography} · UF de destino ${context.destinationState || "não informada"}.`;
+  }
 }
 
 function marketReferenceFromState(inputs) {
@@ -294,6 +324,7 @@ function marketReferenceFromState(inputs) {
 }
 
 function render() {
+  renderProductOriginFields();
   const validation = currentPricingValidation();
   const viewMarketState = marketStateForRender();
   if (validation.isValid) {
@@ -745,6 +776,7 @@ function resetCurrentProductForm() {
   ncmSearchRevision += 1;
   clearPricingInputs(elements);
   elements.productOrigin.value = "";
+  clearProductOriginGeography();
   $("#productName").value = "";
   $("#productDescription").value = "";
   $("#marketQuery").value = "";
@@ -890,6 +922,7 @@ function reuseProduct(product) {
   // Nunca deixa valores da simulação anterior sobreviverem a campos ausentes.
   clearPricingInputs(elements);
   elements.productOrigin.value = "";
+  clearProductOriginGeography();
   $("#productName").value = "";
   $("#productDescription").value = "";
   const data = product.calculationData || {};
@@ -1083,6 +1116,21 @@ async function submitRegistration(event) {
 });
 
 elements.productOrigin.addEventListener("change", () => {
+  clearProductOriginGeography();
+  marketState = { ...marketState, tax: emptyMarketTaxState() };
+  render();
+  void maybeCalculateMaximumTaxes();
+});
+
+elements.countryOfOrigin.addEventListener("input", () => {
+  state.countryOfOrigin = String(elements.countryOfOrigin.value || "").slice(0, 80);
+  marketStateForRender();
+  render();
+});
+
+elements.countryOfOrigin.addEventListener("change", () => {
+  state.countryOfOrigin = normalizeCountryOfOrigin(elements.countryOfOrigin.value);
+  elements.countryOfOrigin.value = state.countryOfOrigin;
   marketStateForRender();
   render();
   void maybeCalculateMaximumTaxes();

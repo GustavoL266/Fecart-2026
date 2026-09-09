@@ -52,7 +52,7 @@ test("dashboard atualiza Maior + tributos estimados com os componentes IBPT", ()
     items: [maximum],
     stats: { count: 1, average: 100, median: 100, min: 100, max: 100 },
     marketplace: "Google Shopping",
-    taxContext: { ncm: "09012100", ncmConfirmed: true, productOrigin: "nacional" },
+    taxContext: { ncm: "09012100", ncmConfirmed: true, productOrigin: "nacional", originState: "SP", destinationState: "RJ" },
     taxAvailability: { provider: "IBPT", configured: true, version: "26.2.A" },
     tax: {
       status: "success",
@@ -79,4 +79,46 @@ test("dashboard atualiza Maior + tributos estimados com os componentes IBPT", ()
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Tributos estimados/);
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Versão: 26\.2\.A/);
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Vigência: 20\/08\/2026 a 30\/09\/2026/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Origem do produto<\/dt><dd>Nacional/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /UF de origem<\/dt><dd>SP/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /UF de destino<\/dt><dd>RJ/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /NCM 09012100 · Origem: Nacional · UF origem: SP · UF destino: RJ/);
+});
+
+test("detalhamento importado mostra país sem alterar a origem tributária do IBPT", () => {
+  const maximum = { id: "produto-importado", title: "Produto importado", price: 100, source: "Loja", seller: "Loja", currency: "BRL", url: "https://example.com/importado" };
+  const result = calculatePricing(inputs, null);
+  const document = documentStub();
+  renderDashboard(document, result, {
+    status: "success",
+    query: "Produto importado",
+    items: [maximum],
+    stats: { count: 1, average: 100, median: 100, min: 100, max: 100 },
+    marketplace: "Google Shopping",
+    taxContext: { ncm: "09012100", ncmConfirmed: true, productOrigin: "importado", countryOfOrigin: "China", destinationState: "RJ" },
+    taxAvailability: { provider: "IBPT", configured: true, version: "26.2.A" },
+    tax: {
+      status: "success",
+      expanded: true,
+      result: {
+        marketPrice: 100,
+        total: 142.57,
+        estimatedTaxes: 42.57,
+        ncm: "09012100",
+        productOrigin: "importado",
+        source: "IBPT / Empresômetro",
+        version: "26.2.A",
+        validFrom: "20/08/2026",
+        validTo: "30/09/2026",
+        rates: { federal: 24.57, state: 18, municipal: 0, total: 42.57 },
+      },
+    },
+  }, new ConfiguredTaxRuleEngine().assess(inputs));
+
+  const details = document.nodes.get("#marketTaxDetails").innerHTML;
+  assert.match(details, /Origem do produto<\/dt><dd>Importado \(Fora do País\)/);
+  assert.match(details, /País de origem<\/dt><dd>China/);
+  assert.match(details, /UF de destino<\/dt><dd>RJ/);
+  assert.match(details, /Fonte<\/dt><dd>IBPT \/ Empresômetro/);
+  assert.match(details, /NCM 09012100 · Origem: Importado \(Fora do País\) · País: China · UF destino: RJ/);
 });

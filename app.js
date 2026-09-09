@@ -668,7 +668,8 @@ const taxMessages = Object.freeze({
   FOCUS_NFE_NCM_CONFIRMATION_REQUIRED: ["NCM necessário", "Confirme o NCM relacionado à categoria atual para estimar os tributos."],
   NCM_CLASSIFICATION_REQUIRED: ["NCM necessário", "Pesquise a categoria e confirme uma sugestão atual."],
   NCM_IRRELEVANT: ["Classificação fiscal inválida", "A descrição do NCM não corresponde à categoria atual."],
-  PRODUCT_ORIGIN_REQUIRED: ["Origem do produto necessária", "Selecione se o produto é nacional ou importado."],
+  PRODUCT_ORIGIN_REQUIRED: ["Origem do produto necessária", "Selecione se o produto é nacional ou importado (fora do país)."],
+  COUNTRY_OF_ORIGIN_REQUIRED: ["País de origem necessário", "Selecione ou informe o país de origem do produto importado."],
   IBPT_NCM_NOT_FOUND: ["NCM não encontrado na tabela IBPT", "O NCM confirmado não existe na versão local da tabela IBPT."],
   IBPT_NOT_CONFIGURED: ["Tabela IBPT não configurada", "O arquivo da tabela IBPT não foi encontrado no servidor."],
   IBPT_INVALID_FILE: ["Não foi possível carregar a tabela tributária", "O arquivo IBPT está ausente ou possui formato inválido."],
@@ -686,6 +687,7 @@ function marketTaxError(error) {
 function marketTaxPrerequisiteError(context, unitValue, availability) {
   if (!context.ncmConfirmed || !/^\d{8}$/.test(context.ncm || "")) return marketTaxError({ code: "NCM_REQUIRED" });
   if (!["nacional", "importado"].includes(context.productOrigin)) return marketTaxError({ code: "PRODUCT_ORIGIN_REQUIRED" });
+  if (context.productOrigin === "importado" && !String(context.countryOfOrigin || "").trim()) return marketTaxError({ code: "COUNTRY_OF_ORIGIN_REQUIRED" });
   if (availability?.configured === false) return marketTaxError({ code: availability.errorCode || "IBPT_NOT_CONFIGURED" });
   if (!Number.isFinite(unitValue) || unitValue <= 0) return marketTaxError({ code: "INVALID_TAX_CONTEXT", message: "Informe um maior preço válido e positivo." });
   return null;
@@ -1106,7 +1108,8 @@ function renderTaxedMaximumStat(marketState) {
 }
 
 function renderTaxDetails(marketState) {
-  const prerequisiteError = marketTaxPrerequisiteError(marketState.taxContext || {}, maximumMarketItemForDisplay(marketState)?.price ?? marketState.stats?.max, marketState.taxAvailability);
+  const context = marketState.taxContext || {};
+  const prerequisiteError = marketTaxPrerequisiteError(context, maximumMarketItemForDisplay(marketState)?.price ?? marketState.stats?.max, marketState.taxAvailability);
   if (prerequisiteError) return `<div class="market-tax-notice is-error" role="alert"><strong>${escapeHtml(prerequisiteError.message)}</strong></div>`;
   const tax = marketState.tax || { status: "idle" };
   if (tax.status === "ncm-error" || tax.status === "error") {
@@ -1114,8 +1117,13 @@ function renderTaxDetails(marketState) {
   }
   if (tax.status !== "success" || !tax.expanded) return "";
 
-  const origin = tax.result.productOrigin === "nacional" ? "Nacional" : "Importado";
-  return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">IBPT / Empresômetro</p><h3 id="market-tax-breakdown-title">Estimativa tributária</h3></div><dl><div><dt>Maior</dt><dd class="financial-value">${dashboardMoney(tax.result.marketPrice)}</dd></div><div><dt>Alíquota federal</dt><dd>${taxPercent(tax.result.rates.federal)}</dd></div><div><dt>Alíquota estadual</dt><dd>${taxPercent(tax.result.rates.state)}</dd></div><div><dt>Alíquota municipal</dt><dd>${taxPercent(tax.result.rates.municipal)}</dd></div><div><dt>Carga tributária estimada</dt><dd>${taxPercent(tax.result.rates.total)}</dd></div><div><dt>Tributos estimados</dt><dd class="financial-value">${dashboardMoney(tax.result.estimatedTaxes)}</dd></div><div class="market-tax-total"><dt>Maior + tributos estimados</dt><dd class="financial-value">${dashboardMoney(tax.result.total)}</dd></div></dl><p>NCM ${escapeHtml(tax.result.ncm)} · Origem: ${origin} · Fonte: ${escapeHtml(tax.result.source)} · Versão: ${escapeHtml(tax.result.version)} · Vigência: ${escapeHtml(tax.result.validFrom)} a ${escapeHtml(tax.result.validTo)}</p></section>`;
+  const isNational = tax.result.productOrigin === "nacional";
+  const origin = isNational ? "Nacional" : "Importado (Fora do País)";
+  const originLabel = isNational ? "UF de origem" : "País de origem";
+  const originValue = isNational ? context.originState : context.countryOfOrigin;
+  const destinationState = context.destinationState || "Não informada";
+  const originSummary = isNational ? `UF origem: ${context.originState || "Não informada"}` : `País: ${context.countryOfOrigin || "Não informado"}`;
+  return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">IBPT / Empresômetro</p><h3 id="market-tax-breakdown-title">Estimativa tributária</h3></div><dl><div><dt>Maior</dt><dd class="financial-value">${dashboardMoney(tax.result.marketPrice)}</dd></div><div><dt>Alíquota federal</dt><dd>${taxPercent(tax.result.rates.federal)}</dd></div><div><dt>Alíquota estadual</dt><dd>${taxPercent(tax.result.rates.state)}</dd></div><div><dt>Alíquota municipal</dt><dd>${taxPercent(tax.result.rates.municipal)}</dd></div><div><dt>Carga tributária estimada</dt><dd>${taxPercent(tax.result.rates.total)}</dd></div><div><dt>Tributos estimados</dt><dd class="financial-value">${dashboardMoney(tax.result.estimatedTaxes)}</dd></div><div class="market-tax-total"><dt>Maior + tributos estimados</dt><dd class="financial-value">${dashboardMoney(tax.result.total)}</dd></div></dl><div class="market-tax-origin-section"><h4>Origem da mercadoria</h4><dl class="market-tax-origin-details"><div><dt>Origem do produto</dt><dd>${escapeHtml(origin)}</dd></div><div><dt>${originLabel}</dt><dd>${escapeHtml(originValue || "Não informada")}</dd></div><div><dt>UF de destino</dt><dd>${escapeHtml(destinationState)}</dd></div><div><dt>Fonte</dt><dd>${escapeHtml(tax.result.source)}</dd></div></dl></div><p>NCM ${escapeHtml(tax.result.ncm)} · Origem: ${escapeHtml(origin)} · ${escapeHtml(originSummary)} · UF destino: ${escapeHtml(destinationState)} · Versão: ${escapeHtml(tax.result.version)} · Vigência: ${escapeHtml(tax.result.validFrom)} a ${escapeHtml(tax.result.validTo)}</p></section>`;
 }
 
 function renderMarketPanel(document, marketState) {
@@ -1635,6 +1643,7 @@ const taxRuleEngine = new ConfiguredTaxRuleEngine();
 const formFieldIds = [
   "ncmCode",
   "productOrigin",
+  "countryOfOrigin",
   "taxRegime",
   "originState",
   "destinationState",
@@ -1654,6 +1663,7 @@ const state = {
   products: [],
   selectedProduct: null,
   taxAvailability: null,
+  countryOfOrigin: "",
 };
 
 let focusState = emptyFocusState();
@@ -1841,12 +1851,33 @@ function fiscalCategoryLabel(classification) {
   return labels[category] || (category ? `${category[0].toLocaleUpperCase("pt-BR")}${category.slice(1)}` : "Categoria não informada");
 }
 
+function normalizeCountryOfOrigin(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").slice(0, 80);
+}
+
+function clearProductOriginGeography() {
+  elements.originState.value = "";
+  elements.countryOfOrigin.value = "";
+  state.countryOfOrigin = "";
+}
+
+function renderProductOriginFields() {
+  const isNational = elements.productOrigin.value === "nacional";
+  const isImported = elements.productOrigin.value === "importado";
+  $("#originStateField").hidden = !isNational;
+  $("#countryOfOriginField").hidden = !isImported;
+  elements.originState.disabled = !isNational;
+  elements.countryOfOrigin.disabled = !isImported;
+  elements.countryOfOrigin.value = state.countryOfOrigin;
+}
+
 function prepareFiscalClassification(originalQuery) {
   const classification = normalizeProductForFiscalSearch(originalQuery);
   ncmLookupRevision += 1;
   ncmSearchRevision += 1;
   elements.ncmCode.value = "";
   elements.productOrigin.value = "";
+  clearProductOriginGeography();
   focusState = emptyFocusState();
   ncmSearchState = emptyNcmSearchState({ ...classification, query: classification.normalizedQuery, editing: false });
   $("#ncmProductQuery").value = classification.normalizedQuery;
@@ -1866,13 +1897,16 @@ function currentMarketTaxContext() {
     originalQuery: classification.originalQuery,
     normalizedQuery: classification.normalizedQuery,
     productOrigin: elements.productOrigin.value,
+    countryOfOrigin: elements.productOrigin.value === "importado" ? state.countryOfOrigin : "",
+    originState: elements.productOrigin.value === "nacional" ? elements.originState.value : "",
+    destinationState: elements.destinationState.value,
   };
 }
 
 function marketTaxSignature() {
   const maximumItem = maximumMarketItem();
   const context = currentMarketTaxContext();
-  return JSON.stringify([maximumItem?.id, maximumItem?.price, context.ncm, context.ncmConfirmed, context.productOrigin, context.classificationId, context.originalQuery, context.normalizedQuery]);
+  return JSON.stringify([maximumItem?.id, maximumItem?.price, context.ncm, context.ncmConfirmed, context.productOrigin, context.countryOfOrigin, context.classificationId, context.originalQuery, context.normalizedQuery]);
 }
 
 function marketStateForRender() {
@@ -1893,7 +1927,11 @@ function renderMarketTaxContextStatus() {
   const prerequisiteError = marketTaxPrerequisiteError(context, maximumMarketItem()?.price, state.taxAvailability);
   if (!context.ncmConfirmed) status.textContent = "Classifique o produto para estimar os tributos.";
   else if (prerequisiteError) status.textContent = prerequisiteError.message;
-  else status.textContent = `Pronto para estimar sobre o maior preço: NCM ${context.ncm}, produto ${context.productOrigin}.`;
+  else {
+    const origin = context.productOrigin === "nacional" ? "Nacional" : "Importado (Fora do País)";
+    const geography = context.productOrigin === "nacional" ? `UF de origem ${context.originState || "não informada"}` : `país ${context.countryOfOrigin}`;
+    status.textContent = `Pronto para estimar sobre o maior preço: NCM ${context.ncm} · Origem: ${origin} · ${geography} · UF de destino ${context.destinationState || "não informada"}.`;
+  }
 }
 
 function marketReferenceFromState(inputs) {
@@ -1908,6 +1946,7 @@ function marketReferenceFromState(inputs) {
 }
 
 function render() {
+  renderProductOriginFields();
   const validation = currentPricingValidation();
   const viewMarketState = marketStateForRender();
   if (validation.isValid) {
@@ -2359,6 +2398,7 @@ function resetCurrentProductForm() {
   ncmSearchRevision += 1;
   clearPricingInputs(elements);
   elements.productOrigin.value = "";
+  clearProductOriginGeography();
   $("#productName").value = "";
   $("#productDescription").value = "";
   $("#marketQuery").value = "";
@@ -2504,6 +2544,7 @@ function reuseProduct(product) {
   // Nunca deixa valores da simulação anterior sobreviverem a campos ausentes.
   clearPricingInputs(elements);
   elements.productOrigin.value = "";
+  clearProductOriginGeography();
   $("#productName").value = "";
   $("#productDescription").value = "";
   const data = product.calculationData || {};
@@ -2697,6 +2738,21 @@ async function submitRegistration(event) {
 });
 
 elements.productOrigin.addEventListener("change", () => {
+  clearProductOriginGeography();
+  marketState = { ...marketState, tax: emptyMarketTaxState() };
+  render();
+  void maybeCalculateMaximumTaxes();
+});
+
+elements.countryOfOrigin.addEventListener("input", () => {
+  state.countryOfOrigin = String(elements.countryOfOrigin.value || "").slice(0, 80);
+  marketStateForRender();
+  render();
+});
+
+elements.countryOfOrigin.addEventListener("change", () => {
+  state.countryOfOrigin = normalizeCountryOfOrigin(elements.countryOfOrigin.value);
+  elements.countryOfOrigin.value = state.countryOfOrigin;
   marketStateForRender();
   render();
   void maybeCalculateMaximumTaxes();
