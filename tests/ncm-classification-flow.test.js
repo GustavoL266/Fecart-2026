@@ -26,6 +26,9 @@ test("a interface busca por produto, mostra sugestões e não oferece entrada ma
   assert.match(fiscalSection, /id="ncmSearchButton"/);
   assert.match(fiscalSection, /id="ncmSuggestions"/);
   assert.match(fiscalSection, /id="ncmChangeButton"/);
+  assert.match(fiscalSection, /id="ncmConfirmedSummary"/);
+  assert.match(fiscalSection, /id="ncmDetails"/);
+  assert.match(fiscalSection, /Ver detalhes do NCM/);
   assert.match(fiscalSection, /id="ncmCode" type="hidden"/);
   assert.doesNotMatch(fiscalSection, /NCM confirmado \(8 dígitos\)|Validar NCM/);
   assert.match(styles, /@media \(max-width: 620px\)[\s\S]*\.ncm-suggestion-list li\s*{\s*grid-template-columns: 1fr;/);

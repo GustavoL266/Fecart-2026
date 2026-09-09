@@ -1,5 +1,27 @@
+const HTML_ENTITIES = Object.freeze({ amp: "&", apos: "'", gt: ">", lt: "<", nbsp: " ", quot: '"' });
+
+function decodeHtmlEntities(value) {
+  return value.replace(/&(?:#(\d+)|#x([\da-f]+)|([a-z]+));/gi, (entity, decimal, hexadecimal, named) => {
+    if (named) return HTML_ENTITIES[named.toLowerCase()] ?? entity;
+    const codePoint = Number.parseInt(decimal || hexadecimal, decimal ? 10 : 16);
+    return Number.isInteger(codePoint) && codePoint > 0 && codePoint <= 0x10ffff
+      ? String.fromCodePoint(codePoint)
+      : entity;
+  });
+}
+
+export function normalizeNcmDescription(value) {
+  const decoded = decodeHtmlEntities(String(value || ""));
+  return decoded
+    .replace(/<\s*(script|style)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function fiscalText(value) {
-  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+  return normalizeNcmDescription(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
 }
 
 // Regras de vocabulário, nunca códigos NCM. A seleção final continua com o usuário.
@@ -59,7 +81,7 @@ export function fiscalNcmSearchTerms(normalizedQuery) {
 
 export function isRelevantFiscalNcm(normalizedQuery, ncm) {
   const code = ncm?.codigo ?? ncm?.code;
-  const description = ncm?.descricao_completa ?? ncm?.description;
+  const description = normalizeNcmDescription(ncm?.descricao_completa ?? ncm?.description);
   if (typeof code !== "string" || !/^\d{8}$/.test(code) || typeof description !== "string" || !description.trim()) return false;
   const text = fiscalText(description);
   const rule = fiscalCategoryFor(normalizedQuery);

@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { ApiError } from "../js/services/api-client.js";
 import { TaxService, marketTaxError, marketTaxPrerequisiteError } from "../js/services/tax-service.js";
-import { normalizeProductForFiscalSearch, isRelevantFiscalNcm } from "../js/domain/fiscal-classification.js";
+import { normalizeProductForFiscalSearch, isRelevantFiscalNcm, normalizeNcmDescription } from "../js/domain/fiscal-classification.js";
 import { normalizeFiscalState } from "../js/domain/fiscal-context.js";
 import { searchFiscalNcms, confirmFiscalNcm, hasRelevantFiscalConfirmation } from "../lib/fiscal-classification.js";
 import { FocusNFeClient, FocusNFeError } from "../lib/focus-nfe-client.js";
@@ -62,7 +62,7 @@ function workflow() {
   const context = vm.createContext({
     $, document, elements, state: { taxAvailability: taxProvider.health() },
     ncmSearchRevision: 0, ncmLookupRevision: 0, marketSearchRevision: 0,
-    normalizeProductForFiscalSearch, isRelevantFiscalNcm, normalizeFiscalState, marketTaxError, marketTaxPrerequisiteError, ApiError,
+    normalizeProductForFiscalSearch, isRelevantFiscalNcm, normalizeNcmDescription, normalizeFiscalState, marketTaxError, marketTaxPrerequisiteError, ApiError,
     taxService: new TaxService({ apiClient: api }), api,
     market: { async search(query) {
       marketQueries.push(query);
@@ -71,7 +71,7 @@ function workflow() {
     render() { context.renderNcmState(); renderIncompleteDashboard(document, context.marketStateForRender(), {}); },
     setMarketError(_query, error) { throw error; },
   });
-  for (const name of ["emptyFocusState", "emptyNcmSearchState", "emptyMarketState", "emptyMarketTaxState", "currentFiscalClassification", "prepareFiscalClassification", "currentMarketTaxContext", "marketTaxSignature", "marketStateForRender", "maximumMarketItem", "messageFor", "ncmSearchErrorMessage", "renderNcmState", "searchNcmSuggestions", "lookupNcm", "resetNcmClassification", "setMarketTaxError", "maybeCalculateMaximumTaxes", "calculateMaximumTaxes", "searchMarket"]) {
+  for (const name of ["emptyFocusState", "emptyNcmSearchState", "emptyMarketState", "emptyMarketTaxState", "currentFiscalClassification", "fiscalCategoryLabel", "prepareFiscalClassification", "currentMarketTaxContext", "marketTaxSignature", "marketStateForRender", "maximumMarketItem", "messageFor", "ncmSearchErrorMessage", "renderNcmState", "searchNcmSuggestions", "lookupNcm", "resetNcmClassification", "setMarketTaxError", "maybeCalculateMaximumTaxes", "calculateMaximumTaxes", "searchMarket"]) {
     const start = mainSource.search(new RegExp(`^(?:async )?function ${name}\\(`, "m"));
     assert.ok(start >= 0, name);
     const remainder = mainSource.slice(start);
@@ -101,6 +101,27 @@ async function settle(done) {
   for (let index = 0; index < 30 && !done(); index += 1) await new Promise((resolve) => setImmediate(resolve));
   assert.ok(done(), "O fluxo não concluiu");
 }
+
+test("iPhone, bolo, notebook e televisão têm NCM relevante e estimativa IBPT", () => {
+  const provider = new IbptTaxProvider({ filePath: tablePath, logger: { info() {}, error() {} } });
+  const scenarios = [
+    ["iPhone 15 Pro Max", "85171300", "<i>Smartphones</i>"],
+    ["bolo", "19059090", "Produtos de padaria, pastelaria e confeitaria. Bolos"],
+    ["notebook", "84713012", "Máquinas automáticas para processamento de dados, portáteis. Notebooks"],
+    ["televisão", "85287200", "Aparelhos receptores de televisão"],
+  ];
+
+  for (const [query, code, description] of scenarios) {
+    const classification = normalizeProductForFiscalSearch(query);
+    assert.equal(isRelevantFiscalNcm(classification.normalizedQuery, { codigo: code, descricao_completa: description }), true, query);
+    const calculation = provider.calculate({ ncm: code, productOrigin: "nacional", unitValue: 1_000 });
+    assert.equal(calculation.ncm, code, query);
+    assert.equal(calculation.provider, "IBPT", query);
+    assert.equal(calculation.version, "26.2.A", query);
+    assert.ok(calculation.estimatedTaxes > 0, query);
+    assert.equal(calculation.total, 1_000 + calculation.estimatedTaxes, query);
+  }
+});
 
 test("fluxo completo preserva a pesquisa, confirma NCM e estima exclusivamente o maior", async () => {
   const w = workflow();
@@ -132,8 +153,10 @@ test("fluxo completo preserva a pesquisa, confirma NCM e estima exclusivamente o
   assert.equal(w.context.marketState.items.find((item) => item.id === "max").price, 8_899);
   assert.equal(JSON.stringify(w.context.marketState.stats), originalStats);
   assert.match(w.$("#marketStats").innerHTML, /11\.558,02/);
+  assert.match(w.$("#marketStats").innerHTML, /29,88%/);
+  assert.match(w.$("#marketStats").innerHTML, /2\.659,02/);
   assert.match(w.$("#marketStats").innerHTML, /IBPT \/ Empresômetro/);
-  assert.match(w.$("#marketTaxDetails").innerHTML, /29,88%/);
+  assert.equal(w.$("#marketTaxDetails").innerHTML, "");
   assert.equal(w.external.some((entry) => entry.provider !== "FocusNFe"), false);
 });
 

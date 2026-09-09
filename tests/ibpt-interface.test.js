@@ -9,8 +9,7 @@ const [html, main, dashboard, server, envExample, renderConfig] = await Promise.
 test("interface identifica a estimativa IBPT e exige escolha explícita da origem", () => {
   const start = html.indexOf('class="market-tax-context"');
   const section = html.slice(start, html.indexOf("</section>", start));
-  assert.match(section, /IBPT \/ Empresômetro/);
-  assert.match(section, /Dados para estimativa tributária/);
+  assert.match(section, /Produto para classificação fiscal/);
   assert.match(section, /id="productOrigin"/);
   assert.match(section, /value="">Selecione a origem/);
   assert.match(section, /value="nacional">Nacional/);
@@ -24,6 +23,19 @@ test("card e detalhamento mostram carga, tributos, total, fonte, versão e vigê
   }
   assert.match(dashboard, /tax\.result\.rates\.total/);
   assert.match(dashboard, /tax\.result\.estimatedTaxes/);
+  assert.match(dashboard, /market-tax-card-metrics/);
+});
+
+test("confirmação de NCM é compacta e esconde a descrição completa por padrão", () => {
+  const start = html.indexOf('class="market-tax-context"');
+  const section = html.slice(start, html.indexOf("</section>", start));
+  assert.match(section, /id="ncmConfirmedSummary"[^>]+hidden/);
+  assert.match(section, /✓ NCM confirmado/);
+  assert.match(section, /Categoria usada:/);
+  assert.match(section, /Fonte:/);
+  assert.match(section, /id="ncmDetails"/);
+  assert.match(section, /Ver detalhes do NCM/);
+  assert.match(main, /normalizeNcmDescription\(focusState\.ncm\.descricao_completa\)/);
 });
 
 test("backend usa o provider local e publica taxEstimate no health", () => {

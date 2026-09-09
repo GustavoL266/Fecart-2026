@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeProductForFiscalSearch, fiscalNcmSearchTerms, isRelevantFiscalNcm } from "../js/domain/fiscal-classification.js";
+import { normalizeProductForFiscalSearch, fiscalNcmSearchTerms, isRelevantFiscalNcm, normalizeNcmDescription } from "../js/domain/fiscal-classification.js";
 import { searchFiscalNcms, confirmFiscalNcm } from "../lib/fiscal-classification.js";
 import { FocusNFeClient } from "../lib/focus-nfe-client.js";
 import { FISCAL_BRAZIL_STATES, normalizeFiscalState, isValidFiscalState } from "../js/domain/fiscal-context.js";
@@ -19,7 +19,9 @@ test("normaliza os nomes comerciais pedidos sem produzir código NCM", () => {
     ["Coca-Cola 2L", "refrigerante", "refrigerante"],
     ["Nike Air Max 90", "calçado / tênis", "calçado tênis"],
     ["PlayStation 5", "console de videogame", "console de videogame"],
+    ["notebook", "computador portátil", "computador portátil notebook"],
     ["MacBook Air 512GB", "computador portátil", "computador portátil notebook"],
+    ["televisão", "aparelho de televisão", "aparelho de televisão"],
     ["Smart TV Samsung 55", "aparelho de televisão", "aparelho de televisão"],
   ]) {
     const result = normalizeProductForFiscalSearch(input);
@@ -27,6 +29,14 @@ test("normaliza os nomes comerciais pedidos sem produzir código NCM", () => {
     assert.equal(normalizeProductForFiscalSearch(query).normalizedQuery, query);
     assert.doesNotMatch(JSON.stringify(result), /"(?:ncm|code|codigo)"/);
   }
+});
+
+test("converte HTML da descrição fiscal em texto seguro antes de validar ou exibir", () => {
+  assert.equal(normalizeNcmDescription("Máquinas <i>smartphones</i> &amp; celulares"), "Máquinas smartphones & celulares");
+  assert.equal(normalizeNcmDescription("&lt;strong&gt;Smartphones&lt;/strong&gt;"), "Smartphones");
+  assert.equal(normalizeNcmDescription("Smartphones<script>alert('x')</script> para redes sem fio"), "Smartphones para redes sem fio");
+  assert.equal(isRelevantFiscalNcm("telefone celular smartphone", { codigo: "85171300", descricao_completa: "<i>Smartphones</i>" }), true);
+  assert.equal(isRelevantFiscalNcm("telefone celular smartphone", { codigo: "85171300", descricao_completa: "<b>Preparações alimentícias</b>" }), false);
 });
 
 test("preserva composição/função e não classifica acessórios como aparelhos", () => {

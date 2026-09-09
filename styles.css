@@ -383,7 +383,7 @@ input[type="range"] {
 }
 
 .fiscal-description {
-  margin: 2px 0 0;
+  margin: 10px 0 0;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -391,6 +391,74 @@ input[type="range"] {
   color: var(--ink);
   font-size: 0.8rem;
   line-height: 1.45;
+}
+
+.ncm-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.ncm-confirmed-summary {
+  display: grid;
+  gap: 3px;
+  border: 1px solid color-mix(in srgb, var(--green) 45%, var(--line));
+  border-radius: 9px;
+  background: var(--green-soft);
+  padding: 11px 12px;
+}
+
+.ncm-confirmed-summary[hidden],
+.ncm-actions[hidden],
+.ncm-details[hidden] {
+  display: none;
+}
+
+.ncm-confirmed-summary p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.ncm-confirmed-label {
+  margin-top: 7px;
+  color: var(--green);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.ncm-confirmed-code {
+  color: var(--ink);
+  font-size: 1.08rem;
+  letter-spacing: 0.04em;
+}
+
+.ncm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: start;
+}
+
+.ncm-details {
+  min-width: 0;
+  flex: 1 1 170px;
+}
+
+.ncm-details summary {
+  display: grid;
+  min-height: 38px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--green);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 7px 12px;
+}
+
+.ncm-details summary::marker {
+  content: "";
 }
 
 .panel-heading {
@@ -3742,6 +3810,33 @@ tr:last-child td {
 
 .market-dashboard-section .market-tax-stat.is-error {
   border-color: color-mix(in srgb, var(--red) 45%, var(--line));
+}
+
+.market-tax-card-metrics {
+  display: grid;
+  gap: 5px;
+  margin: 9px 0;
+}
+
+.market-tax-card-metrics > div {
+  display: grid;
+  gap: 2px;
+}
+
+.market-tax-card-metrics dt,
+.market-tax-card-metrics dd {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.market-tax-card-metrics dt {
+  color: var(--muted);
+}
+
+.market-tax-card-metrics dd {
+  color: var(--ink);
+  font-weight: 800;
 }
 
 .market-tax-action {

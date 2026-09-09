@@ -81,7 +81,7 @@ function renderTaxedMaximumStat(marketState) {
     return '<div class="market-tax-stat is-loading"><span>Maior + tributos estimados</span><strong>—</strong><small>Calculando estimativa...</small></div>';
   }
   if (tax.status === "success") {
-    return `<div class="market-tax-stat is-success"><span>Maior + tributos estimados</span><strong class="financial-value">${dashboardMoney(tax.result.total)}</strong><small>Carga estimada ${taxPercent(tax.result.rates.total)} · ${escapeHtml(tax.result.source)}</small>${taxAction(tax.expanded ? "Ocultar estimativa" : "Ver estimativa", "data-toggle-market-taxes")}</div>`;
+    return `<div class="market-tax-stat is-success"><span>Maior + tributos estimados</span><strong class="financial-value">${dashboardMoney(tax.result.total)}</strong><dl class="market-tax-card-metrics"><div><dt>Carga tributária estimada</dt><dd>${taxPercent(tax.result.rates.total)}</dd></div><div><dt>Tributos estimados</dt><dd>${dashboardMoney(tax.result.estimatedTaxes)}</dd></div></dl><small>Fonte: ${escapeHtml(tax.result.source)} · Versão: ${escapeHtml(tax.result.version)}</small>${taxAction(tax.expanded ? "Ocultar estimativa" : "Ver estimativa", "data-toggle-market-taxes")}</div>`;
   }
   if (tax.status === "error") {
     const tableUnavailable = ["IBPT_NOT_CONFIGURED", "IBPT_INVALID_FILE"].includes(tax.code);

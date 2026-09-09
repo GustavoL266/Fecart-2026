@@ -387,20 +387,38 @@
 
             <section class="market-tax-context" aria-labelledby="market-tax-context-title">
               <div class="tab-panel-heading compact">
-                <p class="eyebrow">IBPT / Empresômetro</p>
-                <p class="section-title" id="market-tax-context-title">Dados para estimativa tributária</p>
+                <p class="eyebrow">Classificação fiscal</p>
+                <p class="section-title" id="market-tax-context-title">Produto para classificação fiscal</p>
                 <p class="section-description">A estimativa local usa o produto de maior preço, o NCM confirmado e a origem informada.</p>
               </div>
               <div class="sidebar-field">
                 <p class="helper-text">Produto pesquisado: <strong id="fiscalOriginalProduct">Nenhum produto pesquisado</strong></p>
-                <label for="ncmProductQuery">Categoria usada para classificação</label>
-                <div class="search-row fiscal-search-row"><input id="ncmProductQuery" type="text" maxlength="120" placeholder="Ex.: telefone celular ou bolo de chocolate" autocomplete="off" aria-describedby="ncmLookupStatus" /><button id="ncmSearchButton" class="market-search-button" type="button">Buscar NCM</button></div>
+                <div id="ncmEditor" class="ncm-editor">
+                  <label for="ncmProductQuery">Categoria usada para classificação</label>
+                  <div class="search-row fiscal-search-row"><input id="ncmProductQuery" type="text" maxlength="120" placeholder="Ex.: telefone celular ou bolo de chocolate" autocomplete="off" aria-describedby="ncmLookupStatus" /><button id="ncmSearchButton" class="market-search-button" type="button">Buscar NCM</button></div>
+                  <p id="ncmLookupStatus" class="helper-text" role="status">Pesquise pelo produto e confirme uma sugestão fiscal.</p>
+                  <p id="ncmSuggestionsHeading" class="helper-text" hidden><strong>Sugestões de NCM</strong></p>
+                  <ul id="ncmSuggestions" class="ncm-suggestion-list" aria-label="Sugestões de NCM" aria-live="polite" hidden></ul>
+                </div>
                 <input id="ncmCode" type="hidden" />
-                <p id="ncmLookupStatus" class="helper-text" role="status">Pesquise pelo produto e confirme uma sugestão fiscal.</p>
-                <p id="ncmSuggestionsHeading" class="helper-text" hidden><strong>Sugestões de NCM</strong></p>
-                <ul id="ncmSuggestions" class="ncm-suggestion-list" aria-label="Sugestões de NCM" aria-live="polite" hidden></ul>
-                <p id="ncmDescription" class="fiscal-description" hidden></p>
-                <button id="ncmChangeButton" class="secondary-button" type="button" hidden>Alterar categoria</button>
+                <div id="ncmConfirmedSummary" class="ncm-confirmed-summary" role="status" hidden>
+                  <p>Categoria usada:</p>
+                  <strong id="ncmConfirmedCategory"></strong>
+                  <span class="ncm-confirmed-label">✓ NCM confirmado</span>
+                  <strong id="ncmConfirmedCode" class="ncm-confirmed-code"></strong>
+                  <p>Fonte: <strong id="ncmConfirmedSource">Focus NFe</strong></p>
+                </div>
+                <div id="ncmActions" class="ncm-actions" hidden>
+                  <button id="ncmChangeButton" class="secondary-button" type="button">Alterar categoria</button>
+                  <details id="ncmDetails" class="ncm-details">
+                    <summary>Ver detalhes do NCM</summary>
+                    <p id="ncmDescription" class="fiscal-description"></p>
+                  </details>
+                </div>
+              </div>
+              <div class="sidebar-grid sidebar-grid--two">
+                <div class="sidebar-field"><label for="originState">UF de origem</label><select id="originState"><option value="">Selecione a UF</option><option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option><option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option><option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option><option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option><option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option><option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option></select></div>
+                <div class="sidebar-field"><label for="destinationState">UF de destino</label><select id="destinationState"><option value="">Selecione a UF</option><option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option><option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option><option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option><option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option><option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option><option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option></select></div>
               </div>
               <div class="sidebar-field">
                 <label for="productOrigin">Origem do produto</label>
@@ -410,10 +428,6 @@
                   <option value="importado">Importado</option>
                 </select>
                 <p class="helper-text">A origem define a alíquota federal da tabela IBPT e deve ser escolhida explicitamente.</p>
-              </div>
-              <div class="sidebar-grid sidebar-grid--two">
-                <div class="sidebar-field"><label for="originState">UF de origem</label><select id="originState"><option value="">Selecione a UF</option><option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option><option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option><option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option><option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option><option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option><option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option></select></div>
-                <div class="sidebar-field"><label for="destinationState">UF de destino</label><select id="destinationState"><option value="">Selecione a UF</option><option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option><option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option><option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option><option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option><option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option><option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option></select></div>
               </div>
               <p id="marketTaxContextStatus" class="helper-text" role="status">Confirme o NCM e selecione a origem do produto para estimar os tributos.</p>
             </section>

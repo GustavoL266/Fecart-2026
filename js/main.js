@@ -3,7 +3,7 @@ import { ConfiguredTaxRuleEngine } from "./domain/tax-rule-engine.js";
 import { MarketService } from "./services/market-service.js";
 import { ApiError, api } from "./services/api-client.js";
 import { TaxService, marketTaxError, marketTaxPrerequisiteError } from "./services/tax-service.js";
-import { normalizeProductForFiscalSearch, isRelevantFiscalNcm } from "./domain/fiscal-classification.js";
+import { normalizeProductForFiscalSearch, isRelevantFiscalNcm, normalizeNcmDescription } from "./domain/fiscal-classification.js";
 import { normalizeFiscalState } from "./domain/fiscal-context.js";
 import { clearMarketReference, loadMarketReference, saveMarketReference } from "./services/market-reference-store.js";
 import { applySavedInputs, CAPACITY_FIELD_IDS, clearPricingInputs, migrateLegacyV5Inputs, PRICING_FIELD_IDS, renderPricingErrors, validatePricingForm } from "./ui/form.js";
@@ -216,6 +216,17 @@ function currentFiscalClassification() {
   return { ...normalizeProductForFiscalSearch(query), originalQuery: ncmSearchState.originalQuery || marketState.query || query.trim() };
 }
 
+function fiscalCategoryLabel(classification) {
+  const labels = {
+    "telefone celular": "Telefone celular / smartphone",
+    "computador portátil": "Notebook / computador portátil",
+    "aparelho de televisão": "Televisão / smart TV",
+    "bolo / confeitaria": "Bolo / confeitaria",
+  };
+  const category = String(classification.category || classification.normalizedQuery || "").trim();
+  return labels[category] || (category ? `${category[0].toLocaleUpperCase("pt-BR")}${category.slice(1)}` : "Categoria não informada");
+}
+
 function prepareFiscalClassification(originalQuery) {
   const classification = normalizeProductForFiscalSearch(originalQuery);
   ncmLookupRevision += 1;
@@ -302,6 +313,10 @@ function render() {
 function renderNcmState() {
   const status = $("#ncmLookupStatus");
   const description = $("#ncmDescription");
+  const editor = $("#ncmEditor");
+  const confirmedSummary = $("#ncmConfirmedSummary");
+  const actions = $("#ncmActions");
+  const details = $("#ncmDetails");
   const queryInput = $("#ncmProductQuery");
   const searchButton = $("#ncmSearchButton");
   const changeButton = $("#ncmChangeButton");
@@ -312,6 +327,15 @@ function renderNcmState() {
   const isConfirmed = currentMarketTaxContext().ncmConfirmed;
   const classification = currentFiscalClassification();
   $("#fiscalOriginalProduct").textContent = classification.originalQuery || "Nenhum produto pesquisado";
+
+  editor.hidden = isConfirmed;
+  confirmedSummary.hidden = !isConfirmed;
+  actions.hidden = !classification.normalizedQuery;
+  details.hidden = !isConfirmed;
+  if (!isConfirmed) details.open = false;
+  $("#ncmConfirmedCategory").textContent = isConfirmed ? fiscalCategoryLabel(classification) : "";
+  $("#ncmConfirmedCode").textContent = isConfirmed ? focusState.ncm.codigo : "";
+  $("#ncmConfirmedSource").textContent = isConfirmed ? focusState.source : "";
 
   queryInput.readOnly = isConfirmed || (!ncmSearchState.editing && Boolean(classification.normalizedQuery));
   queryInput.setAttribute("aria-readonly", String(queryInput.readOnly));
@@ -327,8 +351,7 @@ function renderNcmState() {
   else if (focusState.status === "error") status.textContent = focusState.error;
   else status.textContent = "Revise a categoria e escolha uma sugestão relacionada da Focus NFe. A categoria não determina o NCM.";
 
-  description.hidden = !isConfirmed;
-  description.textContent = isConfirmed ? focusState.ncm.descricao_completa : "";
+  description.textContent = isConfirmed ? normalizeNcmDescription(focusState.ncm.descricao_completa) : "";
   suggestions.replaceChildren();
   suggestions.hidden = ncmSearchState.status !== "success" || ncmSearchState.results.length === 0 || isConfirmed;
   suggestionsHeading.hidden = suggestions.hidden;
@@ -340,7 +363,7 @@ function renderNcmState() {
       const descriptionText = document.createElement("span");
       const useButton = document.createElement("button");
       code.textContent = result.code;
-      descriptionText.textContent = result.description;
+      descriptionText.textContent = normalizeNcmDescription(result.description);
       useButton.type = "button";
       useButton.className = "secondary-button";
       useButton.dataset.ncmSelect = result.code;
@@ -648,7 +671,7 @@ async function calculateMaximumTaxes() {
       normalizedQuery: context.normalizedQuery,
     });
     if (!requestIsCurrent()) return;
-    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "success", expanded: true, result: response.calculation, signature }) };
+    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "success", expanded: false, result: response.calculation, signature }) };
   } catch (error) {
     if (!requestIsCurrent()) return;
     setMarketTaxError(error);

@@ -380,8 +380,30 @@ function marketBadgeForGap(gap) {
 }
 
 
+const HTML_ENTITIES = Object.freeze({ amp: "&", apos: "'", gt: ">", lt: "<", nbsp: " ", quot: '"' });
+
+function decodeHtmlEntities(value) {
+  return value.replace(/&(?:#(\d+)|#x([\da-f]+)|([a-z]+));/gi, (entity, decimal, hexadecimal, named) => {
+    if (named) return HTML_ENTITIES[named.toLowerCase()] ?? entity;
+    const codePoint = Number.parseInt(decimal || hexadecimal, decimal ? 10 : 16);
+    return Number.isInteger(codePoint) && codePoint > 0 && codePoint <= 0x10ffff
+      ? String.fromCodePoint(codePoint)
+      : entity;
+  });
+}
+
+function normalizeNcmDescription(value) {
+  const decoded = decodeHtmlEntities(String(value || ""));
+  return decoded
+    .replace(/<\s*(script|style)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function fiscalText(value) {
-  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+  return normalizeNcmDescription(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
 }
 
 // Regras de vocabulário, nunca códigos NCM. A seleção final continua com o usuário.
@@ -441,7 +463,7 @@ function fiscalNcmSearchTerms(normalizedQuery) {
 
 function isRelevantFiscalNcm(normalizedQuery, ncm) {
   const code = ncm?.codigo ?? ncm?.code;
-  const description = ncm?.descricao_completa ?? ncm?.description;
+  const description = normalizeNcmDescription(ncm?.descricao_completa ?? ncm?.description);
   if (typeof code !== "string" || !/^\d{8}$/.test(code) || typeof description !== "string" || !description.trim()) return false;
   const text = fiscalText(description);
   const rule = fiscalCategoryFor(normalizedQuery);
@@ -1074,7 +1096,7 @@ function renderTaxedMaximumStat(marketState) {
     return '<div class="market-tax-stat is-loading"><span>Maior + tributos estimados</span><strong>—</strong><small>Calculando estimativa...</small></div>';
   }
   if (tax.status === "success") {
-    return `<div class="market-tax-stat is-success"><span>Maior + tributos estimados</span><strong class="financial-value">${dashboardMoney(tax.result.total)}</strong><small>Carga estimada ${taxPercent(tax.result.rates.total)} · ${escapeHtml(tax.result.source)}</small>${taxAction(tax.expanded ? "Ocultar estimativa" : "Ver estimativa", "data-toggle-market-taxes")}</div>`;
+    return `<div class="market-tax-stat is-success"><span>Maior + tributos estimados</span><strong class="financial-value">${dashboardMoney(tax.result.total)}</strong><dl class="market-tax-card-metrics"><div><dt>Carga tributária estimada</dt><dd>${taxPercent(tax.result.rates.total)}</dd></div><div><dt>Tributos estimados</dt><dd>${dashboardMoney(tax.result.estimatedTaxes)}</dd></div></dl><small>Fonte: ${escapeHtml(tax.result.source)} · Versão: ${escapeHtml(tax.result.version)}</small>${taxAction(tax.expanded ? "Ocultar estimativa" : "Ver estimativa", "data-toggle-market-taxes")}</div>`;
   }
   if (tax.status === "error") {
     const tableUnavailable = ["IBPT_NOT_CONFIGURED", "IBPT_INVALID_FILE"].includes(tax.code);
@@ -1808,6 +1830,17 @@ function currentFiscalClassification() {
   return { ...normalizeProductForFiscalSearch(query), originalQuery: ncmSearchState.originalQuery || marketState.query || query.trim() };
 }
 
+function fiscalCategoryLabel(classification) {
+  const labels = {
+    "telefone celular": "Telefone celular / smartphone",
+    "computador portátil": "Notebook / computador portátil",
+    "aparelho de televisão": "Televisão / smart TV",
+    "bolo / confeitaria": "Bolo / confeitaria",
+  };
+  const category = String(classification.category || classification.normalizedQuery || "").trim();
+  return labels[category] || (category ? `${category[0].toLocaleUpperCase("pt-BR")}${category.slice(1)}` : "Categoria não informada");
+}
+
 function prepareFiscalClassification(originalQuery) {
   const classification = normalizeProductForFiscalSearch(originalQuery);
   ncmLookupRevision += 1;
@@ -1894,6 +1927,10 @@ function render() {
 function renderNcmState() {
   const status = $("#ncmLookupStatus");
   const description = $("#ncmDescription");
+  const editor = $("#ncmEditor");
+  const confirmedSummary = $("#ncmConfirmedSummary");
+  const actions = $("#ncmActions");
+  const details = $("#ncmDetails");
   const queryInput = $("#ncmProductQuery");
   const searchButton = $("#ncmSearchButton");
   const changeButton = $("#ncmChangeButton");
@@ -1904,6 +1941,15 @@ function renderNcmState() {
   const isConfirmed = currentMarketTaxContext().ncmConfirmed;
   const classification = currentFiscalClassification();
   $("#fiscalOriginalProduct").textContent = classification.originalQuery || "Nenhum produto pesquisado";
+
+  editor.hidden = isConfirmed;
+  confirmedSummary.hidden = !isConfirmed;
+  actions.hidden = !classification.normalizedQuery;
+  details.hidden = !isConfirmed;
+  if (!isConfirmed) details.open = false;
+  $("#ncmConfirmedCategory").textContent = isConfirmed ? fiscalCategoryLabel(classification) : "";
+  $("#ncmConfirmedCode").textContent = isConfirmed ? focusState.ncm.codigo : "";
+  $("#ncmConfirmedSource").textContent = isConfirmed ? focusState.source : "";
 
   queryInput.readOnly = isConfirmed || (!ncmSearchState.editing && Boolean(classification.normalizedQuery));
   queryInput.setAttribute("aria-readonly", String(queryInput.readOnly));
@@ -1919,8 +1965,7 @@ function renderNcmState() {
   else if (focusState.status === "error") status.textContent = focusState.error;
   else status.textContent = "Revise a categoria e escolha uma sugestão relacionada da Focus NFe. A categoria não determina o NCM.";
 
-  description.hidden = !isConfirmed;
-  description.textContent = isConfirmed ? focusState.ncm.descricao_completa : "";
+  description.textContent = isConfirmed ? normalizeNcmDescription(focusState.ncm.descricao_completa) : "";
   suggestions.replaceChildren();
   suggestions.hidden = ncmSearchState.status !== "success" || ncmSearchState.results.length === 0 || isConfirmed;
   suggestionsHeading.hidden = suggestions.hidden;
@@ -1932,7 +1977,7 @@ function renderNcmState() {
       const descriptionText = document.createElement("span");
       const useButton = document.createElement("button");
       code.textContent = result.code;
-      descriptionText.textContent = result.description;
+      descriptionText.textContent = normalizeNcmDescription(result.description);
       useButton.type = "button";
       useButton.className = "secondary-button";
       useButton.dataset.ncmSelect = result.code;
@@ -2240,7 +2285,7 @@ async function calculateMaximumTaxes() {
       normalizedQuery: context.normalizedQuery,
     });
     if (!requestIsCurrent()) return;
-    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "success", expanded: true, result: response.calculation, signature }) };
+    marketState = { ...marketState, tax: emptyMarketTaxState({ status: "success", expanded: false, result: response.calculation, signature }) };
   } catch (error) {
     if (!requestIsCurrent()) return;
     setMarketTaxError(error);
