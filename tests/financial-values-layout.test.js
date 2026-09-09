@@ -41,15 +41,18 @@ test("KPIs dinâmicos de mercado e detalhes recebem a mesma proteção financeir
   assert.match(detailPages, /#priceComparisonBars[\s\S]*financial-value/);
 });
 
-test("a tipografia financeira usa o tamanho do container e amplia o card principal em desktops intermediários", () => {
+test("a tipografia financeira usa o tamanho do container e reserva mais espaço ao preço sustentável", () => {
   assert.match(styles, /container-type:\s*inline-size/);
-  assert.match(styles, /font-size:\s*clamp\(1\.05rem,\s*12cqi,\s*4\.7rem\)/);
-  assert.match(styles, /@media \(min-width: 901px\) and \(max-width: 1500px\)[\s\S]*\.primary-price-grid[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
-  assert.match(styles, /@media \(min-width: 901px\) and \(max-width: 1500px\)[\s\S]*\.primary-price-sustainable[\s\S]*grid-column:\s*1 \/ -1/);
+  assert.match(styles, /font-size:\s*clamp\(0\.72rem,\s*8\.5cqi,\s*4\.7rem\)/);
+  assert.match(styles, /\.primary-price-grid\s*{[\s\S]*grid-template-columns:\s*minmax\(0, 1\.7fr\) minmax\(0, 1fr\)/);
+  assert.match(styles, /\.summary-card-primary\s*{[\s\S]*grid-column:\s*span 8/);
+  assert.match(styles, /\.summary-card-primary \+ \.summary-card\s*{[\s\S]*grid-column:\s*span 4/);
+  assert.match(styles, /@container \(max-width: 34rem\)[\s\S]*\.primary-price-grid[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\)/);
+  assert.match(styles, /\.dashboard-summary-grid,[\s\S]*\.primary-price-cell,[\s\S]*min-width:\s*0/);
 });
 
 test("formatos monetários grandes continuam sendo tratados como uma única unidade visual", () => {
-  ["R$ 999,99", "R$ 9.999,99", "R$ 99.999,99", "R$ 999.999,99", "R$ 9.999.999,99"].forEach((value) => {
+  ["R$ 32,00", "R$ 999,99", "R$ 9.999,99", "R$ 25.287,10", "R$ 99.999,99", "R$ 999.999,99", "R$ 9.999.999,99"].forEach((value) => {
     assert.equal(value.includes("\n"), false);
     assert.match(value, /^R\$ [\d.]+,\d{2}$/);
   });
