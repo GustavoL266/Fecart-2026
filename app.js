@@ -1926,11 +1926,9 @@ function render() {
 
 function renderNcmState() {
   const status = $("#ncmLookupStatus");
-  const description = $("#ncmDescription");
   const editor = $("#ncmEditor");
   const confirmedSummary = $("#ncmConfirmedSummary");
   const actions = $("#ncmActions");
-  const details = $("#ncmDetails");
   const queryInput = $("#ncmProductQuery");
   const searchButton = $("#ncmSearchButton");
   const changeButton = $("#ncmChangeButton");
@@ -1944,18 +1942,15 @@ function renderNcmState() {
 
   editor.hidden = isConfirmed;
   confirmedSummary.hidden = !isConfirmed;
-  actions.hidden = !classification.normalizedQuery;
-  details.hidden = !isConfirmed;
-  if (!isConfirmed) details.open = false;
+  actions.hidden = !isConfirmed;
   $("#ncmConfirmedCategory").textContent = isConfirmed ? fiscalCategoryLabel(classification) : "";
   $("#ncmConfirmedCode").textContent = isConfirmed ? focusState.ncm.codigo : "";
-  $("#ncmConfirmedSource").textContent = isConfirmed ? focusState.source : "";
 
   queryInput.readOnly = isConfirmed || (!ncmSearchState.editing && Boolean(classification.normalizedQuery));
   queryInput.setAttribute("aria-readonly", String(queryInput.readOnly));
   searchButton.disabled = isSearching || isConfirming || isConfirmed;
   searchButton.textContent = isSearching ? "Buscando..." : "Buscar NCM";
-  changeButton.hidden = !classification.normalizedQuery;
+  changeButton.hidden = !isConfirmed;
 
   if (isConfirming) status.textContent = "Confirmando a classificação na Focus NFe…";
   else if (isConfirmed) status.textContent = `✓ NCM confirmado · ${focusState.ncm.codigo} · Focus NFe (${focusState.environment}).`;
@@ -1965,7 +1960,6 @@ function renderNcmState() {
   else if (focusState.status === "error") status.textContent = focusState.error;
   else status.textContent = "Revise a categoria e escolha uma sugestão relacionada da Focus NFe. A categoria não determina o NCM.";
 
-  description.textContent = isConfirmed ? normalizeNcmDescription(focusState.ncm.descricao_completa) : "";
   suggestions.replaceChildren();
   suggestions.hidden = ncmSearchState.status !== "success" || ncmSearchState.results.length === 0 || isConfirmed;
   suggestionsHeading.hidden = suggestions.hidden;

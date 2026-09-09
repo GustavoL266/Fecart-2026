@@ -382,17 +382,6 @@ input[type="range"] {
   color: var(--ink);
 }
 
-.fiscal-description {
-  margin: 10px 0 0;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--green-soft);
-  color: var(--ink);
-  font-size: 0.8rem;
-  line-height: 1.45;
-}
-
 .ncm-editor {
   display: grid;
   gap: 8px;
@@ -408,8 +397,7 @@ input[type="range"] {
 }
 
 .ncm-confirmed-summary[hidden],
-.ncm-actions[hidden],
-.ncm-details[hidden] {
+.ncm-actions[hidden] {
   display: none;
 }
 
@@ -437,28 +425,6 @@ input[type="range"] {
   flex-wrap: wrap;
   gap: 8px;
   align-items: start;
-}
-
-.ncm-details {
-  min-width: 0;
-  flex: 1 1 170px;
-}
-
-.ncm-details summary {
-  display: grid;
-  min-height: 38px;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--green);
-  cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 800;
-  padding: 7px 12px;
-}
-
-.ncm-details summary::marker {
-  content: "";
 }
 
 .panel-heading {

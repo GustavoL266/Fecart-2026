@@ -26,16 +26,17 @@ test("card e detalhamento mostram carga, tributos, total, fonte, versão e vigê
   assert.match(dashboard, /market-tax-card-metrics/);
 });
 
-test("confirmação de NCM é compacta e esconde a descrição completa por padrão", () => {
+test("confirmação de NCM mostra somente status, código, categoria e alteração", () => {
   const start = html.indexOf('class="market-tax-context"');
   const section = html.slice(start, html.indexOf("</section>", start));
   assert.match(section, /id="ncmConfirmedSummary"[^>]+hidden/);
   assert.match(section, /✓ NCM confirmado/);
-  assert.match(section, /Categoria usada:/);
-  assert.match(section, /Fonte:/);
-  assert.match(section, /id="ncmDetails"/);
-  assert.match(section, /Ver detalhes do NCM/);
-  assert.match(main, /normalizeNcmDescription\(focusState\.ncm\.descricao_completa\)/);
+  assert.match(section, /Categoria:/);
+  assert.match(section, /Alterar categoria/);
+  assert.doesNotMatch(section, /id="ncmDescription"|id="ncmDetails"|Ver detalhes do NCM/);
+  const renderStart = main.indexOf("function renderNcmState()");
+  const renderEnd = main.indexOf("function ncmSearchErrorMessage", renderStart);
+  assert.doesNotMatch(main.slice(renderStart, renderEnd), /descricao_completa|ncmDescription|ncmDetails/);
 });
 
 test("backend usa o provider local e publica taxEstimate no health", () => {
