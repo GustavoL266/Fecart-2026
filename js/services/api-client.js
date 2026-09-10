@@ -13,8 +13,8 @@ function isGitHubPages() {
 }
 
 async function request(path, options = {}) {
-  const { method = "GET", body, handleUnauthorized = true } = options;
-  if (isGitHubPages() && (path.startsWith("/auth") || path.startsWith("/products") || path.startsWith("/market") || path.startsWith("/tax") || path.startsWith("/fiscal"))) {
+  const { method = "GET", body, handleUnauthorized = true, signal } = options;
+  if (isGitHubPages() && (path.startsWith("/auth") || path.startsWith("/products") || path.startsWith("/market") || path.startsWith("/tax") || path.startsWith("/fiscal") || path.startsWith("/ai"))) {
     throw new ApiError(
       "Este endereço do GitHub Pages exibe apenas a interface. Abra a URL da aplicação no Render para criar ou acessar sua conta.",
       503,
@@ -30,8 +30,10 @@ async function request(path, options = {}) {
       credentials: "include",
       headers: body ? { "Content-Type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
+      signal,
     });
   } catch (error) {
+    if (signal?.aborted) throw error;
     console.error(`[api] Falha de rede em ${method} ${path}:`, error);
     throw new ApiError("Não foi possível conectar ao servidor.", 0);
   }

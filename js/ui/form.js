@@ -30,6 +30,70 @@ const FIELD_RULES = Object.freeze({
 export const PRICING_FIELD_IDS = Object.freeze(Object.keys(FIELD_RULES));
 export const CAPACITY_FIELD_IDS = Object.freeze(["workerCount", "productiveHoursPerWorkerMonth", "unitsPerWorkerHour"]);
 
+const ASSISTANT_TEXT_FIELDS = Object.freeze({
+  productName: 160, productDescription: 2000, marketQuery: 160,
+  taxRegime: 30, customerType: 30, operationPurpose: 30, cfop: 4, taxSituation: 4,
+  productOrigin: 20, originState: 2, destinationState: 2, countryOfOrigin: 80,
+});
+const ASSISTANT_NUMERIC_FIELDS = new Set([...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]);
+const ASSISTANT_DAY_FIELDS = new Set(["inventoryDays", "receivingDays", "paymentDays"]);
+const ASSISTANT_OPTIONS = Object.freeze({
+  taxRegime: ["simples-nacional", "lucro-presumido", "lucro-real", "mei", "outro"],
+  customerType: ["contribuinte", "nao-contribuinte", "consumidor-final"],
+  operationPurpose: ["venda", "revenda", "industrializacao", "consumo", "ativo", "outra"],
+  productOrigin: ["nacional", "importado"],
+});
+const ASSISTANT_STATES = new Set(["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"]);
+const assistantNumberFormatter = new Intl.NumberFormat("pt-BR", { useGrouping: false, maximumSignificantDigits: 21 });
+
+/** The assistant supplies display percentages (25), not calculator fractions (0.25). */
+export function validateAssistantFields(fields) {
+  if (!fields || typeof fields !== "object" || Array.isArray(fields)) throw new Error("AI_INVALID_RESPONSE");
+  const patch = {};
+  for (const [fieldId, value] of Object.entries(fields)) {
+    const numeric = ASSISTANT_NUMERIC_FIELDS.has(fieldId);
+    if (!numeric && !Object.hasOwn(ASSISTANT_TEXT_FIELDS, fieldId)) throw new Error("AI_INVALID_RESPONSE");
+    // Absence never clears an existing value. An explicit zero does.
+    if (value === null || value === undefined) continue;
+    if (numeric) {
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1_000_000_000) throw new Error("AI_INVALID_RESPONSE");
+      if (PERCENTAGE_FIELDS.has(fieldId) && value >= 100) throw new Error("AI_INVALID_RESPONSE");
+      if (ASSISTANT_DAY_FIELDS.has(fieldId) && value > 3650) throw new Error("AI_INVALID_RESPONSE");
+      if (fieldId === "workerCount" && (!Number.isInteger(value) || value > 1_000_000)) throw new Error("AI_INVALID_RESPONSE");
+      if (fieldId === "productiveHoursPerWorkerMonth" && value > 744) throw new Error("AI_INVALID_RESPONSE");
+      if (["marketPrice", "expectedMonthlyUnits"].includes(fieldId) && value === 0) throw new Error("AI_INVALID_RESPONSE");
+    } else if (typeof value !== "string" || !value.trim() || value.length > ASSISTANT_TEXT_FIELDS[fieldId]
+      || /[\u0000-\u001f<>]/u.test(value)) {
+      throw new Error("AI_INVALID_RESPONSE");
+    }
+    if (ASSISTANT_OPTIONS[fieldId] && !ASSISTANT_OPTIONS[fieldId].includes(value)) throw new Error("AI_INVALID_RESPONSE");
+    if (["originState", "destinationState"].includes(fieldId) && !ASSISTANT_STATES.has(value)) throw new Error("AI_INVALID_RESPONSE");
+    if (fieldId === "cfop" && !/^[1-7]\d{3}$/.test(value)) throw new Error("AI_INVALID_RESPONSE");
+    if (fieldId === "taxSituation" && !/^\d{2,4}$/.test(value)) throw new Error("AI_INVALID_RESPONSE");
+    patch[fieldId] = value;
+  }
+  if ((patch.discountRate || 0) > 0 && (patch.fixedDiscountAmount || 0) > 0) throw new Error("AI_INVALID_RESPONSE");
+  const rates = ["taxRate", "paymentFeeRate", "commissionRate", "desiredNetMargin"];
+  if (rates.reduce((sum, fieldId) => sum + (patch[fieldId] || 0), 0) >= 100) throw new Error("AI_INVALID_RESPONSE");
+  return patch;
+}
+
+/** Applies a partial update through the same real form controller used by saved inputs. */
+export function applyAssistantFields(fields, elements) {
+  const patch = validateAssistantFields(fields);
+  // Check every target before changing any field, including select options.
+  for (const [fieldId, value] of Object.entries(patch)) {
+    const control = elements[fieldId];
+    if (!control || (control.options && !Array.from(control.options).some((option) => option.value === value))) {
+      throw new Error("AI_INVALID_RESPONSE");
+    }
+  }
+  for (const [fieldId, value] of Object.entries(patch)) {
+    elements[fieldId].value = typeof value === "number" ? assistantNumberFormatter.format(value) : value;
+  }
+  return Object.keys(patch);
+}
+
 export function parseBrazilianNumber(rawValue) {
   const value = String(rawValue ?? "").trim().replace(/\s/g, "");
   if (value === "") return { status: "empty", value: null };

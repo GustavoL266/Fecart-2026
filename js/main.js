@@ -6,7 +6,9 @@ import { TaxService, marketTaxError, marketTaxPrerequisiteError } from "./servic
 import { normalizeProductForFiscalSearch, isRelevantFiscalNcm, normalizeNcmDescription } from "./domain/fiscal-classification.js";
 import { normalizeFiscalState } from "./domain/fiscal-context.js";
 import { clearMarketReference, loadMarketReference, saveMarketReference } from "./services/market-reference-store.js";
-import { applySavedInputs, CAPACITY_FIELD_IDS, clearPricingInputs, migrateLegacyV5Inputs, PRICING_FIELD_IDS, renderPricingErrors, validatePricingForm } from "./ui/form.js";
+import { applyAssistantFields, applySavedInputs, CAPACITY_FIELD_IDS, clearPricingInputs, migrateLegacyV5Inputs, PRICING_FIELD_IDS, renderPricingErrors, validatePricingForm } from "./ui/form.js";
+import { createAiAssistant } from "./ui/ai-assistant.js";
+import { financialValueSize } from "./utils/formatters.js";
 import { renderDashboard, renderIncompleteDashboard } from "./ui/dashboard.js";
 import { renderProductDetails, renderProductsList } from "./ui/history.js";
 import { createPricingTabs } from "./ui/pricing-tabs.js";
@@ -55,6 +57,56 @@ let marketSearchRevision = 0;
 let ncmLookupRevision = 0;
 let ncmSearchRevision = 0;
 let ncmSearchState = emptyNcmSearchState();
+const aiAssistant = createAiAssistant({
+  dialog: $("#aiAssistantDialog"),
+  openButtons: document.querySelectorAll("[data-ai-open]"),
+  parse: (message, options) => api.post("/ai/parse-pricing", { message }, options),
+  hasSession: () => Boolean(state.user),
+  onApply: applyAiPricingFields,
+  onSearchMarket: () => {
+    pricingTabs.activate("market");
+    void searchMarket();
+  },
+});
+
+function applyAiPricingFields(fields) {
+  const previousOrigin = elements.productOrigin.value;
+  const changedFields = applyAssistantFields(fields, {
+    ...elements,
+    productName: $("#productName"),
+    productDescription: $("#productDescription"),
+    marketQuery: $("#marketQuery"),
+  });
+  changedFields.forEach((fieldId) => touchedPricingFields.add(fieldId));
+  // Preserve the same dependent state transitions as a manual form edit.
+  if (changedFields.includes("productOrigin") && elements.productOrigin.value !== previousOrigin) {
+    if (!changedFields.includes("originState")) elements.originState.value = "";
+    if (!changedFields.includes("countryOfOrigin")) elements.countryOfOrigin.value = "";
+    marketState = { ...marketState, tax: emptyMarketTaxState() };
+  }
+  state.countryOfOrigin = normalizeCountryOfOrigin(elements.countryOfOrigin.value);
+  if (changedFields.includes("marketPrice")) updateManualMarketValue();
+  if (changedFields.includes("cfop") || changedFields.includes("taxSituation")) {
+    document.querySelector(".fiscal-advanced-fields")?.setAttribute("open", "");
+  }
+  render();
+  const marketOnly = changedFields.length === 1 && changedFields[0] === "marketQuery";
+  const message = marketOnly
+    ? "Busca preparada. Clique em Pesquisar no mercado para consultar os preços reais."
+    : validatePricingForm(elements).isValid
+      ? "Informações aplicadas. O simulador recalculou os resultados com suas fórmulas atuais."
+      : "Informações aplicadas. Complete os demais campos obrigatórios para o simulador calcular o resultado.";
+  setMessage($("#saveProductStatus"), message, true);
+  return fields.marketQuery && !marketOnly ? `${message} A busca de mercado também está pronta para pesquisar.` : message;
+}
+
+function updateManualMarketValue() {
+  touchedPricingFields.add("marketPrice");
+  marketState = { ...marketState, selectedItem: null };
+  manualMarketValue = elements.marketPrice.value;
+  elements.marketReferenceRule.value = "manual";
+  clearMarketReference(window.sessionStorage);
+}
 
 function applyTheme(theme, persist = true) {
   const normalizedTheme = theme === "dark" ? "dark" : "light";
@@ -338,6 +390,7 @@ function render() {
   renderNcmState();
   renderMarketTaxContextStatus();
   $("#mobileSuggestedPrice").textContent = $("#suggestedPrice").textContent;
+  $("#mobileSuggestedPrice").setAttribute("data-financial-size", financialValueSize($("#mobileSuggestedPrice").textContent));
   pricingTabs.updateCompletion();
 }
 
@@ -612,6 +665,7 @@ function setAuthenticatedUser(user, taxAvailability = null) {
 }
 
 function clearAuthenticatedState() {
+  aiAssistant.invalidate();
   state.user = null;
   state.products = [];
   state.selectedProduct = null;
@@ -770,6 +824,7 @@ function restoreMarketReferenceFromSession() {
 }
 
 function resetCurrentProductForm() {
+  aiAssistant.invalidate();
   // Invalida somente respostas locais pendentes; não inicia chamadas externas.
   marketSearchRevision += 1;
   ncmLookupRevision += 1;
@@ -919,6 +974,7 @@ async function getProduct(id) {
 }
 
 function reuseProduct(product) {
+  aiAssistant.invalidate();
   // Nunca deixa valores da simulação anterior sobreviverem a campos ausentes.
   clearPricingInputs(elements);
   elements.productOrigin.value = "";
@@ -1152,11 +1208,7 @@ $("#ncmSuggestions").addEventListener("click", (event) => {
 $("#ncmChangeButton").addEventListener("click", () => resetNcmClassification({ focusInput: true }));
 
 elements.marketPrice.addEventListener("input", () => {
-  touchedPricingFields.add("marketPrice");
-  marketState = { ...marketState, selectedItem: null };
-  manualMarketValue = elements.marketPrice.value;
-  elements.marketReferenceRule.value = "manual";
-  clearMarketReference(window.sessionStorage);
+  updateManualMarketValue();
   render();
 });
 

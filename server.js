@@ -7,7 +7,9 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
-import { getConfig, getFocusNfeConfig, getSearchApiConfig, marketHealth } from "./lib/config.js";
+import { getConfig, getFocusNfeConfig, getSearchApiConfig, getAiAssistantConfig, marketHealth } from "./lib/config.js";
+import { createAiFormProvider } from "./lib/ai-form-assistant.js";
+import { createAiPricingRouter, handleAiRequestError } from "./lib/ai-pricing-route.js";
 import { pool, verifyDatabase } from "./lib/database.js";
 import { runMarketSearch } from "./lib/market-search.js";
 import { createSearchApiMarketProvider, searchApiErrorForClient, SearchApiError, redactSearchApiSensitiveData } from "./lib/searchapi-market-provider.js";
@@ -26,6 +28,7 @@ const focusNfeClient = focusNfeConfig.isConfigured ? createFocusNFeClient(focusN
 const taxProvider = createIbptTaxProvider({ filePath: resolve(projectRoot, "data", "ibpt", "TabelaIBPTaxSP26.2.A.csv") });
 const searchApiConfig = getSearchApiConfig();
 const marketProvider = searchApiConfig.isConfigured ? createSearchApiMarketProvider(searchApiConfig) : null;
+const aiProvider = createAiFormProvider(getAiAssistantConfig());
 const app = express();
 const PgSession = connectPgSimple(session);
 
@@ -256,6 +259,8 @@ app.get("/market/search", requireAuth, marketSearchLimiter, async (req, res, nex
   }
 });
 
+app.use("/ai", createAiPricingRouter({ requireAuth, provider: aiProvider }));
+
 app.get("/fiscal/ncms/search", requireAuth, fiscalLookupLimiter, async (req, res, next) => {
   try {
     const input = validate(ncmSearchSchema, req.query, { code: "INVALID_NCM_QUERY" });
@@ -442,6 +447,7 @@ app.delete("/products/:id", requireAuth, async (req, res, next) => {
 
 app.get(["/", "/index.html"], (req, res) => res.sendFile(resolve(projectRoot, "index.html")));
 app.get("/styles.css", (req, res) => res.sendFile(resolve(projectRoot, "styles.css")));
+app.get("/ai-assistant.css", (req, res) => res.sendFile(resolve(projectRoot, "ai-assistant.css")));
 app.get("/favicon.svg", (req, res) => res.sendFile(resolve(projectRoot, "favicon.svg")));
 app.get("/theme-init.js", (req, res) => res.sendFile(resolve(projectRoot, "theme-init.js")));
 app.get("/file-protocol-redirect.js", (req, res) => res.sendFile(resolve(projectRoot, "file-protocol-redirect.js")));
@@ -450,6 +456,8 @@ app.get("/app.js", (req, res) => res.sendFile(resolve(projectRoot, "app.js")));
 function isDatabaseError(error) {
   return ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "28P01", "3D000", "57P01", "MIGRATIONS_PENDING"].includes(error.code);
 }
+
+app.use("/ai", handleAiRequestError);
 
 app.use((error, req, res, next) => {
   const safeLogMessage = error instanceof FocusNFeError

@@ -1,4 +1,4 @@
-import { currency, escapeHtml, percent } from "../utils/formatters.js";
+import { currency, escapeHtml, financialValueSize, percent, setFinancialValue } from "../utils/formatters.js";
 
 function money(value) { return value === null || value === undefined ? "—" : currency.format(value); }
 
@@ -20,25 +20,25 @@ function renderComposition(document, result) {
     const size = share * 100;
     return { cursor: cursor + size, markup: `${markup}<circle class="donut-segment donut-segment-${index + 1}" cx="60" cy="60" r="48" pathLength="100" stroke-dasharray="${size.toFixed(4)} ${(100 - size).toFixed(4)}" stroke-dashoffset="${(-cursor).toFixed(4)}"></circle>` };
   }, { markup: "", cursor: 0 }).markup;
-  document.querySelector("#priceCompositionLegend").innerHTML = components.map((item, index) => `<li><span class="chart-legend-color chart-legend-color-${index + 1}"></span><span>${escapeHtml(item.label)}</span><strong class="financial-value">${money(item.value)}</strong><small>${percent(total ? item.value / total : 0)}</small></li>`).join("");
+  document.querySelector("#priceCompositionLegend").innerHTML = components.map((item, index) => `<li><span class="chart-legend-color chart-legend-color-${index + 1}"></span><span>${escapeHtml(item.label)}</span><strong class="financial-value" data-financial-size="${financialValueSize(money(item.value))}">${money(item.value)}</strong><small>${percent(total ? item.value / total : 0)}</small></li>`).join("");
 }
 
 export function renderPriceDetails(document, result, alertCount) {
-  document.querySelector("#detailSuggestedPrice").textContent = money(result.technicalPrice);
-  document.querySelector("#detailDonutPrice").textContent = money(result.technicalPrice);
-  document.querySelector("#detailBaseCost").textContent = money(result.totalUnitCost);
+  setFinancialValue(document.querySelector("#detailSuggestedPrice"), money(result.technicalPrice));
+  setFinancialValue(document.querySelector("#detailDonutPrice"), money(result.technicalPrice));
+  setFinancialValue(document.querySelector("#detailBaseCost"), money(result.totalUnitCost));
   document.querySelector("#detailSalesRate").textContent = percent(result.saleExpenseRate);
-  document.querySelector("#detailProfit").textContent = money(result.profitAmount);
+  setFinancialValue(document.querySelector("#detailProfit"), money(result.profitAmount));
   document.querySelector("#detailMargin").textContent = percent(result.actualNetMargin);
-  document.querySelector("#detailMarketPrice").textContent = money(result.market.price);
-  document.querySelector("#detailMarketCostLimit").textContent = result.market.difference === null ? "—" : money(result.market.difference);
+  setFinancialValue(document.querySelector("#detailMarketPrice"), money(result.market.price));
+  setFinancialValue(document.querySelector("#detailMarketCostLimit"), money(result.market.difference));
   document.querySelector("#detailAlertCount").textContent = `${alertCount} ${alertCount === 1 ? "ponto de atenção" : "pontos de atenção"}`;
   document.querySelector("#detailMarketNarrative").textContent = result.market.price
     ? `Referência ${result.market.rule}: ${money(result.market.price)}. Diferença para o preço técnico: ${money(result.market.difference)} (${percent(result.market.differenceRate)}).`
     : "Não há referência de mercado. Isso não bloqueia o preço técnico.";
   document.querySelector("#priceComparisonBars").innerHTML = [
     ["Custo total", result.totalUnitCost], ["Preço técnico", result.technicalPrice], ["Mercado", result.market.price],
-  ].filter(([, value]) => value !== null).map(([label, value]) => `<li><div><span>${label}</span><strong class="financial-value">${money(value)}</strong></div></li>`).join("");
+  ].filter(([, value]) => value !== null).map(([label, value]) => `<li><div><span>${label}</span><strong class="financial-value" data-financial-size="${financialValueSize(money(value))}">${money(value)}</strong></div></li>`).join("");
   renderComposition(document, result);
 }
 

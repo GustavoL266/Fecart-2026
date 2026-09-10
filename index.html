@@ -7,6 +7,7 @@
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <script src="theme-init.js"></script>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="ai-assistant.css" />
   </head>
   <body>
     <div id="bootScreen" class="boot-screen" role="status">Carregando sua sessão…</div>
@@ -143,6 +144,10 @@
             </div>
             <p class="sidebar-description">Preencha os dados abaixo para calcular seu preço sustentável.</p>
           </header>
+
+          <div class="ai-assistant-shortcut">
+            <button type="button" class="ai-assistant-open" data-ai-open aria-haspopup="dialog" aria-controls="aiAssistantDialog"><span aria-hidden="true">✦</span> Preencher com IA</button>
+          </div>
 
           <section class="mobile-pricing-progress" aria-live="polite" aria-label="Progresso da precificação">
             <div class="mobile-pricing-progress-copy">
@@ -791,6 +796,34 @@
         <aside class="about-disclaimer"><span aria-hidden="true">i</span><div><strong>Aviso importante</strong><p>O sistema auxilia, estima e apoia a decisão — não garante um preço ideal. Informações fiscais devem ser conferidas conforme a situação da empresa e, quando necessário, com contador ou profissional especializado.</p></div></aside>
       </main>
     </section>
+
+    <dialog id="aiAssistantDialog" class="modal-dialog ai-assistant-dialog" aria-labelledby="aiAssistantTitle" aria-describedby="aiAssistantDescription">
+      <div class="dialog-header">
+        <div>
+          <p class="eyebrow">Assistente IA</p>
+          <h2 id="aiAssistantTitle">Assistente de precificação</h2>
+        </div>
+        <button type="button" class="icon-button" data-ai-close aria-label="Fechar assistente">×</button>
+      </div>
+      <p id="aiAssistantDescription" class="ai-assistant-description">Conte sobre seu produto e eu preencho o simulador para você.</p>
+      <form data-ai-form>
+        <label for="aiAssistantMessage">Descreva o produto e seus custos</label>
+        <textarea id="aiAssistantMessage" data-ai-message rows="5" maxlength="4000" placeholder="Ex.: Quero vender brigadeiros. Gasto R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens e quero margem de 30%." aria-describedby="aiAssistantHint" autocomplete="off"></textarea>
+        <p id="aiAssistantHint" class="helper-text">Você também pode pedir: “Mude minha margem para 20%”. Confira os dados antes de aplicar. Os campos não mencionados serão mantidos.</p>
+        <button type="submit" data-ai-analyze disabled>Analisar informações</button>
+      </form>
+      <p data-ai-status class="ai-assistant-status" role="status" aria-live="polite" hidden></p>
+      <section data-ai-preview class="ai-assistant-preview" aria-labelledby="aiAssistantPreviewTitle" hidden>
+        <h3 id="aiAssistantPreviewTitle">Encontrei estas informações:</h3>
+        <dl data-ai-fields class="ai-assistant-fields"></dl>
+        <p class="helper-text">Ao aplicar, o simulador usa suas fórmulas atuais para recalcular. Complete os demais campos obrigatórios caso estejam vazios.</p>
+      </section>
+      <div class="ai-assistant-actions">
+        <button type="button" data-ai-apply hidden disabled>Aplicar ao simulador</button>
+        <button type="button" data-ai-search hidden>Pesquisar no mercado</button>
+        <button type="button" data-ai-cancel class="secondary-button">Cancelar</button>
+      </div>
+    </dialog>
 
     <dialog id="productDialog" class="modal-dialog" aria-labelledby="productDialogTitle">
       <div class="dialog-header">

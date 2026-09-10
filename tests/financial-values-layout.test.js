@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { currency, financialValueSize, setFinancialValue } from "../js/utils/formatters.js";
 
 const [html, styles, dashboard, detailPages] = await Promise.all([
   readFile(new URL("../index.html", import.meta.url), "utf8"),
@@ -51,9 +52,30 @@ test("a tipografia financeira usa o tamanho do container e reserva mais espaço 
   assert.match(styles, /\.dashboard-summary-grid,[\s\S]*\.primary-price-cell,[\s\S]*min-width:\s*0/);
 });
 
-test("formatos monetários grandes continuam sendo tratados como uma única unidade visual", () => {
-  ["R$ 32,00", "R$ 999,99", "R$ 9.999,99", "R$ 25.287,10", "R$ 99.999,99", "R$ 999.999,99", "R$ 9.999.999,99"].forEach((value) => {
-    assert.equal(value.includes("\n"), false);
-    assert.match(value, /^R\$ [\d.]+,\d{2}$/);
-  });
+test("valores grandes reduzem a faixa tipográfica e conservam o texto completo", () => {
+  const values = [32, 999.99, 9999.99, 25287.1, 99999.99, 999999.99, 9999999.99];
+  const sizes = values.map((value) => financialValueSize(currency.format(value)));
+  assert.equal(sizes[0], "short");
+  assert.equal(sizes.at(-1), "extra-long");
+  assert.ok(new Set(sizes).size >= 4, "valores curtos e longos precisam de faixas diferentes");
+
+  for (const value of [...values, -9999999.99]) {
+    const formatted = currency.format(value);
+    const attributes = new Map();
+    const node = { textContent: "", setAttribute: (name, content) => attributes.set(name, content) };
+    setFinancialValue(node, formatted);
+    assert.equal(node.textContent, formatted);
+    assert.equal(attributes.get("data-financial-size"), financialValueSize(formatted));
+  }
+  assert.match(styles, /data-financial-size="short"[^\n]*18cqi/);
+  assert.match(styles, /data-financial-size="extra-long"[^\n]*9cqi/);
+  assert.doesNotMatch(styles, /#suggestedPrice\s*{[^}]*font-size:/, "uma regra legada com ID não pode sobrepor a tipografia pelo container");
+});
+
+test("cards estreitos reorganizam valores e não dependem de containers sem largura", () => {
+  assert.match(styles, /repeat\(auto-fit, minmax\(min\(100%, 9\.5rem\), 1fr\)\)/);
+  assert.match(styles, /\.mobile-price-summary > div\s*{\s*flex: 1 1 0;/);
+  assert.match(styles, /\.price-donut > div\s*{\s*width: 64%;/);
+  assert.match(styles, /\.market-tax-breakdown dl > div\s*{\s*flex-wrap: wrap;/);
+  assert.match(dashboard, /Tributos estimados<\/dt><dd class="financial-value" data-financial-size=/);
 });

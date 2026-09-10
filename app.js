@@ -13,6 +13,22 @@ const currency = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
 });
 
+// Presentation only: pick a CSS size from the complete, already formatted value.
+function financialValueSize(text) {
+  const length = String(text).length;
+  if (length <= 8) return "short";
+  if (length <= 10) return "medium";
+  if (length <= 12) return "long";
+  if (length <= 15) return "extra-long";
+  if (length <= 20) return "extended";
+  return "maximal";
+}
+
+function setFinancialValue(node, text) {
+  node.textContent = text;
+  node.setAttribute("data-financial-size", financialValueSize(text));
+}
+
 function percent(value) {
   return `${(value * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 }
@@ -621,8 +637,8 @@ function isGitHubPages() {
 }
 
 async function request(path, options = {}) {
-  const { method = "GET", body, handleUnauthorized = true } = options;
-  if (isGitHubPages() && (path.startsWith("/auth") || path.startsWith("/products") || path.startsWith("/market") || path.startsWith("/tax") || path.startsWith("/fiscal"))) {
+  const { method = "GET", body, handleUnauthorized = true, signal } = options;
+  if (isGitHubPages() && (path.startsWith("/auth") || path.startsWith("/products") || path.startsWith("/market") || path.startsWith("/tax") || path.startsWith("/fiscal") || path.startsWith("/ai"))) {
     throw new ApiError(
       "Este endereço do GitHub Pages exibe apenas a interface. Abra a URL da aplicação no Render para criar ou acessar sua conta.",
       503,
@@ -638,8 +654,10 @@ async function request(path, options = {}) {
       credentials: "include",
       headers: body ? { "Content-Type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
+      signal,
     });
   } catch (error) {
+    if (signal?.aborted) throw error;
     console.error(`[api] Falha de rede em ${method} ${path}:`, error);
     throw new ApiError("Não foi possível conectar ao servidor.", 0);
   }
@@ -799,6 +817,70 @@ const FIELD_RULES = Object.freeze({
 
 const PRICING_FIELD_IDS = Object.freeze(Object.keys(FIELD_RULES));
 const CAPACITY_FIELD_IDS = Object.freeze(["workerCount", "productiveHoursPerWorkerMonth", "unitsPerWorkerHour"]);
+
+const ASSISTANT_TEXT_FIELDS = Object.freeze({
+  productName: 160, productDescription: 2000, marketQuery: 160,
+  taxRegime: 30, customerType: 30, operationPurpose: 30, cfop: 4, taxSituation: 4,
+  productOrigin: 20, originState: 2, destinationState: 2, countryOfOrigin: 80,
+});
+const ASSISTANT_NUMERIC_FIELDS = new Set([...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]);
+const ASSISTANT_DAY_FIELDS = new Set(["inventoryDays", "receivingDays", "paymentDays"]);
+const ASSISTANT_OPTIONS = Object.freeze({
+  taxRegime: ["simples-nacional", "lucro-presumido", "lucro-real", "mei", "outro"],
+  customerType: ["contribuinte", "nao-contribuinte", "consumidor-final"],
+  operationPurpose: ["venda", "revenda", "industrializacao", "consumo", "ativo", "outra"],
+  productOrigin: ["nacional", "importado"],
+});
+const ASSISTANT_STATES = new Set(["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"]);
+const assistantNumberFormatter = new Intl.NumberFormat("pt-BR", { useGrouping: false, maximumSignificantDigits: 21 });
+
+/** The assistant supplies display percentages (25), not calculator fractions (0.25). */
+function validateAssistantFields(fields) {
+  if (!fields || typeof fields !== "object" || Array.isArray(fields)) throw new Error("AI_INVALID_RESPONSE");
+  const patch = {};
+  for (const [fieldId, value] of Object.entries(fields)) {
+    const numeric = ASSISTANT_NUMERIC_FIELDS.has(fieldId);
+    if (!numeric && !Object.hasOwn(ASSISTANT_TEXT_FIELDS, fieldId)) throw new Error("AI_INVALID_RESPONSE");
+    // Absence never clears an existing value. An explicit zero does.
+    if (value === null || value === undefined) continue;
+    if (numeric) {
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1_000_000_000) throw new Error("AI_INVALID_RESPONSE");
+      if (PERCENTAGE_FIELDS.has(fieldId) && value >= 100) throw new Error("AI_INVALID_RESPONSE");
+      if (ASSISTANT_DAY_FIELDS.has(fieldId) && value > 3650) throw new Error("AI_INVALID_RESPONSE");
+      if (fieldId === "workerCount" && (!Number.isInteger(value) || value > 1_000_000)) throw new Error("AI_INVALID_RESPONSE");
+      if (fieldId === "productiveHoursPerWorkerMonth" && value > 744) throw new Error("AI_INVALID_RESPONSE");
+      if (["marketPrice", "expectedMonthlyUnits"].includes(fieldId) && value === 0) throw new Error("AI_INVALID_RESPONSE");
+    } else if (typeof value !== "string" || !value.trim() || value.length > ASSISTANT_TEXT_FIELDS[fieldId]
+      || /[\u0000-\u001f<>]/u.test(value)) {
+      throw new Error("AI_INVALID_RESPONSE");
+    }
+    if (ASSISTANT_OPTIONS[fieldId] && !ASSISTANT_OPTIONS[fieldId].includes(value)) throw new Error("AI_INVALID_RESPONSE");
+    if (["originState", "destinationState"].includes(fieldId) && !ASSISTANT_STATES.has(value)) throw new Error("AI_INVALID_RESPONSE");
+    if (fieldId === "cfop" && !/^[1-7]\d{3}$/.test(value)) throw new Error("AI_INVALID_RESPONSE");
+    if (fieldId === "taxSituation" && !/^\d{2,4}$/.test(value)) throw new Error("AI_INVALID_RESPONSE");
+    patch[fieldId] = value;
+  }
+  if ((patch.discountRate || 0) > 0 && (patch.fixedDiscountAmount || 0) > 0) throw new Error("AI_INVALID_RESPONSE");
+  const rates = ["taxRate", "paymentFeeRate", "commissionRate", "desiredNetMargin"];
+  if (rates.reduce((sum, fieldId) => sum + (patch[fieldId] || 0), 0) >= 100) throw new Error("AI_INVALID_RESPONSE");
+  return patch;
+}
+
+/** Applies a partial update through the same real form controller used by saved inputs. */
+function applyAssistantFields(fields, elements) {
+  const patch = validateAssistantFields(fields);
+  // Check every target before changing any field, including select options.
+  for (const [fieldId, value] of Object.entries(patch)) {
+    const control = elements[fieldId];
+    if (!control || (control.options && !Array.from(control.options).some((option) => option.value === value))) {
+      throw new Error("AI_INVALID_RESPONSE");
+    }
+  }
+  for (const [fieldId, value] of Object.entries(patch)) {
+    elements[fieldId].value = typeof value === "number" ? assistantNumberFormatter.format(value) : value;
+  }
+  return Object.keys(patch);
+}
 
 function parseBrazilianNumber(rawValue) {
   const value = String(rawValue ?? "").trim().replace(/\s/g, "");
@@ -966,6 +1048,179 @@ function migrateLegacyV5Inputs(legacy = {}) {
 
 
 
+const AI_ASSISTANT_MESSAGES = Object.freeze({
+  insufficient: "Não consegui identificar informações suficientes. Tente informar custos, margem ou dados do produto.",
+  unavailable: "O assistente está temporariamente indisponível. Você ainda pode preencher os dados manualmente.",
+  invalid: "Não foi possível validar a resposta do assistente. Nenhum campo foi alterado. Tente novamente.",
+});
+
+function validateAssistantResponse(response) {
+  const fields = validateAssistantFields(response?.fields);
+  const fieldIds = Object.keys(fields);
+  if (!fieldIds.length) throw Object.assign(new Error(AI_ASSISTANT_MESSAGES.insufficient), { code: "AI_INSUFFICIENT_INFORMATION" });
+  if (!Array.isArray(response.summary) || response.summary.length !== fieldIds.length) throw new Error("AI_INVALID_RESPONSE");
+  const seen = new Set();
+  const summary = response.summary.map((item) => {
+    if (!item || !Object.hasOwn(fields, item.field) || seen.has(item.field)
+      || typeof item.label !== "string" || !item.label || item.label.length > 120
+      || typeof item.value !== "string" || !item.value || item.value.length > 2300) throw new Error("AI_INVALID_RESPONSE");
+    seen.add(item.field);
+    return { field: item.field, label: item.label, value: item.value };
+  });
+  return { fields, summary };
+}
+
+function assistantErrorMessage(error) {
+  const code = error?.code || error?.message;
+  if (code === "AI_INSUFFICIENT_INFORMATION") return AI_ASSISTANT_MESSAGES.insufficient;
+  if (code === "AI_INVALID_RESPONSE") return AI_ASSISTANT_MESSAGES.invalid;
+  if (code === "AI_RATE_LIMITED") return "Você fez várias análises em pouco tempo. Aguarde um minuto e tente novamente.";
+  if (code === "AI_REQUEST_IN_PROGRESS") return "Uma análise ainda está em andamento. Aguarde alguns instantes para tentar novamente.";
+  if (code === "INVALID_AI_REQUEST") return "Descreva seu produto em uma mensagem de até 4.000 caracteres.";
+  if (code === "SESSION_REQUIRED") return "Sua sessão expirou. Entre novamente para usar o assistente.";
+  return AI_ASSISTANT_MESSAGES.unavailable;
+}
+
+/** Manages a single ephemeral analysis. Only onApply is allowed to mutate pricing. */
+function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket, hasSession = () => true }) {
+  const select = (selector) => dialog.querySelector(selector);
+  const form = select("[data-ai-form]");
+  const textarea = select("[data-ai-message]");
+  const analyzeButton = select("[data-ai-analyze]");
+  const preview = select("[data-ai-preview]");
+  const fieldsList = select("[data-ai-fields]");
+  const status = select("[data-ai-status]");
+  const applyButton = select("[data-ai-apply]");
+  const searchButton = select("[data-ai-search]");
+  const cancelButton = select("[data-ai-cancel]");
+  let result = null;
+  let phase = "idle";
+  let revision = 0;
+  let abortController = null;
+
+  function update() {
+    const loading = phase === "loading";
+    form.setAttribute("aria-busy", String(loading));
+    textarea.readOnly = loading;
+    analyzeButton.disabled = loading || !textarea.value.trim();
+    analyzeButton.setAttribute("aria-busy", String(loading));
+    analyzeButton.textContent = loading ? "Analisando informações..." : "Analisar informações";
+    preview.hidden = phase !== "preview";
+    applyButton.hidden = phase !== "preview";
+    applyButton.disabled = phase !== "preview";
+    searchButton.hidden = phase !== "applied" || !result?.fields.marketQuery;
+    cancelButton.textContent = phase === "applied" ? "Fechar" : "Cancelar";
+  }
+
+  function clearAnalysis({ clearText = false } = {}) {
+    revision += 1;
+    abortController?.abort();
+    abortController = null;
+    result = null;
+    phase = "idle";
+    status.textContent = "";
+    status.hidden = true;
+    status.classList.remove("is-error", "is-success");
+    fieldsList.replaceChildren();
+    if (clearText) textarea.value = "";
+    update();
+  }
+
+  function close() {
+    clearAnalysis({ clearText: true });
+    if (dialog.open) dialog.close();
+  }
+
+  function open() {
+    if (!hasSession()) return;
+    clearAnalysis({ clearText: true });
+    if (!dialog.open) dialog.showModal();
+    textarea.focus();
+  }
+
+  function showStatus(message, kind = "") {
+    status.textContent = message;
+    status.hidden = false;
+    status.classList.toggle("is-error", kind === "error");
+    status.classList.toggle("is-success", kind === "success");
+  }
+
+  async function analyze(event) {
+    event?.preventDefault();
+    if (phase === "loading" || !dialog.open || !hasSession()) return;
+    const message = textarea.value.trim();
+    clearAnalysis();
+    if (!message || message.length > 4000) {
+      showStatus(message ? "Use até 4.000 caracteres na descrição." : AI_ASSISTANT_MESSAGES.insufficient, "error");
+      return;
+    }
+    phase = "loading";
+    const requestRevision = revision;
+    abortController = new AbortController();
+    showStatus("Analisando informações...");
+    update();
+    try {
+      const response = await parse(message, { signal: abortController.signal });
+      if (revision !== requestRevision || !dialog.open || !hasSession()) return;
+      result = validateAssistantResponse(response);
+      for (const item of result.summary) {
+        const row = dialog.ownerDocument.createElement("div");
+        const label = dialog.ownerDocument.createElement("dt");
+        const value = dialog.ownerDocument.createElement("dd");
+        label.textContent = item.label;
+        value.textContent = item.value;
+        row.append(label, value);
+        fieldsList.append(row);
+      }
+      phase = "preview";
+      status.hidden = true;
+      update();
+      applyButton.focus();
+    } catch (error) {
+      if (revision !== requestRevision || !dialog.open) return;
+      phase = "error";
+      showStatus(assistantErrorMessage(error), "error");
+      update();
+    } finally {
+      if (revision === requestRevision) abortController = null;
+    }
+  }
+
+  function apply() {
+    if (phase !== "preview" || !result || !dialog.open || !hasSession()) return;
+    try {
+      const message = onApply(result.fields);
+      phase = "applied";
+      showStatus(message || "Informações aplicadas. O simulador foi atualizado.", "success");
+      update();
+      (result.fields.marketQuery ? searchButton : cancelButton).focus();
+    } catch (error) {
+      result = null;
+      phase = "error";
+      showStatus(assistantErrorMessage(error), "error");
+      update();
+    }
+  }
+
+  openButtons.forEach((button) => button.addEventListener("click", open));
+  form.addEventListener("submit", analyze);
+  textarea.addEventListener("input", () => clearAnalysis());
+  applyButton.addEventListener("click", apply);
+  cancelButton.addEventListener("click", close);
+  select("[data-ai-close]").addEventListener("click", close);
+  dialog.addEventListener("cancel", (event) => { event.preventDefault(); close(); });
+  dialog.addEventListener("close", () => clearAnalysis({ clearText: true }));
+  searchButton.addEventListener("click", () => {
+    if (phase !== "applied" || !result?.fields.marketQuery || !hasSession()) return;
+    close();
+    onSearchMarket();
+  });
+  update();
+  return { open, close, invalidate: close };
+}
+
+
+
 function money(value) { return value === null || value === undefined ? "—" : currency.format(value); }
 
 function priceCompositionFrom(result) {
@@ -986,25 +1241,25 @@ function renderComposition(document, result) {
     const size = share * 100;
     return { cursor: cursor + size, markup: `${markup}<circle class="donut-segment donut-segment-${index + 1}" cx="60" cy="60" r="48" pathLength="100" stroke-dasharray="${size.toFixed(4)} ${(100 - size).toFixed(4)}" stroke-dashoffset="${(-cursor).toFixed(4)}"></circle>` };
   }, { markup: "", cursor: 0 }).markup;
-  document.querySelector("#priceCompositionLegend").innerHTML = components.map((item, index) => `<li><span class="chart-legend-color chart-legend-color-${index + 1}"></span><span>${escapeHtml(item.label)}</span><strong class="financial-value">${money(item.value)}</strong><small>${percent(total ? item.value / total : 0)}</small></li>`).join("");
+  document.querySelector("#priceCompositionLegend").innerHTML = components.map((item, index) => `<li><span class="chart-legend-color chart-legend-color-${index + 1}"></span><span>${escapeHtml(item.label)}</span><strong class="financial-value" data-financial-size="${financialValueSize(money(item.value))}">${money(item.value)}</strong><small>${percent(total ? item.value / total : 0)}</small></li>`).join("");
 }
 
 function renderPriceDetails(document, result, alertCount) {
-  document.querySelector("#detailSuggestedPrice").textContent = money(result.technicalPrice);
-  document.querySelector("#detailDonutPrice").textContent = money(result.technicalPrice);
-  document.querySelector("#detailBaseCost").textContent = money(result.totalUnitCost);
+  setFinancialValue(document.querySelector("#detailSuggestedPrice"), money(result.technicalPrice));
+  setFinancialValue(document.querySelector("#detailDonutPrice"), money(result.technicalPrice));
+  setFinancialValue(document.querySelector("#detailBaseCost"), money(result.totalUnitCost));
   document.querySelector("#detailSalesRate").textContent = percent(result.saleExpenseRate);
-  document.querySelector("#detailProfit").textContent = money(result.profitAmount);
+  setFinancialValue(document.querySelector("#detailProfit"), money(result.profitAmount));
   document.querySelector("#detailMargin").textContent = percent(result.actualNetMargin);
-  document.querySelector("#detailMarketPrice").textContent = money(result.market.price);
-  document.querySelector("#detailMarketCostLimit").textContent = result.market.difference === null ? "—" : money(result.market.difference);
+  setFinancialValue(document.querySelector("#detailMarketPrice"), money(result.market.price));
+  setFinancialValue(document.querySelector("#detailMarketCostLimit"), money(result.market.difference));
   document.querySelector("#detailAlertCount").textContent = `${alertCount} ${alertCount === 1 ? "ponto de atenção" : "pontos de atenção"}`;
   document.querySelector("#detailMarketNarrative").textContent = result.market.price
     ? `Referência ${result.market.rule}: ${money(result.market.price)}. Diferença para o preço técnico: ${money(result.market.difference)} (${percent(result.market.differenceRate)}).`
     : "Não há referência de mercado. Isso não bloqueia o preço técnico.";
   document.querySelector("#priceComparisonBars").innerHTML = [
     ["Custo total", result.totalUnitCost], ["Preço técnico", result.technicalPrice], ["Mercado", result.market.price],
-  ].filter(([, value]) => value !== null).map(([label, value]) => `<li><div><span>${label}</span><strong class="financial-value">${money(value)}</strong></div></li>`).join("");
+  ].filter(([, value]) => value !== null).map(([label, value]) => `<li><div><span>${label}</span><strong class="financial-value" data-financial-size="${financialValueSize(money(value))}">${money(value)}</strong></div></li>`).join("");
   renderComposition(document, result);
 }
 
@@ -1098,7 +1353,7 @@ function renderTaxedMaximumStat(marketState) {
     return '<div class="market-tax-stat is-loading"><span>Maior + tributos estimados</span><strong>—</strong><small>Calculando estimativa...</small></div>';
   }
   if (tax.status === "success") {
-    return `<div class="market-tax-stat is-success"><span>Maior + tributos estimados</span><strong class="financial-value">${dashboardMoney(tax.result.total)}</strong><dl class="market-tax-card-metrics"><div><dt>Carga tributária estimada</dt><dd>${taxPercent(tax.result.rates.total)}</dd></div><div><dt>Tributos estimados</dt><dd>${dashboardMoney(tax.result.estimatedTaxes)}</dd></div></dl><small>Fonte: ${escapeHtml(tax.result.source)} · Versão: ${escapeHtml(tax.result.version)}</small>${taxAction(tax.expanded ? "Ocultar estimativa" : "Ver estimativa", "data-toggle-market-taxes")}</div>`;
+    return `<div class="market-tax-stat is-success"><span>Maior + tributos estimados</span><strong class="financial-value" data-financial-size="${financialValueSize(dashboardMoney(tax.result.total))}">${dashboardMoney(tax.result.total)}</strong><dl class="market-tax-card-metrics"><div><dt>Carga tributária estimada</dt><dd>${taxPercent(tax.result.rates.total)}</dd></div><div><dt>Tributos estimados</dt><dd class="financial-value" data-financial-size="${financialValueSize(dashboardMoney(tax.result.estimatedTaxes))}">${dashboardMoney(tax.result.estimatedTaxes)}</dd></div></dl><small>Fonte: ${escapeHtml(tax.result.source)} · Versão: ${escapeHtml(tax.result.version)}</small>${taxAction(tax.expanded ? "Ocultar estimativa" : "Ver estimativa", "data-toggle-market-taxes")}</div>`;
   }
   if (tax.status === "error") {
     const tableUnavailable = ["IBPT_NOT_CONFIGURED", "IBPT_INVALID_FILE"].includes(tax.code);
@@ -1123,7 +1378,7 @@ function renderTaxDetails(marketState) {
   const originValue = isNational ? context.originState : context.countryOfOrigin;
   const destinationState = context.destinationState || "Não informada";
   const originSummary = isNational ? `UF origem: ${context.originState || "Não informada"}` : `País: ${context.countryOfOrigin || "Não informado"}`;
-  return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">IBPT / Empresômetro</p><h3 id="market-tax-breakdown-title">Estimativa tributária</h3></div><dl><div><dt>Maior</dt><dd class="financial-value">${dashboardMoney(tax.result.marketPrice)}</dd></div><div><dt>Alíquota federal</dt><dd>${taxPercent(tax.result.rates.federal)}</dd></div><div><dt>Alíquota estadual</dt><dd>${taxPercent(tax.result.rates.state)}</dd></div><div><dt>Alíquota municipal</dt><dd>${taxPercent(tax.result.rates.municipal)}</dd></div><div><dt>Carga tributária estimada</dt><dd>${taxPercent(tax.result.rates.total)}</dd></div><div><dt>Tributos estimados</dt><dd class="financial-value">${dashboardMoney(tax.result.estimatedTaxes)}</dd></div><div class="market-tax-total"><dt>Maior + tributos estimados</dt><dd class="financial-value">${dashboardMoney(tax.result.total)}</dd></div></dl><div class="market-tax-origin-section"><h4>Origem da mercadoria</h4><dl class="market-tax-origin-details"><div><dt>Origem do produto</dt><dd>${escapeHtml(origin)}</dd></div><div><dt>${originLabel}</dt><dd>${escapeHtml(originValue || "Não informada")}</dd></div><div><dt>UF de destino</dt><dd>${escapeHtml(destinationState)}</dd></div><div><dt>Fonte</dt><dd>${escapeHtml(tax.result.source)}</dd></div></dl></div><p>NCM ${escapeHtml(tax.result.ncm)} · Origem: ${escapeHtml(origin)} · ${escapeHtml(originSummary)} · UF destino: ${escapeHtml(destinationState)} · Versão: ${escapeHtml(tax.result.version)} · Vigência: ${escapeHtml(tax.result.validFrom)} a ${escapeHtml(tax.result.validTo)}</p></section>`;
+  return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">IBPT / Empresômetro</p><h3 id="market-tax-breakdown-title">Estimativa tributária</h3></div><dl><div><dt>Maior</dt><dd class="financial-value" data-financial-size="${financialValueSize(dashboardMoney(tax.result.marketPrice))}">${dashboardMoney(tax.result.marketPrice)}</dd></div><div><dt>Alíquota federal</dt><dd>${taxPercent(tax.result.rates.federal)}</dd></div><div><dt>Alíquota estadual</dt><dd>${taxPercent(tax.result.rates.state)}</dd></div><div><dt>Alíquota municipal</dt><dd>${taxPercent(tax.result.rates.municipal)}</dd></div><div><dt>Carga tributária estimada</dt><dd>${taxPercent(tax.result.rates.total)}</dd></div><div><dt>Tributos estimados</dt><dd class="financial-value" data-financial-size="${financialValueSize(dashboardMoney(tax.result.estimatedTaxes))}">${dashboardMoney(tax.result.estimatedTaxes)}</dd></div><div class="market-tax-total"><dt>Maior + tributos estimados</dt><dd class="financial-value" data-financial-size="${financialValueSize(dashboardMoney(tax.result.total))}">${dashboardMoney(tax.result.total)}</dd></div></dl><div class="market-tax-origin-section"><h4>Origem da mercadoria</h4><dl class="market-tax-origin-details"><div><dt>Origem do produto</dt><dd>${escapeHtml(origin)}</dd></div><div><dt>${originLabel}</dt><dd>${escapeHtml(originValue || "Não informada")}</dd></div><div><dt>UF de destino</dt><dd>${escapeHtml(destinationState)}</dd></div><div><dt>Fonte</dt><dd>${escapeHtml(tax.result.source)}</dd></div></dl></div><p>NCM ${escapeHtml(tax.result.ncm)} · Origem: ${escapeHtml(origin)} · ${escapeHtml(originSummary)} · UF destino: ${escapeHtml(destinationState)} · Versão: ${escapeHtml(tax.result.version)} · Vigência: ${escapeHtml(tax.result.validFrom)} a ${escapeHtml(tax.result.validTo)}</p></section>`;
 }
 
 function renderMarketPanel(document, marketState) {
@@ -1143,7 +1398,7 @@ function renderMarketPanel(document, marketState) {
   const selectedRating = Number.isFinite(selectedItem?.rating)
     ? ` · Nota ${selectedItem.rating.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}${Number.isInteger(selectedItem.reviews) ? ` (${selectedItem.reviews.toLocaleString("pt-BR")} avaliações)` : ""}`
     : "";
-  selected.innerHTML = selectedItem ? `<p class="eyebrow">Produto individual selecionado</p><h3>${escapeHtml(selectedItem.title)}</h3><strong class="financial-value">${dashboardMoney(selectedItem.price)}</strong><small>Loja: ${escapeHtml(selectedItem.seller || selectedItem.source)}${escapeHtml(selectedRating)}</small><small>Google Shopping · consulta de ${escapeHtml(selectedItem.consultedAt ? new Date(selectedItem.consultedAt).toLocaleString("pt-BR") : "agora")}</small><button type="button" class="secondary-button" data-change-market-reference>Remover seleção</button>` : "";
+  selected.innerHTML = selectedItem ? `<p class="eyebrow">Produto individual selecionado</p><h3>${escapeHtml(selectedItem.title)}</h3><strong class="financial-value" data-financial-size="${financialValueSize(dashboardMoney(selectedItem.price))}">${dashboardMoney(selectedItem.price)}</strong><small>Loja: ${escapeHtml(selectedItem.seller || selectedItem.source)}${escapeHtml(selectedRating)}</small><small>Google Shopping · consulta de ${escapeHtml(selectedItem.consultedAt ? new Date(selectedItem.consultedAt).toLocaleString("pt-BR") : "agora")}</small><button type="button" class="secondary-button" data-change-market-reference>Remover seleção</button>` : "";
   taxDetails.innerHTML = "";
   if (marketState.status === "loading") {
     sidebarStatus.textContent = "Buscando produtos no mercado…";
@@ -1181,7 +1436,7 @@ function renderMarketPanel(document, marketState) {
     ["Mediana", marketState.stats.median],
     ["Menor", marketState.stats.min],
     ["Maior", marketState.stats.max],
-  ].map(([label, value]) => `<div><span>${label}</span><strong class="financial-value">${dashboardMoney(value)}</strong></div>`).join("");
+  ].map(([label, value]) => `<div><span>${label}</span><strong class="financial-value" data-financial-size="${financialValueSize(dashboardMoney(value))}">${dashboardMoney(value)}</strong></div>`).join("");
   stats.innerHTML = `${standardStats}${renderTaxedMaximumStat(marketState)}`;
   taxDetails.innerHTML = renderTaxDetails(marketState);
   results.innerHTML = marketState.items.map((item) => {
@@ -1198,7 +1453,7 @@ function renderMarketPanel(document, marketState) {
     const action = isSelected
       ? '<button type="button" disabled aria-current="true">Referência selecionada</button>'
       : `<button type="button" data-market-select="${escapeHtml(item.id)}">Usar como referência</button>`;
-    return `<article class="market-result${isSelected ? " selected" : ""}">${image}${selection}<div class="market-result-content"><h4>${escapeHtml(item.title)}</h4><div class="market-result-price"><strong class="financial-value">${dashboardMoney(item.price)}</strong>${rating}</div><p>Loja: ${escapeHtml(item.seller || item.source)}</p></div><div class="market-actions">${action}<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver no Google Shopping</a></div></article>`;
+    return `<article class="market-result${isSelected ? " selected" : ""}">${image}${selection}<div class="market-result-content"><h4>${escapeHtml(item.title)}</h4><div class="market-result-price"><strong class="financial-value" data-financial-size="${financialValueSize(dashboardMoney(item.price))}">${dashboardMoney(item.price)}</strong>${rating}</div><p>Loja: ${escapeHtml(item.seller || item.source)}</p></div><div class="market-actions">${action}<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver no Google Shopping</a></div></article>`;
   }).join("");
 }
 
@@ -1215,14 +1470,15 @@ function renderIncompleteDashboard(document, marketState, errors) {
   document.querySelector("#alerts").innerHTML = "<div class=\"warning\">Corrija os campos indicados.</div>";
   document.querySelector("#fiscalSummary").innerHTML = "<p>O contexto fiscal será preservado sem inventar alíquotas.</p>";
   document.querySelector("#primaryMarketValue").hidden = true;
+  document.querySelector("#primaryPriceCard").classList.toggle("has-market-reference", false);
   renderMarketPanel(document, marketState);
   renderPriceDetailsUnavailable(document, count);
 }
 
 function renderDashboard(document, result, marketState, fiscalAssessment) {
   const market = result.market;
-  document.querySelector("#baseCost").textContent = dashboardMoney(result.totalUnitCost);
-  document.querySelector("#marketReferencePrice").textContent = dashboardMoney(market.price);
+  setFinancialValue(document.querySelector("#baseCost"), dashboardMoney(result.totalUnitCost));
+  setFinancialValue(document.querySelector("#marketReferencePrice"), dashboardMoney(market.price));
   document.querySelector("#marketTitle").textContent = marketLabel(market);
   const selectedReference = market.reference?.selectedProduct;
   document.querySelector("#marketReferenceDetails").textContent = market.price
@@ -1231,12 +1487,13 @@ function renderDashboard(document, result, marketState, fiscalAssessment) {
       : `Fonte: ${market.source || "não informada"}`
     : "Referência opcional não informada";
   document.querySelector("#marketPriceLabel").textContent = marketLabel(market);
-  document.querySelector("#suggestedPrice").textContent = dashboardMoney(result.technicalPrice);
-  document.querySelector("#profitPerSale").textContent = dashboardMoney(result.profitAmount);
+  setFinancialValue(document.querySelector("#suggestedPrice"), dashboardMoney(result.technicalPrice));
+  setFinancialValue(document.querySelector("#profitPerSale"), dashboardMoney(result.profitAmount));
   document.querySelector("#estimatedMargin").textContent = percent(result.actualNetMargin);
   const primaryMarketValue = document.querySelector("#primaryMarketValue");
   primaryMarketValue.hidden = !market.price;
-  document.querySelector("#primaryMarketPrice").textContent = dashboardMoney(market.price);
+  document.querySelector("#primaryPriceCard").classList.toggle("has-market-reference", Boolean(market.price));
+  setFinancialValue(document.querySelector("#primaryMarketPrice"), dashboardMoney(market.price));
   document.querySelector("#primaryMarketSource").textContent = market.price
     ? selectedReference
       ? `${selectedReference.title} · Loja: ${selectedReference.seller || selectedReference.source} · Google Shopping`
@@ -1677,6 +1934,56 @@ let marketSearchRevision = 0;
 let ncmLookupRevision = 0;
 let ncmSearchRevision = 0;
 let ncmSearchState = emptyNcmSearchState();
+const aiAssistant = createAiAssistant({
+  dialog: $("#aiAssistantDialog"),
+  openButtons: document.querySelectorAll("[data-ai-open]"),
+  parse: (message, options) => api.post("/ai/parse-pricing", { message }, options),
+  hasSession: () => Boolean(state.user),
+  onApply: applyAiPricingFields,
+  onSearchMarket: () => {
+    pricingTabs.activate("market");
+    void searchMarket();
+  },
+});
+
+function applyAiPricingFields(fields) {
+  const previousOrigin = elements.productOrigin.value;
+  const changedFields = applyAssistantFields(fields, {
+    ...elements,
+    productName: $("#productName"),
+    productDescription: $("#productDescription"),
+    marketQuery: $("#marketQuery"),
+  });
+  changedFields.forEach((fieldId) => touchedPricingFields.add(fieldId));
+  // Preserve the same dependent state transitions as a manual form edit.
+  if (changedFields.includes("productOrigin") && elements.productOrigin.value !== previousOrigin) {
+    if (!changedFields.includes("originState")) elements.originState.value = "";
+    if (!changedFields.includes("countryOfOrigin")) elements.countryOfOrigin.value = "";
+    marketState = { ...marketState, tax: emptyMarketTaxState() };
+  }
+  state.countryOfOrigin = normalizeCountryOfOrigin(elements.countryOfOrigin.value);
+  if (changedFields.includes("marketPrice")) updateManualMarketValue();
+  if (changedFields.includes("cfop") || changedFields.includes("taxSituation")) {
+    document.querySelector(".fiscal-advanced-fields")?.setAttribute("open", "");
+  }
+  render();
+  const marketOnly = changedFields.length === 1 && changedFields[0] === "marketQuery";
+  const message = marketOnly
+    ? "Busca preparada. Clique em Pesquisar no mercado para consultar os preços reais."
+    : validatePricingForm(elements).isValid
+      ? "Informações aplicadas. O simulador recalculou os resultados com suas fórmulas atuais."
+      : "Informações aplicadas. Complete os demais campos obrigatórios para o simulador calcular o resultado.";
+  setMessage($("#saveProductStatus"), message, true);
+  return fields.marketQuery && !marketOnly ? `${message} A busca de mercado também está pronta para pesquisar.` : message;
+}
+
+function updateManualMarketValue() {
+  touchedPricingFields.add("marketPrice");
+  marketState = { ...marketState, selectedItem: null };
+  manualMarketValue = elements.marketPrice.value;
+  elements.marketReferenceRule.value = "manual";
+  clearMarketReference(window.sessionStorage);
+}
 
 function applyTheme(theme, persist = true) {
   const normalizedTheme = theme === "dark" ? "dark" : "light";
@@ -1960,6 +2267,7 @@ function render() {
   renderNcmState();
   renderMarketTaxContextStatus();
   $("#mobileSuggestedPrice").textContent = $("#suggestedPrice").textContent;
+  $("#mobileSuggestedPrice").setAttribute("data-financial-size", financialValueSize($("#mobileSuggestedPrice").textContent));
   pricingTabs.updateCompletion();
 }
 
@@ -2234,6 +2542,7 @@ function setAuthenticatedUser(user, taxAvailability = null) {
 }
 
 function clearAuthenticatedState() {
+  aiAssistant.invalidate();
   state.user = null;
   state.products = [];
   state.selectedProduct = null;
@@ -2392,6 +2701,7 @@ function restoreMarketReferenceFromSession() {
 }
 
 function resetCurrentProductForm() {
+  aiAssistant.invalidate();
   // Invalida somente respostas locais pendentes; não inicia chamadas externas.
   marketSearchRevision += 1;
   ncmLookupRevision += 1;
@@ -2541,6 +2851,7 @@ async function getProduct(id) {
 }
 
 function reuseProduct(product) {
+  aiAssistant.invalidate();
   // Nunca deixa valores da simulação anterior sobreviverem a campos ausentes.
   clearPricingInputs(elements);
   elements.productOrigin.value = "";
@@ -2774,11 +3085,7 @@ $("#ncmSuggestions").addEventListener("click", (event) => {
 $("#ncmChangeButton").addEventListener("click", () => resetNcmClassification({ focusInput: true }));
 
 elements.marketPrice.addEventListener("input", () => {
-  touchedPricingFields.add("marketPrice");
-  marketState = { ...marketState, selectedItem: null };
-  manualMarketValue = elements.marketPrice.value;
-  elements.marketReferenceRule.value = "manual";
-  clearMarketReference(window.sessionStorage);
+  updateManualMarketValue();
   render();
 });
 

@@ -16,6 +16,7 @@ const sourceFiles = [
   "js/services/tax-service.js",
   "js/services/market-reference-store.js",
   "js/ui/form.js",
+  "js/ui/ai-assistant.js",
   "js/ui/detail-pages.js",
   "js/ui/dashboard.js",
   "js/ui/history.js",

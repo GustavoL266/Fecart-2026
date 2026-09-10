@@ -439,10 +439,6 @@ input[type="range"] {
   margin-bottom: 12px;
 }
 
-#suggestedPrice {
-  font-size: clamp(2.4rem, 5vw, 4.3rem);
-}
-
 .confidence {
   border-radius: 999px;
   padding: 8px 10px;
@@ -3244,10 +3240,6 @@ tr:last-child td {
     margin-bottom: 16px;
   }
 
-  #suggestedPrice {
-    font-size: clamp(2.35rem, 14vw, 3.3rem);
-  }
-
   .confidence {
     width: fit-content;
     white-space: normal;
@@ -4083,7 +4075,7 @@ tr:last-child td {
   grid-column: 1 / -1;
 }
 
-.summary-card-primary.has-market-reference + .summary-card {
+.summary-card-primary.has-market-reference ~ .summary-card {
   grid-column: span 6;
   min-height: 238px;
 }
@@ -4574,6 +4566,7 @@ tr:last-child td {
   .summary-card,
   .summary-card-primary,
   .summary-card-primary + .summary-card,
+  .summary-card-primary.has-market-reference ~ .summary-card,
   .summary-card-alerts {
     grid-column: 1 / -1;
     min-height: 0;
@@ -4796,7 +4789,7 @@ tr:last-child td {
   .mobile-menu-toggle span, .pricing-tab-panel.is-active { transition: none; animation: none; }
 }
 
-/* Valores financeiros são indicadores, não texto corrido: nunca quebram no meio. */
+/* A largura do card e o comprimento do texto definem apenas a apresentação do valor. */
 :where(
   .primary-price-cell,
   .summary-card,
@@ -4827,6 +4820,7 @@ tr:last-child td {
   .market-stats > div,
   .market-tax-card-metrics,
   .market-tax-card-metrics > div,
+  .market-tax-card-metrics dd,
   .market-result-content,
   .market-result-price,
   .detail-metric-grid,
@@ -4853,17 +4847,24 @@ tr:last-child td {
   letter-spacing: -0.045em;
 }
 
+.financial-value[data-financial-size="short"] { --financial-fit: 18cqi; }
+.financial-value[data-financial-size="medium"] { --financial-fit: 14cqi; }
+.financial-value[data-financial-size="long"] { --financial-fit: 11.5cqi; }
+.financial-value[data-financial-size="extra-long"] { --financial-fit: 9cqi; }
+.financial-value[data-financial-size="extended"] { --financial-fit: 6cqi; }
+.financial-value[data-financial-size="maximal"] { --financial-fit: 3cqi; }
+
 .primary-price-cell > .financial-value {
-  font-size: clamp(0.8rem, 9cqi, 4rem);
+  font-size: clamp(0.72rem, var(--financial-fit, 9cqi), 4rem);
 }
 
 .primary-price-sustainable .summary-value.financial-value {
   margin: 0;
-  font-size: clamp(0.85rem, 9cqi, 4rem);
+  font-size: clamp(0.72rem, var(--financial-fit, 9cqi), 4rem);
 }
 
 .summary-value.financial-value {
-  font-size: clamp(0.8rem, 8.5cqi, 2.9rem);
+  font-size: clamp(0.72rem, var(--financial-fit, 8.5cqi), 2.9rem);
 }
 
 .market-dashboard-section .market-stats .financial-value,
@@ -4872,25 +4873,111 @@ tr:last-child td {
 .selected-market-product .financial-value,
 .metric-card .financial-value,
 .market-tax-breakdown .financial-value {
-  font-size: clamp(0.72rem, 8cqi, 1.8rem);
+  font-size: clamp(0.72rem, var(--financial-fit, 8cqi), 1.8rem);
+}
+
+.market-dashboard-section .market-tax-card-metrics .financial-value {
+  font-size: clamp(0.65rem, var(--financial-fit, 8cqi), 0.9rem);
 }
 
 .detail-hero > div:first-child > .financial-value {
-  font-size: clamp(0.9rem, 8.5cqi, 5rem);
+  font-size: clamp(0.72rem, var(--financial-fit, 8.5cqi), 5rem);
 }
 
 .price-donut .financial-value,
 .comparison-footer .financial-value,
 .chart-legend .financial-value,
 .comparison-bars .financial-value {
-  font-size: clamp(0.72rem, 7.5cqi, 1.85rem);
+  font-size: clamp(0.72rem, var(--financial-fit, 7.5cqi), 1.85rem);
 }
 
 .mobile-price-summary .financial-value {
-  font-size: clamp(0.72rem, 7.5cqi, 1.65rem);
+  font-size: clamp(0.72rem, var(--financial-fit, 7.5cqi), 1.65rem);
+}
+
+/* Os cards preservam uma largura útil antes de reduzir a fonte ou mudar de linha. */
+.detail-page {
+  container-type: inline-size;
+}
+
+.market-dashboard-section .market-stats {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+}
+
+.summary-card-heading {
+  flex-wrap: wrap;
+}
+
+.primary-price-grid:not(:has(.primary-price-cell:not(.primary-price-sustainable):not([hidden]))) .primary-price-sustainable {
+  grid-column: 1 / -1;
+}
+
+.market-dashboard-section .market-result-price {
+  flex-wrap: wrap;
+}
+
+.market-dashboard-section .market-result-price > .financial-value {
+  flex-basis: 100%;
+}
+
+.mobile-price-summary > div {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.mobile-price-summary button {
+  flex: 0 0 auto;
+}
+
+.price-donut > div {
+  width: 64%;
+  min-width: 0;
+}
+
+.comparison-footer > span {
+  flex: 1 1 12rem;
+}
+
+.market-tax-breakdown dl > div {
+  flex-wrap: wrap;
+  gap: 6px 20px;
+}
+
+.market-tax-breakdown .financial-value {
+  margin-left: auto;
+}
+
+.chart-legend li {
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+}
+
+.chart-legend li > .financial-value {
+  grid-column: 2;
+}
+
+.comparison-bars li > div {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 @container (max-width: 34rem) {
+  .donut-layout,
+  .detail-metric-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .detail-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+    padding: 22px;
+  }
+
+  .detail-hero-margin {
+    min-width: 0;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+    padding: 20px 0 0;
+  }
+
   .primary-price-grid {
     grid-template-columns: minmax(0, 1fr);
   }

@@ -11,6 +11,8 @@ Aplicação web para calcular preço de venda sustentável, comparar referência
 
 ## Recursos implementados
 
+- Preenchimento assistido por IA com prévia obrigatória, alterações parciais e validação no backend, sem substituir as fórmulas financeiras.
+- Valores monetários com fonte adaptada ao comprimento e ao container, sem quebra, corte ou invasão dos cards vizinhos.
 - Cadastro, login, logout e recuperação da sessão em `/auth/me`.
 - Rotas protegidas para criar, listar, consultar, editar e excluir produtos.
 - Todos os acessos a produto verificam `user_id` junto ao ID do produto. Um produto de outra conta retorna `404` e nunca é exposto.
@@ -78,6 +80,14 @@ O endpoint diferencia configuração ausente (`503`), consulta inválida (`400`)
 O navegador chama `POST /tax/estimate`. O backend consulta localmente `data/ibpt/TabelaIBPTaxSP26.2.A.csv`, carregada uma vez em Windows-1252 e indexada por NCM. A busca no arquivo é exata e só acontece após o usuário confirmar um NCM relevante pela Focus NFe e escolher a origem do produto.
 
 Para origem nacional, a alíquota federal vem de `nacionalfederal`; para importada, de `importadosfederal`. A carga aproximada é `federal + estadual + municipal`, e o card soma ao maior preço apenas o valor calculado por essa alíquota. A versão, vigência e fonte acompanham o resultado. Não há chave, empresa ou chamada externa para calcular esse card. Consulte [docs/ibpt.md](docs/ibpt.md).
+
+### Assistente de preenchimento por IA
+
+O botão **Preencher com IA** abre uma descrição livre e mostra os campos encontrados antes de **Aplicar ao simulador**. O provedor padrão é OpenAI, modelo `gpt-4.1-mini`, com saída estruturada por JSON Schema. A rota autenticada `POST /ai/parse-pricing` recebe somente `{ "message": "..." }`. Campos ausentes são preservados; apenas o controlador atual do formulário aplica o patch e chama o cálculo existente.
+
+Configure `OPENAI_API_KEY` exclusivamente no backend. `AI_PROVIDER=openai`, `AI_MODEL=gpt-4.1-mini` e `AI_TIMEOUT_MS=25000` são opcionais. No Render, abra o **Web Service → Environment → Add Environment Variable**, adicione a chave e salve. Depois use **Manual Deploy → Deploy latest commit**. A declaração `sync: false` no Blueprint não preenche o segredo de um serviço existente.
+
+Sem configuração ou durante falhas externas, o simulador manual continua funcionando. Há limites de oito análises por minuto por conta e por IP, com uma análise simultânea por conta. A aplicação não salva conversas nem registra a mensagem em logs. Consulte [docs/ai-assistant.md](docs/ai-assistant.md) para os campos, limites, arquitetura e roteiro de teste.
 
 ## Publicação a partir do GitHub
 
@@ -165,6 +175,7 @@ O relacionamento `products.user_id → users.id` usa chave estrangeira com `ON D
 | GET | `/fiscal/ncms/:codigo` | Obrigatória; proxy backend para Focus NFe |
 | GET | `/fiscal/ncms/search?q=descricao` | Obrigatória; sugestões fiscais por descrição da Focus NFe, sem confirmação automática |
 | GET | `/market/search?q=termos` | Obrigatória; proxy backend para SearchAPI Google Shopping |
+| POST | `/ai/parse-pricing` | Obrigatória; extrai e valida campos para prévia, sem calcular preço |
 | POST | `/tax/estimate` | Obrigatória; estima localmente a carga IBPT sobre o maior preço informado pelo state |
 | POST | `/products` | Obrigatória |
 | PATCH | `/products/:id` | Obrigatória + dono |

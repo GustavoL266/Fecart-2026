@@ -1,0 +1,40 @@
+.ai-assistant-shortcut { padding: 0 24px 14px; }
+.ai-assistant-open { display: flex; width: 100%; min-height: 44px; align-items: center; justify-content: center; gap: 9px; border: 1px solid var(--green); background: var(--green-soft); color: var(--green); font-size: .86rem; font-weight: 750; }
+.ai-assistant-open:hover { background: color-mix(in srgb, var(--green) 17%, var(--panel)); }
+.ai-assistant-open > span { font-size: 1.15rem; }
+.ai-assistant-dialog { box-sizing: border-box; width: min(620px, calc(100% - 32px)); max-width: calc(100% - 32px); max-height: calc(100dvh - 32px); padding: clamp(20px, 4vw, 30px); overscroll-behavior: contain; color: var(--ink); }
+.ai-assistant-dialog .dialog-header { align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.ai-assistant-dialog .dialog-header > div { min-width: 0; }
+.ai-assistant-dialog h2 { font-size: clamp(1.22rem, 3.8vw, 1.6rem); line-height: 1.2; }
+.ai-assistant-dialog .icon-button { flex: 0 0 40px; min-height: 40px; }
+.ai-assistant-description { margin: 0 0 22px; color: var(--muted); line-height: 1.6; }
+.ai-assistant-dialog form { display: grid; min-width: 0; gap: 10px; }
+.ai-assistant-dialog label { color: var(--ink); font-weight: 700; font-size: .88rem; }
+.ai-assistant-dialog textarea { box-sizing: border-box; width: 100%; max-width: 100%; min-height: 156px; max-height: 40dvh; resize: vertical; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--input); color: var(--ink); font: inherit; font-size: 1rem; line-height: 1.55; }
+.ai-assistant-dialog textarea:focus { outline: 2px solid var(--green); outline-offset: 2px; }
+.ai-assistant-dialog textarea::placeholder { color: var(--muted); opacity: 1; }
+.ai-assistant-dialog .helper-text { margin: 0; line-height: 1.55; font-size: .8rem; color: var(--muted); }
+.ai-assistant-dialog [data-ai-analyze] { min-height: 46px; margin-top: 5px; }
+.ai-assistant-dialog button:disabled { cursor: wait; opacity: .6; }
+.ai-assistant-dialog button:disabled:not([aria-busy="true"]) { cursor: default; }
+.ai-assistant-preview { margin-top: 22px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--subtle-surface); }
+.ai-assistant-preview h3 { margin: 0 0 16px; font-size: 1rem; }
+.ai-assistant-fields { display: grid; gap: 12px; margin: 0 0 16px; }
+.ai-assistant-fields > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; min-width: 0; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.ai-assistant-fields dt { color: var(--muted); font-size: .84rem; line-height: 1.5; overflow-wrap: anywhere; }
+.ai-assistant-fields dd { min-width: 0; margin: 0; color: var(--ink); font-size: .88rem; font-weight: 750; line-height: 1.5; overflow-wrap: anywhere; text-align: right; white-space: pre-wrap; }
+.ai-assistant-status { padding: 14px; margin: 18px 0 0; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); background: var(--subtle-surface); line-height: 1.6; font-size: .88rem; }
+.ai-assistant-status.is-error { color: var(--red); background: var(--risk-surface); }
+.ai-assistant-status.is-success { color: var(--green); background: var(--green-soft); }
+.ai-assistant-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.ai-assistant-actions button { flex: 1 1 auto; min-height: 46px; }
+.ai-assistant-dialog [hidden] { display: none !important; }
+@media (max-width: 900px) { .ai-assistant-shortcut { padding: 0 0 12px; } }
+@media (max-width: 600px) {
+  .ai-assistant-dialog { width: calc(100% - 20px); max-width: calc(100% - 20px); max-height: calc(100dvh - 20px); padding: 20px; border-radius: 16px; }
+  .ai-assistant-preview { padding: 14px; }
+  .ai-assistant-fields > div { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  .ai-assistant-fields dd { text-align: left; }
+  .ai-assistant-actions { flex-direction: column; }
+  .ai-assistant-actions button { width: 100%; }
+}

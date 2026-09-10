@@ -1,4 +1,4 @@
-import { currency, escapeHtml, percent } from "../utils/formatters.js";
+import { currency, escapeHtml, financialValueSize, percent, setFinancialValue } from "../utils/formatters.js";
 import { renderPriceDetails, renderPriceDetailsUnavailable } from "./detail-pages.js";
 import { marketTaxPrerequisiteError } from "../services/tax-service.js";
 
@@ -81,7 +81,7 @@ function renderTaxedMaximumStat(marketState) {
     return '<div class="market-tax-stat is-loading"><span>Maior + tributos estimados</span><strong>—</strong><small>Calculando estimativa...</small></div>';
   }
   if (tax.status === "success") {
-    return `<div class="market-tax-stat is-success"><span>Maior + tributos estimados</span><strong class="financial-value">${dashboardMoney(tax.result.total)}</strong><dl class="market-tax-card-metrics"><div><dt>Carga tributária estimada</dt><dd>${taxPercent(tax.result.rates.total)}</dd></div><div><dt>Tributos estimados</dt><dd>${dashboardMoney(tax.result.estimatedTaxes)}</dd></div></dl><small>Fonte: ${escapeHtml(tax.result.source)} · Versão: ${escapeHtml(tax.result.version)}</small>${taxAction(tax.expanded ? "Ocultar estimativa" : "Ver estimativa", "data-toggle-market-taxes")}</div>`;
+    return `<div class="market-tax-stat is-success"><span>Maior + tributos estimados</span><strong class="financial-value" data-financial-size="${financialValueSize(dashboardMoney(tax.result.total))}">${dashboardMoney(tax.result.total)}</strong><dl class="market-tax-card-metrics"><div><dt>Carga tributária estimada</dt><dd>${taxPercent(tax.result.rates.total)}</dd></div><div><dt>Tributos estimados</dt><dd class="financial-value" data-financial-size="${financialValueSize(dashboardMoney(tax.result.estimatedTaxes))}">${dashboardMoney(tax.result.estimatedTaxes)}</dd></div></dl><small>Fonte: ${escapeHtml(tax.result.source)} · Versão: ${escapeHtml(tax.result.version)}</small>${taxAction(tax.expanded ? "Ocultar estimativa" : "Ver estimativa", "data-toggle-market-taxes")}</div>`;
   }
   if (tax.status === "error") {
     const tableUnavailable = ["IBPT_NOT_CONFIGURED", "IBPT_INVALID_FILE"].includes(tax.code);
@@ -106,7 +106,7 @@ function renderTaxDetails(marketState) {
   const originValue = isNational ? context.originState : context.countryOfOrigin;
   const destinationState = context.destinationState || "Não informada";
   const originSummary = isNational ? `UF origem: ${context.originState || "Não informada"}` : `País: ${context.countryOfOrigin || "Não informado"}`;
-  return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">IBPT / Empresômetro</p><h3 id="market-tax-breakdown-title">Estimativa tributária</h3></div><dl><div><dt>Maior</dt><dd class="financial-value">${dashboardMoney(tax.result.marketPrice)}</dd></div><div><dt>Alíquota federal</dt><dd>${taxPercent(tax.result.rates.federal)}</dd></div><div><dt>Alíquota estadual</dt><dd>${taxPercent(tax.result.rates.state)}</dd></div><div><dt>Alíquota municipal</dt><dd>${taxPercent(tax.result.rates.municipal)}</dd></div><div><dt>Carga tributária estimada</dt><dd>${taxPercent(tax.result.rates.total)}</dd></div><div><dt>Tributos estimados</dt><dd class="financial-value">${dashboardMoney(tax.result.estimatedTaxes)}</dd></div><div class="market-tax-total"><dt>Maior + tributos estimados</dt><dd class="financial-value">${dashboardMoney(tax.result.total)}</dd></div></dl><div class="market-tax-origin-section"><h4>Origem da mercadoria</h4><dl class="market-tax-origin-details"><div><dt>Origem do produto</dt><dd>${escapeHtml(origin)}</dd></div><div><dt>${originLabel}</dt><dd>${escapeHtml(originValue || "Não informada")}</dd></div><div><dt>UF de destino</dt><dd>${escapeHtml(destinationState)}</dd></div><div><dt>Fonte</dt><dd>${escapeHtml(tax.result.source)}</dd></div></dl></div><p>NCM ${escapeHtml(tax.result.ncm)} · Origem: ${escapeHtml(origin)} · ${escapeHtml(originSummary)} · UF destino: ${escapeHtml(destinationState)} · Versão: ${escapeHtml(tax.result.version)} · Vigência: ${escapeHtml(tax.result.validFrom)} a ${escapeHtml(tax.result.validTo)}</p></section>`;
+  return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">IBPT / Empresômetro</p><h3 id="market-tax-breakdown-title">Estimativa tributária</h3></div><dl><div><dt>Maior</dt><dd class="financial-value" data-financial-size="${financialValueSize(dashboardMoney(tax.result.marketPrice))}">${dashboardMoney(tax.result.marketPrice)}</dd></div><div><dt>Alíquota federal</dt><dd>${taxPercent(tax.result.rates.federal)}</dd></div><div><dt>Alíquota estadual</dt><dd>${taxPercent(tax.result.rates.state)}</dd></div><div><dt>Alíquota municipal</dt><dd>${taxPercent(tax.result.rates.municipal)}</dd></div><div><dt>Carga tributária estimada</dt><dd>${taxPercent(tax.result.rates.total)}</dd></div><div><dt>Tributos estimados</dt><dd class="financial-value" data-financial-size="${financialValueSize(dashboardMoney(tax.result.estimatedTaxes))}">${dashboardMoney(tax.result.estimatedTaxes)}</dd></div><div class="market-tax-total"><dt>Maior + tributos estimados</dt><dd class="financial-value" data-financial-size="${financialValueSize(dashboardMoney(tax.result.total))}">${dashboardMoney(tax.result.total)}</dd></div></dl><div class="market-tax-origin-section"><h4>Origem da mercadoria</h4><dl class="market-tax-origin-details"><div><dt>Origem do produto</dt><dd>${escapeHtml(origin)}</dd></div><div><dt>${originLabel}</dt><dd>${escapeHtml(originValue || "Não informada")}</dd></div><div><dt>UF de destino</dt><dd>${escapeHtml(destinationState)}</dd></div><div><dt>Fonte</dt><dd>${escapeHtml(tax.result.source)}</dd></div></dl></div><p>NCM ${escapeHtml(tax.result.ncm)} · Origem: ${escapeHtml(origin)} · ${escapeHtml(originSummary)} · UF destino: ${escapeHtml(destinationState)} · Versão: ${escapeHtml(tax.result.version)} · Vigência: ${escapeHtml(tax.result.validFrom)} a ${escapeHtml(tax.result.validTo)}</p></section>`;
 }
 
 function renderMarketPanel(document, marketState) {
@@ -126,7 +126,7 @@ function renderMarketPanel(document, marketState) {
   const selectedRating = Number.isFinite(selectedItem?.rating)
     ? ` · Nota ${selectedItem.rating.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}${Number.isInteger(selectedItem.reviews) ? ` (${selectedItem.reviews.toLocaleString("pt-BR")} avaliações)` : ""}`
     : "";
-  selected.innerHTML = selectedItem ? `<p class="eyebrow">Produto individual selecionado</p><h3>${escapeHtml(selectedItem.title)}</h3><strong class="financial-value">${dashboardMoney(selectedItem.price)}</strong><small>Loja: ${escapeHtml(selectedItem.seller || selectedItem.source)}${escapeHtml(selectedRating)}</small><small>Google Shopping · consulta de ${escapeHtml(selectedItem.consultedAt ? new Date(selectedItem.consultedAt).toLocaleString("pt-BR") : "agora")}</small><button type="button" class="secondary-button" data-change-market-reference>Remover seleção</button>` : "";
+  selected.innerHTML = selectedItem ? `<p class="eyebrow">Produto individual selecionado</p><h3>${escapeHtml(selectedItem.title)}</h3><strong class="financial-value" data-financial-size="${financialValueSize(dashboardMoney(selectedItem.price))}">${dashboardMoney(selectedItem.price)}</strong><small>Loja: ${escapeHtml(selectedItem.seller || selectedItem.source)}${escapeHtml(selectedRating)}</small><small>Google Shopping · consulta de ${escapeHtml(selectedItem.consultedAt ? new Date(selectedItem.consultedAt).toLocaleString("pt-BR") : "agora")}</small><button type="button" class="secondary-button" data-change-market-reference>Remover seleção</button>` : "";
   taxDetails.innerHTML = "";
   if (marketState.status === "loading") {
     sidebarStatus.textContent = "Buscando produtos no mercado…";
@@ -164,7 +164,7 @@ function renderMarketPanel(document, marketState) {
     ["Mediana", marketState.stats.median],
     ["Menor", marketState.stats.min],
     ["Maior", marketState.stats.max],
-  ].map(([label, value]) => `<div><span>${label}</span><strong class="financial-value">${dashboardMoney(value)}</strong></div>`).join("");
+  ].map(([label, value]) => `<div><span>${label}</span><strong class="financial-value" data-financial-size="${financialValueSize(dashboardMoney(value))}">${dashboardMoney(value)}</strong></div>`).join("");
   stats.innerHTML = `${standardStats}${renderTaxedMaximumStat(marketState)}`;
   taxDetails.innerHTML = renderTaxDetails(marketState);
   results.innerHTML = marketState.items.map((item) => {
@@ -181,7 +181,7 @@ function renderMarketPanel(document, marketState) {
     const action = isSelected
       ? '<button type="button" disabled aria-current="true">Referência selecionada</button>'
       : `<button type="button" data-market-select="${escapeHtml(item.id)}">Usar como referência</button>`;
-    return `<article class="market-result${isSelected ? " selected" : ""}">${image}${selection}<div class="market-result-content"><h4>${escapeHtml(item.title)}</h4><div class="market-result-price"><strong class="financial-value">${dashboardMoney(item.price)}</strong>${rating}</div><p>Loja: ${escapeHtml(item.seller || item.source)}</p></div><div class="market-actions">${action}<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver no Google Shopping</a></div></article>`;
+    return `<article class="market-result${isSelected ? " selected" : ""}">${image}${selection}<div class="market-result-content"><h4>${escapeHtml(item.title)}</h4><div class="market-result-price"><strong class="financial-value" data-financial-size="${financialValueSize(dashboardMoney(item.price))}">${dashboardMoney(item.price)}</strong>${rating}</div><p>Loja: ${escapeHtml(item.seller || item.source)}</p></div><div class="market-actions">${action}<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Ver no Google Shopping</a></div></article>`;
   }).join("");
 }
 
@@ -198,14 +198,15 @@ export function renderIncompleteDashboard(document, marketState, errors) {
   document.querySelector("#alerts").innerHTML = "<div class=\"warning\">Corrija os campos indicados.</div>";
   document.querySelector("#fiscalSummary").innerHTML = "<p>O contexto fiscal será preservado sem inventar alíquotas.</p>";
   document.querySelector("#primaryMarketValue").hidden = true;
+  document.querySelector("#primaryPriceCard").classList.toggle("has-market-reference", false);
   renderMarketPanel(document, marketState);
   renderPriceDetailsUnavailable(document, count);
 }
 
 export function renderDashboard(document, result, marketState, fiscalAssessment) {
   const market = result.market;
-  document.querySelector("#baseCost").textContent = dashboardMoney(result.totalUnitCost);
-  document.querySelector("#marketReferencePrice").textContent = dashboardMoney(market.price);
+  setFinancialValue(document.querySelector("#baseCost"), dashboardMoney(result.totalUnitCost));
+  setFinancialValue(document.querySelector("#marketReferencePrice"), dashboardMoney(market.price));
   document.querySelector("#marketTitle").textContent = marketLabel(market);
   const selectedReference = market.reference?.selectedProduct;
   document.querySelector("#marketReferenceDetails").textContent = market.price
@@ -214,12 +215,13 @@ export function renderDashboard(document, result, marketState, fiscalAssessment)
       : `Fonte: ${market.source || "não informada"}`
     : "Referência opcional não informada";
   document.querySelector("#marketPriceLabel").textContent = marketLabel(market);
-  document.querySelector("#suggestedPrice").textContent = dashboardMoney(result.technicalPrice);
-  document.querySelector("#profitPerSale").textContent = dashboardMoney(result.profitAmount);
+  setFinancialValue(document.querySelector("#suggestedPrice"), dashboardMoney(result.technicalPrice));
+  setFinancialValue(document.querySelector("#profitPerSale"), dashboardMoney(result.profitAmount));
   document.querySelector("#estimatedMargin").textContent = percent(result.actualNetMargin);
   const primaryMarketValue = document.querySelector("#primaryMarketValue");
   primaryMarketValue.hidden = !market.price;
-  document.querySelector("#primaryMarketPrice").textContent = dashboardMoney(market.price);
+  document.querySelector("#primaryPriceCard").classList.toggle("has-market-reference", Boolean(market.price));
+  setFinancialValue(document.querySelector("#primaryMarketPrice"), dashboardMoney(market.price));
   document.querySelector("#primaryMarketSource").textContent = market.price
     ? selectedReference
       ? `${selectedReference.title} · Loja: ${selectedReference.seller || selectedReference.source} · Google Shopping`
