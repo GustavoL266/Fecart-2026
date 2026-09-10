@@ -30,13 +30,13 @@ services:
         sync: false
       - key: SEARCHAPI_TIMEOUT_MS
         value: "15000"
-      - key: OPENAI_API_KEY
+      - key: GEMINI_API_KEY
         # Cadastre em Environment no Web Service; sync:false não injeta segredo em serviço existente.
         sync: false
       - key: AI_PROVIDER
-        value: openai
+        value: gemini
       - key: AI_MODEL
-        value: gpt-4.1-mini
+        value: gemini-3.5-flash-lite
       - key: AI_TIMEOUT_MS
         value: "25000"
 databases:

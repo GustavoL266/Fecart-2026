@@ -34,6 +34,7 @@ const app = express();
 const PgSession = connectPgSimple(session);
 
 console.info("[AI] Configuration", aiAssistantHealth(aiConfig));
+console.info(`[AI] provider=gemini configured=${aiConfig.isConfigured} model=${aiConfig.configurationErrors.includes("AI_MODEL_INVALID") || aiConfig.model === aiConfig.apiKey ? "invalid" : aiConfig.model}`);
 
 console.info(`[Fiscal/NCM] provider=FocusNFe configured=${focusNfeConfig.isConfigured} environment=${focusNfeConfig.environment}`);
 console.info("[Market] Provider: SearchAPI Google Shopping");

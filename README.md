@@ -59,7 +59,7 @@ Há quatro responsabilidades centrais:
 | Comparar | Consulta produtos no mercado ou usa uma referência manual, sem ajustar automaticamente o preço técnico para coincidir com concorrentes. |
 | Registrar | Salva uma precificação privada, vinculada ao usuário, com entradas e resultado histórico. |
 
-O preenchimento por IA facilita a entrada desses dados. A pesquisa de mercado oferece uma comparação externa. A consulta fiscal fornece classificação e uma estimativa separada. O funcionamento do simulador manual não depende de obter uma resposta da OpenAI, da SearchAPI ou da Focus NFe.
+O preenchimento por IA facilita a entrada desses dados. A pesquisa de mercado oferece uma comparação externa. A consulta fiscal fornece classificação e uma estimativa separada. O funcionamento do simulador manual não depende de obter uma resposta da Gemini, da SearchAPI ou da Focus NFe.
 
 O projeto não implementa controle de estoque, pedidos, recebimentos, emissão de nota fiscal ou uma plataforma completa de gestão empresarial. A finalidade atual é **precificação, comparação e histórico de simulações**.
 
@@ -179,7 +179,7 @@ O cálculo da simulação acontece no navegador para atualizar a interface imedi
 | [lib/ibpt-tax-provider.js](lib/ibpt-tax-provider.js) | Carregamento e consulta exata da tabela IBPT local. |
 | [lib/ai-pricing-route.js](lib/ai-pricing-route.js) | Rota IA, limites por usuário/IP, concorrência e erros seguros. |
 | [lib/ai-form-assistant.js](lib/ai-form-assistant.js) | Seleção do provedor e orquestração da extração e validação. |
-| [lib/openai-form-provider.js](lib/openai-form-provider.js) | Chamada estruturada à OpenAI, timeout e isolamento da resposta externa. |
+| [lib/gemini-form-provider.js](lib/gemini-form-provider.js) | Chamada estruturada à Gemini, timeout e isolamento da resposta externa. |
 | [lib/ai-pricing-schema.js](lib/ai-pricing-schema.js) | Campos permitidos, evidências, limites e resumo determinístico da IA. |
 | [migrations/](migrations/) | Alterações SQL versionadas do banco. |
 | [scripts/](scripts/) | Build, lint, migrations e verificações explícitas das integrações. |
@@ -411,13 +411,13 @@ Para origem nacional, a alíquota federal vem de `nacionalfederal`; para importa
 
 ### Assistente de preenchimento por IA
 
-O botão **Preencher com IA** abre uma descrição livre e mostra os campos encontrados antes de **Aplicar ao simulador**. O provedor padrão é OpenAI, modelo `gpt-4.1-mini`, com saída estruturada por JSON Schema. A rota autenticada `POST /ai/parse-pricing` recebe somente `{ "message": "..." }`. Campos ausentes são preservados; apenas o controlador atual do formulário aplica o patch e chama o cálculo existente.
+O botão **Preencher com IA** abre uma descrição livre e mostra os campos encontrados antes de **Aplicar ao simulador**. O provedor padrão é Gemini, modelo `gemini-3.5-flash-lite`, com saída estruturada por JSON Schema. A rota autenticada `POST /ai/parse-pricing` recebe somente `{ "message": "..." }`. Campos ausentes são preservados; apenas o controlador atual do formulário aplica o patch e chama o cálculo existente.
 
-Configure `OPENAI_API_KEY` exclusivamente no backend. `AI_PROVIDER=openai`, `AI_MODEL=gpt-4.1-mini` e `AI_TIMEOUT_MS=25000` são opcionais. No Render, abra o **Web Service → Environment → Add Environment Variable**, adicione a chave e salve. Depois use **Manual Deploy → Deploy latest commit**. A declaração `sync: false` no Blueprint não preenche o segredo de um serviço existente.
+Configure `GEMINI_API_KEY` exclusivamente no backend. Os padrões são `AI_PROVIDER=gemini`, `AI_MODEL=gemini-3.5-flash-lite` e `AI_TIMEOUT_MS=25000`. No Render, abra o **Web Service → Environment → Add Environment Variable**, adicione a chave e substitua também os valores antigos de `AI_PROVIDER` e `AI_MODEL`: variáveis explícitas prevalecem sobre os padrões novos. Depois use **Manual Deploy → Deploy latest commit**. A declaração `sync: false` no Blueprint não preenche o segredo de um serviço existente. `OPENAI_API_KEY` não é mais necessária em nenhuma funcionalidade deste projeto e pode ser removida do ambiente.
 
 Sem configuração ou durante falhas externas, o simulador manual continua funcionando. Há limites de oito análises por minuto por conta e por IP, com uma análise simultânea por conta. A aplicação não salva conversas nem registra a mensagem em logs. Consulte [docs/ai-assistant.md](docs/ai-assistant.md) para os campos, limites, arquitetura e roteiro de teste.
 
-O diagnóstico `ai` em `/health` informa `configured` e `configurationErrors`, sem segredos e sem fazer uma chamada paga. Configuração aceita não comprova credencial válida ou créditos disponíveis. O backend diferencia ausência de configuração, autenticação/permissão do provedor, modelo indisponível, quota, rate limit, timeout e resposta inválida. O incidente de 503 investigado tinha `OPENAI_API_KEY` ausente no Render: o provedor nem era criado. A correção operacional exige cadastrar essa variável no Web Service, além de publicar as melhorias de diagnóstico. O roteiro completo e a tabela de erros estão em [Diagnóstico no Render](docs/ai-assistant.md#diagnóstico-no-render).
+O diagnóstico `ai` em `/health` informa `provider`, `configured` e `configurationErrors`, sem segredos e sem fazer uma chamada paga. Configuração aceita não comprova credencial válida ou créditos disponíveis. O backend diferencia ausência de configuração, autenticação/permissão do provedor, modelo indisponível, quota, rate limit, timeout e resposta inválida. O incidente anterior de 503 envolvia a chave ausente do antigo provedor OpenAI. Após esta migração, é necessário cadastrar `GEMINI_API_KEY` no Web Service e publicar o código atualizado; sem configuração válida a rota retorna `503 GEMINI_NOT_CONFIGURED` antes de chamar a Gemini. O roteiro completo e a tabela de erros estão em [Diagnóstico no Render](docs/ai-assistant.md#diagnóstico-no-render).
 
 ## Variáveis de ambiente em um só lugar
 
@@ -438,9 +438,9 @@ A referência editável é [.env.example](.env.example), e a interpretação efe
 | `FOCUS_NFE_TIMEOUT_MS` | Timeout da Focus | Padrão `5000`; inteiro entre 100 e 30000. |
 | `SEARCHAPI_API_KEY` | Credencial de Google Shopping | Somente backend; sem ela, a alternativa manual de mercado continua disponível. |
 | `SEARCHAPI_TIMEOUT_MS` | Timeout da SearchAPI | Padrão `15000`; inteiro entre 100 e 30000. |
-| `OPENAI_API_KEY` | Credencial do preenchimento IA | Somente backend; sem ela, o formulário manual continua disponível. |
-| `AI_PROVIDER` | Implementação do provedor IA | Padrão e implementação atual: `openai`. |
-| `AI_MODEL` | Modelo de extração estruturada | Padrão configurado: `gpt-4.1-mini`. |
+| `GEMINI_API_KEY` | Credencial do preenchimento IA | Somente backend; sem ela, o formulário manual continua disponível. |
+| `AI_PROVIDER` | Implementação do provedor IA | Padrão e implementação atual: `gemini`. |
+| `AI_MODEL` | Modelo de extração estruturada | Padrão configurado: `gemini-3.5-flash-lite`. |
 | `AI_TIMEOUT_MS` | Timeout da análise IA | Padrão `25000`; inteiro entre 100 e 60000. |
 
 Ao copiar `.env.example`, o token fictício de Focus não se torna uma credencial válida. Configure um token real de homologação ou deixe `FOCUS_NFE_TOKEN` vazio para desenvolver sem essa consulta. Não use um teste de “variável presente” como confirmação de que a API está operacional.
@@ -476,7 +476,7 @@ O frontend e a API são servidos pelo mesmo processo; não há um segundo servid
 - `DATABASE_URL não foi definida` ou falha de conexão: inicie o PostgreSQL e confira host, porta, usuário, senha e nome do banco no `.env`.
 - `MIGRATIONS_PENDING`: execute `npm run migrate` (ou `pnpm migrate`) antes de iniciar a aplicação.
 - `market.configured: false` no `/health`: confira se `SEARCHAPI_API_KEY` foi configurada no backend. O endpoint nunca mostra a chave.
-- `ai.configured: false` no `/health`: consulte `ai.configurationErrors`. `OPENAI_API_KEY_MISSING` significa que a chave não foi cadastrada no backend desse ambiente. Confira também `AI_PROVIDER`, `AI_MODEL` e `AI_TIMEOUT_MS`; não altere segredos de sessão para corrigir a IA.
+- `ai.configured: false` no `/health`: consulte `ai.configurationErrors`. `GEMINI_API_KEY_MISSING` significa que a chave não foi cadastrada no backend desse ambiente. Confira também `AI_PROVIDER`, `AI_MODEL` e `AI_TIMEOUT_MS`; não altere segredos de sessão para corrigir a IA.
 - IA configurada, mas análise falha: os logs `[AI] Analysis failed` distinguem o código interno e o status HTTP externo, sem registrar mensagens, chave, cabeçalhos ou corpos de resposta. Consulte a tabela em [docs/ai-assistant.md](docs/ai-assistant.md#códigos-de-erro).
 - `/auth/me` 401 no carregamento sem sessão é a checagem inicial que abre o login. Se ocorrer após autenticar, confira a ordem das requisições e o envio do cookie sem expor seu valor. Somente `SESSION_REQUIRED` encerra a sessão no frontend; 401 externo não deve deslogar. O bootstrap descarta respostas/tentativas antigas após mudança de autenticação.
 - `market.configured: true` confirma somente que a variável existe. Depois de uma pesquisa, consulte os logs `[Market] Status` e `[Market] Results` para distinguir credencial inválida (`401`), falta de permissão (`403`), limite (`429`) e falha externa (`5xx`).
@@ -656,7 +656,7 @@ Esse texto ajuda a solicitar a leitura do contexto explicitamente, sem depender 
 | Busca de mercado | `js/services/market-service.js`, `lib/market-search.js`, `lib/searchapi-market-provider.js` | Preserve moeda, referência manual, seleção individual e distinção entre falha externa e sessão expirada. |
 | NCM e classificação | Módulos de classificação, `lib/focus-nfe-client.js`, rotas fiscais | Preserve confirmação explícita, relevância e vínculo à consulta atual. |
 | Card IBPT | `lib/ibpt-tax-provider.js`, `js/services/tax-service.js`, `js/ui/dashboard.js` | Confira origem, código exato, arquivo, vigência e invalidação do resultado anterior. |
-| IA | `lib/ai-*`, `lib/openai-form-provider.js`, `js/ui/ai-assistant.js`, `js/ui/form.js` | Valide extração e prévia; mantenha patch parcial, credenciais no backend e cálculo fora do modelo. |
+| IA | `lib/ai-*`, `lib/gemini-form-provider.js`, `js/ui/ai-assistant.js`, `js/ui/form.js` | Valide extração e prévia; mantenha patch parcial, credenciais no backend e cálculo fora do modelo. |
 | Autenticação/deploy | `server.js`, `lib/config.js`, `lib/database.js`, `render.yaml` | Confira ambiente real, sessão PostgreSQL, cookie e proxy sem expor credenciais. |
 
 ### Contratos que precisam continuar coerentes
@@ -714,7 +714,9 @@ Na rodada que entregou o assistente IA e o ajuste dos valores financeiros, em 10
 
 Na investigação posterior do 503, também em 10/09/2026, passaram **239 testes**, lint de 73 arquivos JavaScript e build. A prévia dos brigadeiros foi conferida no navegador em 1440×900 e 390×844, com provedor simulado, campos intactos antes da confirmação e obrigatórios ausentes ainda pendentes após aplicar. Também foi reproduzida a indisponibilidade por configuração ausente. Nenhuma fórmula financeira foi alterada.
 
-Os testes de APIs usam respostas simuladas e não demonstram a disponibilidade das credenciais de produção. A chamada real da IA ficou para validação após a configuração de `OPENAI_API_KEY`. Um resultado com mocks precisa ser relatado como tal. Capturas, navegadores temporários e relatórios locais de uma sessão não devem ser presumidos disponíveis em outro clone.
+Na migração para Gemini, em 10/09/2026, passaram **246 testes** com respostas externas simuladas, incluindo os exemplos de bolo, brigadeiro e alteração isolada de margem, preservação do frete e dos obrigatórios pendentes, chave inválida, quota, timeout e resposta estruturada inválida. A integração usa REST nativo e o modelo estável [Gemini 3.5 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite), confirmado na documentação nessa data. A interface, a autenticação e o cálculo financeiro foram preservados.
+
+Os testes de APIs usam respostas simuladas e não demonstram a disponibilidade das credenciais de produção. Não havia `GEMINI_API_KEY` configurada no ambiente local dessa migração; a chamada real ficou para validação após configurar o Render. Um resultado com mocks precisa ser relatado como tal. Capturas, navegadores temporários e relatórios locais de uma sessão não devem ser presumidos disponíveis em outro clone.
 
 Para alterações de código, execute os scripts pertinentes e depois confira o bundle final. Para uma alteração somente documental, revise conteúdo, links e diff; não é necessário modificar arquivos gerados só para registrar a edição do README.
 

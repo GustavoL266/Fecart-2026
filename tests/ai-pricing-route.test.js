@@ -6,7 +6,7 @@ import express from "express";
 import { createAiPricingRouter, handleAiRequestError } from "../lib/ai-pricing-route.js";
 import { createAiFormProvider } from "../lib/ai-form-assistant.js";
 import { getAiAssistantConfig } from "../lib/config.js";
-import { createOpenAiFormProvider } from "../lib/openai-form-provider.js";
+import { createGeminiFormProvider } from "../lib/gemini-form-provider.js";
 
 const extraction = { entries: [{ field: "deliveryCost", value: 7, evidence: "frete de 7 reais", batchUnits: null, batchEvidence: null }] };
 const input = { message: "Coloque frete de 7 reais." };
@@ -71,10 +71,10 @@ test("brigadeiros: provider simulado passa pelo HTTP e valida lote sem inventar 
     { field: "desiredNetMargin", value: 30, evidence: "quero margem de 30%", batchUnits: null, batchEvidence: null },
   ];
   let calls = 0;
-  const provider = createOpenAiFormProvider({ apiKey: "test-only-secret", model: "gpt-4.1-mini", timeoutMs: 5000 }, { fetchImpl: async (_url, options) => {
+  const provider = createGeminiFormProvider({ apiKey: "test-only-secret", model: "gemini-3.5-flash-lite", timeoutMs: 5000 }, { fetchImpl: async (_url, options) => {
     calls += 1;
-    assert.equal(JSON.parse(options.body).input[0].content[0].text, message);
-    return Response.json({ status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: JSON.stringify({ entries }) }] }] });
+    assert.equal(JSON.parse(options.body).contents[0].parts[0].text, message);
+    return Response.json({ candidates: [{ finishReason: "STOP", content: { role: "model", parts: [{ text: JSON.stringify({ entries }) }] } }] });
   } });
   const request = await serverFor(t, provider);
   const result = await request({ message });
@@ -87,16 +87,16 @@ test("brigadeiros: provider simulado passa pelo HTTP e valida lote sem inventar 
   assert.doesNotMatch(JSON.stringify(result.body), /monthlyPayroll|expectedMonthlyUnits|taxRate|finalPrice|suggestedPrice|test-only-secret|batchEvidence/);
 });
 
-test("chave ausente reproduz 503 antes de qualquer chamada à OpenAI", async (t) => {
+test("chave ausente reproduz 503 antes de qualquer chamada à Gemini", async (t) => {
   let calls = 0;
   const provider = createAiFormProvider(getAiAssistantConfig({}), { fetchImpl: async () => { calls += 1; throw new Error("não deve executar"); } });
   const records = [];
   const request = await serverFor(t, provider, {}, { logger: { warn: (...args) => records.push(args) } });
   const result = await request();
   assert.equal(result.status, 503);
-  assert.equal(result.body.code, "AI_NOT_CONFIGURED");
+  assert.equal(result.body.code, "GEMINI_NOT_CONFIGURED");
   assert.equal(calls, 0);
-  assert.deepEqual(records, [["[AI] Analysis failed", { code: "AI_NOT_CONFIGURED", status: 503, upstreamStatus: null }]]);
+  assert.deepEqual(records, [["[AI] Analysis failed", { provider: "gemini", code: "GEMINI_NOT_CONFIGURED", status: 503, upstreamStatus: null }]]);
 });
 
 test("rota preserva null/ausência como não alterar e mantém zero explícito", async (t) => {
@@ -133,17 +133,17 @@ test("JSON malformado e corpo excessivo não expõem trechos da mensagem nem cha
   }
   assert.equal(calls, 0);
   assert.deepEqual(records.map((record) => record[1]), [
-    { code: "INVALID_AI_REQUEST", status: 400, upstreamStatus: null },
-    { code: "INVALID_AI_REQUEST", status: 413, upstreamStatus: null },
+    { provider: "gemini", code: "INVALID_AI_REQUEST", status: 400, upstreamStatus: null },
+    { provider: "gemini", code: "INVALID_AI_REQUEST", status: 413, upstreamStatus: null },
   ]);
   assert.doesNotMatch(JSON.stringify(records), /PRIVATE_USER_CONTENT/);
 });
 
 test("rota HTTP distingue API indisponível, resposta inválida e insuficiente", async (t) => {
   for (const [provider, status, code] of [
-    [null, 503, "AI_NOT_CONFIGURED"],
+    [null, 503, "GEMINI_NOT_CONFIGURED"],
     [{ extract: async () => { throw new Error("test-only-secret + private prompt"); } }, 500, "AI_INTERNAL_ERROR"],
-    [{ extract: async () => ({ fields: { finalPrice: 100 } }) }, 502, "AI_INVALID_RESPONSE"],
+    [{ extract: async () => ({ fields: { finalPrice: 100 } }) }, 502, "GEMINI_INVALID_RESPONSE"],
     [{ extract: async () => ({ entries: [] }) }, 422, "AI_INSUFFICIENT_INFORMATION"],
   ]) {
     const request = await serverFor(t, provider);
@@ -154,39 +154,39 @@ test("rota HTTP distingue API indisponível, resposta inválida e insuficiente",
   }
 });
 
-test("401 da OpenAI permanece erro de integração, sem SESSION_REQUIRED nem dados privados", async (t) => {
+test("401 da Gemini permanece erro de integração, sem SESSION_REQUIRED nem dados privados", async (t) => {
   const records = [];
   const secret = "test-only-secret";
-  const provider = createOpenAiFormProvider({ apiKey: secret, model: "gpt-4.1-mini", timeoutMs: 5000 }, {
+  const provider = createGeminiFormProvider({ apiKey: secret, model: "gemini-3.5-flash-lite", timeoutMs: 5000 }, {
     fetchImpl: async () => Response.json({
-      error: { code: "invalid_api_key", type: "invalid_request_error", message: `${secret} PRIVATE_PROMPT Authorization PRIVATE_USER_CONTENT` },
+      error: { code: 401, status: "UNAUTHENTICATED", message: `${secret} PRIVATE_PROMPT Authorization PRIVATE_USER_CONTENT` },
     }, { status: 401, headers: { "x-request-id": "PRIVATE_REQUEST_ID" } }),
   });
   const request = await serverFor(t, provider, {}, { logger: { warn: (...args) => records.push(args) } });
   const result = await request();
   assert.equal(result.status, 502);
-  assert.equal(result.body.code, "AI_PROVIDER_AUTH_ERROR");
+  assert.equal(result.body.code, "GEMINI_UNAUTHORIZED");
   assert.deepEqual(Object.keys(result.body), ["error", "code"]);
-  assert.deepEqual(records, [["[AI] Analysis failed", { code: "AI_PROVIDER_AUTH_ERROR", status: 502, upstreamStatus: 401 }]]);
+  assert.deepEqual(records, [["[AI] Analysis failed", { provider: "gemini", code: "GEMINI_UNAUTHORIZED", status: 502, upstreamStatus: 401 }]]);
   assert.doesNotMatch(JSON.stringify([result.body, records]), /SESSION_REQUIRED|test-only-secret|PRIVATE_|Authorization|stack/);
 });
 
 test("rota diferencia rate limit do provedor de quota e de falha temporária", async (t) => {
   for (const [upstreamStatus, upstreamCode, status, code] of [
-    [429, "rate_limit_exceeded", 429, "AI_PROVIDER_RATE_LIMITED"],
-    [429, "insufficient_quota", 503, "AI_PROVIDER_QUOTA_EXCEEDED"],
-    [503, "server_error", 503, "AI_UNAVAILABLE"],
+    [429, "rate_limit_exceeded", 429, "GEMINI_RATE_LIMITED"],
+    [429, "insufficient_quota", 503, "GEMINI_QUOTA_EXCEEDED"],
+    [503, "server_error", 503, "GEMINI_UNAVAILABLE"],
   ]) {
     const records = [];
-    const provider = createOpenAiFormProvider({ apiKey: "test-only-secret", model: "gpt-4.1-mini", timeoutMs: 5000 }, {
-      fetchImpl: async () => Response.json({ error: { code: upstreamCode, message: "PRIVATE_DETAIL" } }, { status: upstreamStatus }),
+    const provider = createGeminiFormProvider({ apiKey: "test-only-secret", model: "gemini-3.5-flash-lite", timeoutMs: 5000 }, {
+      fetchImpl: async () => Response.json({ error: { code: upstreamStatus, status: "RESOURCE_EXHAUSTED", details: upstreamCode === "insufficient_quota" ? [{ "@type": "type.googleapis.com/google.rpc.QuotaFailure", violations: [{ quotaId: "GenerateRequestsPerDayPerProjectPerModel" }] }] : [], message: "PRIVATE_DETAIL" } }, { status: upstreamStatus }),
     });
     const request = await serverFor(t, provider, {}, { logger: { warn: (...args) => records.push(args) } });
     const result = await request();
     assert.equal(result.status, status);
     assert.equal(result.body.code, code);
     assert.notEqual(result.body.code, "AI_RATE_LIMITED");
-    assert.deepEqual(records[0][1], { code, status, upstreamStatus });
+    assert.deepEqual(records[0][1], { provider: "gemini", code, status, upstreamStatus });
     assert.doesNotMatch(JSON.stringify([result.body, records]), /PRIVATE_DETAIL|test-only-secret/);
   }
 });
@@ -202,27 +202,27 @@ test("falha inesperada anterior ao provider retorna 500 seguro, sem fingir indis
   assert.equal(result.status, 500);
   assert.equal(result.body.code, "AI_INTERNAL_ERROR");
   assert.equal(calls, 0);
-  assert.deepEqual(records, [["[AI] Analysis failed", { code: "AI_INTERNAL_ERROR", status: 500, upstreamStatus: null }]]);
+  assert.deepEqual(records, [["[AI] Analysis failed", { provider: "gemini", code: "AI_INTERNAL_ERROR", status: 500, upstreamStatus: null }]]);
   assert.doesNotMatch(JSON.stringify([result.body, records]), /PRIVATE_|stack/);
 });
 
 test("timeout retorna 504 e libera a conta para uma nova análise", async (t) => {
   let calls = 0;
   let firstSignal;
-  const provider = createOpenAiFormProvider({ apiKey: "test-only-secret", model: "gpt-4.1-mini", timeoutMs: 20 }, {
+  const provider = createGeminiFormProvider({ apiKey: "test-only-secret", model: "gemini-3.5-flash-lite", timeoutMs: 20 }, {
     fetchImpl: async (_url, options) => {
       calls += 1;
       if (calls === 1) {
         firstSignal = options.signal;
         return new Promise(() => {});
       }
-      return Response.json({ status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: JSON.stringify(extraction) }] }] });
+      return Response.json({ candidates: [{ finishReason: "STOP", content: { role: "model", parts: [{ text: JSON.stringify(extraction) }] } }] });
     },
   });
   const request = await serverFor(t, provider);
   const timedOut = await request();
   assert.equal(timedOut.status, 504);
-  assert.equal(timedOut.body.code, "AI_TIMEOUT");
+  assert.equal(timedOut.body.code, "GEMINI_TIMEOUT");
   assert.equal(firstSignal.aborted, true);
   assert.equal((await request()).status, 200);
   assert.equal(calls, 2);

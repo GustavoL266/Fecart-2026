@@ -269,15 +269,17 @@ test("API indisponível, resposta inválida e texto vago deixam formulário inta
 
 test("diagnósticos de configuração, provedor e timeout são seguros e não aplicam campos", async () => {
   for (const [code, expected] of [
-    ["AI_NOT_CONFIGURED", /ainda não está configurado/],
-    ["AI_PROVIDER_AUTH_ERROR", /autenticar.*provedor/],
-    ["AI_PROVIDER_FORBIDDEN", /não autorizou/],
-    ["AI_MODEL_UNAVAILABLE", /configuração.*revisada/i],
-    ["AI_PROVIDER_BAD_REQUEST", /configuração.*revisada/i],
-    ["AI_PROVIDER_QUOTA_EXCEEDED", /créditos/],
-    ["AI_PROVIDER_RATE_LIMITED", /provedor.*limitando/],
-    ["AI_TIMEOUT", /demorou/],
-    ["AI_CONNECTION_ERROR", /conectar/],
+    ["GEMINI_NOT_CONFIGURED", /ainda não está configurado/],
+    ["GEMINI_UNAUTHORIZED", /autenticar.*provedor/],
+    ["GEMINI_FORBIDDEN", /não autorizou/],
+    ["GEMINI_MODEL_UNAVAILABLE", /configuração.*revisada/i],
+    ["GEMINI_BAD_REQUEST", /configuração.*revisada/i],
+    ["GEMINI_QUOTA_EXCEEDED", /créditos/],
+    ["GEMINI_RATE_LIMITED", /provedor.*limitando/],
+    ["GEMINI_TIMEOUT", /demorou/],
+    ["GEMINI_CONNECTION_ERROR", /conectar/],
+    ["GEMINI_INVALID_RESPONSE", /validar/],
+    ["GEMINI_UNAVAILABLE", /Gemini.*indisponível/],
     ["AI_INTERNAL_ERROR", /falha interna/],
   ]) {
     const ui = fixture({ parse: async () => { throw { code, message: "SECRET_WITH_PRIVATE_USER_MESSAGE" }; } });
