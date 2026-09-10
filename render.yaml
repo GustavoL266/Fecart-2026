@@ -31,6 +31,7 @@ services:
       - key: SEARCHAPI_TIMEOUT_MS
         value: "15000"
       - key: OPENAI_API_KEY
+        # Cadastre em Environment no Web Service; sync:false não injeta segredo em serviço existente.
         sync: false
       - key: AI_PROVIDER
         value: openai

@@ -417,6 +417,8 @@ Configure `OPENAI_API_KEY` exclusivamente no backend. `AI_PROVIDER=openai`, `AI_
 
 Sem configuração ou durante falhas externas, o simulador manual continua funcionando. Há limites de oito análises por minuto por conta e por IP, com uma análise simultânea por conta. A aplicação não salva conversas nem registra a mensagem em logs. Consulte [docs/ai-assistant.md](docs/ai-assistant.md) para os campos, limites, arquitetura e roteiro de teste.
 
+O diagnóstico `ai` em `/health` informa `configured` e `configurationErrors`, sem segredos e sem fazer uma chamada paga. Configuração aceita não comprova credencial válida ou créditos disponíveis. O backend diferencia ausência de configuração, autenticação/permissão do provedor, modelo indisponível, quota, rate limit, timeout e resposta inválida. O incidente de 503 investigado tinha `OPENAI_API_KEY` ausente no Render: o provedor nem era criado. A correção operacional exige cadastrar essa variável no Web Service, além de publicar as melhorias de diagnóstico. O roteiro completo e a tabela de erros estão em [Diagnóstico no Render](docs/ai-assistant.md#diagnóstico-no-render).
+
 ## Variáveis de ambiente em um só lugar
 
 A referência editável é [.env.example](.env.example), e a interpretação efetiva está em [lib/config.js](lib/config.js). Os valores abaixo descrevem o código atual; não incluem segredos de desenvolvimento ou produção.
@@ -474,6 +476,9 @@ O frontend e a API são servidos pelo mesmo processo; não há um segundo servid
 - `DATABASE_URL não foi definida` ou falha de conexão: inicie o PostgreSQL e confira host, porta, usuário, senha e nome do banco no `.env`.
 - `MIGRATIONS_PENDING`: execute `npm run migrate` (ou `pnpm migrate`) antes de iniciar a aplicação.
 - `market.configured: false` no `/health`: confira se `SEARCHAPI_API_KEY` foi configurada no backend. O endpoint nunca mostra a chave.
+- `ai.configured: false` no `/health`: consulte `ai.configurationErrors`. `OPENAI_API_KEY_MISSING` significa que a chave não foi cadastrada no backend desse ambiente. Confira também `AI_PROVIDER`, `AI_MODEL` e `AI_TIMEOUT_MS`; não altere segredos de sessão para corrigir a IA.
+- IA configurada, mas análise falha: os logs `[AI] Analysis failed` distinguem o código interno e o status HTTP externo, sem registrar mensagens, chave, cabeçalhos ou corpos de resposta. Consulte a tabela em [docs/ai-assistant.md](docs/ai-assistant.md#códigos-de-erro).
+- `/auth/me` 401 no carregamento sem sessão é a checagem inicial que abre o login. Se ocorrer após autenticar, confira a ordem das requisições e o envio do cookie sem expor seu valor. Somente `SESSION_REQUIRED` encerra a sessão no frontend; 401 externo não deve deslogar. O bootstrap descarta respostas/tentativas antigas após mudança de autenticação.
 - `market.configured: true` confirma somente que a variável existe. Depois de uma pesquisa, consulte os logs `[Market] Status` e `[Market] Results` para distinguir credencial inválida (`401`), falta de permissão (`403`), limite (`429`) e falha externa (`5xx`).
 - `taxEstimate.configured: false` no `/health`: confira se `data/ibpt/TabelaIBPTaxSP26.2.A.csv` foi incluído sem conversão. `errorCode` distingue arquivo ausente de arquivo inválido.
 
@@ -706,6 +711,8 @@ O projeto usa o runner nativo `node:test`. O lint atual verifica **sintaxe JavaS
 | Interface | IDs esperados, abas, reset, detalhes, estilos compatíveis com CSP e proteção dos valores financeiros. |
 
 Na rodada que entregou o assistente IA e o ajuste dos valores financeiros, em 10/09/2026, passaram **208 testes**, lint e build. A verificação de navegador cobriu os sete valores de `R$ 32,00` a `R$ 9.999.999,99` nas larguras `1920`, `1440`, `1366`, `1024`, `768` e `390` px, além do modal e dos detalhes com sidebar larga. Esses números são um registro daquela rodada, não uma garantia de que alterações posteriores já foram testadas.
+
+Na investigação posterior do 503, também em 10/09/2026, passaram **239 testes**, lint de 73 arquivos JavaScript e build. A prévia dos brigadeiros foi conferida no navegador em 1440×900 e 390×844, com provedor simulado, campos intactos antes da confirmação e obrigatórios ausentes ainda pendentes após aplicar. Também foi reproduzida a indisponibilidade por configuração ausente. Nenhuma fórmula financeira foi alterada.
 
 Os testes de APIs usam respostas simuladas e não demonstram a disponibilidade das credenciais de produção. A chamada real da IA ficou para validação após a configuração de `OPENAI_API_KEY`. Um resultado com mocks precisa ser relatado como tal. Capturas, navegadores temporários e relatórios locais de uma sessão não devem ser presumidos disponíveis em outro clone.
 

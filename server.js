@@ -7,7 +7,7 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
-import { getConfig, getFocusNfeConfig, getSearchApiConfig, getAiAssistantConfig, marketHealth } from "./lib/config.js";
+import { getConfig, getFocusNfeConfig, getSearchApiConfig, getAiAssistantConfig, aiAssistantHealth, marketHealth } from "./lib/config.js";
 import { createAiFormProvider } from "./lib/ai-form-assistant.js";
 import { createAiPricingRouter, handleAiRequestError } from "./lib/ai-pricing-route.js";
 import { pool, verifyDatabase } from "./lib/database.js";
@@ -28,9 +28,12 @@ const focusNfeClient = focusNfeConfig.isConfigured ? createFocusNFeClient(focusN
 const taxProvider = createIbptTaxProvider({ filePath: resolve(projectRoot, "data", "ibpt", "TabelaIBPTaxSP26.2.A.csv") });
 const searchApiConfig = getSearchApiConfig();
 const marketProvider = searchApiConfig.isConfigured ? createSearchApiMarketProvider(searchApiConfig) : null;
-const aiProvider = createAiFormProvider(getAiAssistantConfig());
+const aiConfig = getAiAssistantConfig();
+const aiProvider = createAiFormProvider(aiConfig);
 const app = express();
 const PgSession = connectPgSimple(session);
+
+console.info("[AI] Configuration", aiAssistantHealth(aiConfig));
 
 console.info(`[Fiscal/NCM] provider=FocusNFe configured=${focusNfeConfig.isConfigured} environment=${focusNfeConfig.environment}`);
 console.info("[Market] Provider: SearchAPI Google Shopping");
@@ -242,6 +245,7 @@ app.get("/health", async (req, res, next) => {
         provider: "FocusNFe",
       },
       market: marketHealth(searchApiConfig),
+      ai: aiAssistantHealth(aiConfig),
       taxEstimate: taxProvider.health(),
     });
   } catch (error) {

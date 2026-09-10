@@ -50,6 +50,7 @@ let focusState = emptyFocusState();
 let marketState = emptyMarketState();
 let manualMarketValue = elements.marketPrice.value;
 let productSearchTimer;
+let authenticationRevision = 0;
 let pendingDetailTarget = "";
 let revealAllPricingErrors = false;
 const touchedPricingFields = new Set();
@@ -658,6 +659,7 @@ function navigate(view, detailTarget = "") {
 }
 
 function setAuthenticatedUser(user, taxAvailability = null) {
+  authenticationRevision += 1;
   state.user = user;
   state.taxAvailability = taxAvailability;
   $("#currentUserName").textContent = user.name;
@@ -666,6 +668,7 @@ function setAuthenticatedUser(user, taxAvailability = null) {
 
 function clearAuthenticatedState() {
   aiAssistant.invalidate();
+  authenticationRevision += 1;
   state.user = null;
   state.products = [];
   state.selectedProduct = null;
@@ -1365,18 +1368,21 @@ restoreMarketReferenceFromSession();
 applyTheme(document.documentElement.dataset.theme, false);
 render();
 
-async function bootstrap(attempt = 0) {
+async function bootstrap(attempt = 0, revision = authenticationRevision) {
+  if (revision !== authenticationRevision) return;
   try {
     const response = await api.get("/auth/me", { handleUnauthorized: false });
+    if (revision !== authenticationRevision) return;
     setAuthenticatedUser(response.user, response.taxEstimate);
   } catch (error) {
+    if (revision !== authenticationRevision) return;
     if (error instanceof ApiError && error.code === "STATIC_HOSTING") {
       showAuth("login", error.message);
       return;
     }
-    const isInactiveSession = error instanceof ApiError && error.status === 401;
+    const isInactiveSession = error instanceof ApiError && error.code === "SESSION_REQUIRED";
     if (!isInactiveSession && attempt < 2) {
-      window.setTimeout(() => void bootstrap(attempt + 1), 800);
+      window.setTimeout(() => void bootstrap(attempt + 1, revision), 800);
       return;
     }
     if (isInactiveSession) {

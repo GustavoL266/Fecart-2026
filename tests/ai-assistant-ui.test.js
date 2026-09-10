@@ -4,6 +4,7 @@ import test from "node:test";
 import { createAiAssistant, validateAssistantResponse } from "../js/ui/ai-assistant.js";
 import { applyAssistantFields, CAPACITY_FIELD_IDS, PRICING_FIELD_IDS, validateAssistantFields, validatePricingForm } from "../js/ui/form.js";
 import { calculatePricing } from "../js/domain/pricing-calculator.js";
+import { parsePricingMessage } from "../lib/ai-form-assistant.js";
 
 function controls(values = {}) {
   const ids = [...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS, "productName", "productDescription", "marketQuery", "taxRegime", "originState", "destinationState", "cfop", "taxSituation", "customerType", "operationPurpose", "productOrigin", "countryOfOrigin", "ncmCode"];
@@ -264,6 +265,59 @@ test("API indisponível, resposta inválida e texto vago deixam formulário inta
     assert.equal(ui.elements.preview.hidden, true);
     assert.deepEqual(ui.applied, []);
   }
+});
+
+test("diagnósticos de configuração, provedor e timeout são seguros e não aplicam campos", async () => {
+  for (const [code, expected] of [
+    ["AI_NOT_CONFIGURED", /ainda não está configurado/],
+    ["AI_PROVIDER_AUTH_ERROR", /autenticar.*provedor/],
+    ["AI_PROVIDER_FORBIDDEN", /não autorizou/],
+    ["AI_MODEL_UNAVAILABLE", /configuração.*revisada/i],
+    ["AI_PROVIDER_BAD_REQUEST", /configuração.*revisada/i],
+    ["AI_PROVIDER_QUOTA_EXCEEDED", /créditos/],
+    ["AI_PROVIDER_RATE_LIMITED", /provedor.*limitando/],
+    ["AI_TIMEOUT", /demorou/],
+    ["AI_CONNECTION_ERROR", /conectar/],
+    ["AI_INTERNAL_ERROR", /falha interna/],
+  ]) {
+    const ui = fixture({ parse: async () => { throw { code, message: "SECRET_WITH_PRIVATE_USER_MESSAGE" }; } });
+    await ui.enter();
+    await ui.elements.form.emit("submit");
+    assert.match(ui.elements.status.textContent, expected);
+    assert.doesNotMatch(ui.elements.status.textContent, /SECRET_WITH_PRIVATE_USER_MESSAGE/);
+    assert.equal(ui.elements.analyze.disabled, false);
+    assert.equal(ui.elements.preview.hidden, true);
+    assert.equal(ui.elements.apply.disabled, true);
+    assert.deepEqual(ui.applied, []);
+  }
+});
+
+test("brigadeiros: prévia de lote preserva pendências e só confirmação altera controles", async () => {
+  const message = "quero vender brigadeiros. gasto R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens e quero margem de 30%";
+  const fields = controls({ deliveryCost: "5" });
+  const entry = (field, value, evidence, batchUnits = null, batchEvidence = null) => ({ field, value, evidence, batchUnits, batchEvidence });
+  // The model output is a fixture; the extraction validator and form controller are real.
+  const provider = { extract: async () => ({ entries: [
+    entry("productName", "brigadeiros", "quero vender brigadeiros"),
+    entry("materialCost", 40, "R$ 40 em ingredientes", 100, "produzir 100 unidades"),
+    entry("packagingCost", 10, "R$ 10 em embalagens", 100, "produzir 100 unidades"),
+    entry("desiredNetMargin", 30, "margem de 30%"),
+  ] }) };
+  const ui = fixture({ parse: (text) => parsePricingMessage({ provider, input: { message: text } }), apply: (patch) => applyAssistantFields(patch, fields) });
+  await ui.enter(message);
+  await ui.elements.form.emit("submit");
+  assert.equal(ui.elements.preview.hidden, false);
+  assert.equal(ui.elements.fields.children.length, 4);
+  assert.equal(fields.materialCost.value, "");
+  assert.equal(fields.productName.value, "");
+  await ui.elements.apply.emit("click");
+  assert.equal(fields.productName.value, "brigadeiros");
+  assert.equal(fields.materialCost.value, "0,4");
+  assert.equal(fields.packagingCost.value, "0,1");
+  assert.equal(fields.desiredNetMargin.value, "30");
+  assert.equal(fields.deliveryCost.value, "5");
+  for (const id of ["monthlyPayroll", "expectedMonthlyUnits", "wasteRate", "taxRate"]) assert.equal(fields[id].value, "");
+  assert.equal(validatePricingForm(fields).isValid, false);
 });
 
 test("sessão encerrada impede abrir, aplicar e aceitar resposta pendente", async () => {

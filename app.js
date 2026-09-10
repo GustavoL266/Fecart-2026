@@ -1074,6 +1074,15 @@ function assistantErrorMessage(error) {
   const code = error?.code || error?.message;
   if (code === "AI_INSUFFICIENT_INFORMATION") return AI_ASSISTANT_MESSAGES.insufficient;
   if (code === "AI_INVALID_RESPONSE") return AI_ASSISTANT_MESSAGES.invalid;
+  if (code === "AI_NOT_CONFIGURED") return "O assistente ainda não está configurado neste ambiente. Você pode preencher os dados manualmente.";
+  if (code === "AI_PROVIDER_AUTH_ERROR") return "Não foi possível autenticar o assistente no provedor de IA. Avise o responsável pelo site.";
+  if (code === "AI_PROVIDER_FORBIDDEN") return "O provedor de IA não autorizou esta operação. Avise o responsável pelo site.";
+  if (code === "AI_MODEL_UNAVAILABLE" || code === "AI_PROVIDER_BAD_REQUEST") return "A configuração da integração de IA precisa ser revisada pelo responsável pelo site.";
+  if (code === "AI_PROVIDER_QUOTA_EXCEEDED") return "O limite de uso ou de créditos da integração de IA foi atingido. Avise o responsável pelo site.";
+  if (code === "AI_PROVIDER_RATE_LIMITED") return "O provedor de IA está limitando as análises. Aguarde um pouco e tente novamente.";
+  if (code === "AI_TIMEOUT") return "A análise demorou mais que o esperado. Tente novamente em alguns instantes.";
+  if (code === "AI_CONNECTION_ERROR") return "Não foi possível conectar ao provedor de IA. Tente novamente em alguns instantes.";
+  if (code === "AI_INTERNAL_ERROR") return "Não foi possível concluir a análise devido a uma falha interna. Você pode preencher os dados manualmente.";
   if (code === "AI_RATE_LIMITED") return "Você fez várias análises em pouco tempo. Aguarde um minuto e tente novamente.";
   if (code === "AI_REQUEST_IN_PROGRESS") return "Uma análise ainda está em andamento. Aguarde alguns instantes para tentar novamente.";
   if (code === "INVALID_AI_REQUEST") return "Descreva seu produto em uma mensagem de até 4.000 caracteres.";
@@ -1927,6 +1936,7 @@ let focusState = emptyFocusState();
 let marketState = emptyMarketState();
 let manualMarketValue = elements.marketPrice.value;
 let productSearchTimer;
+let authenticationRevision = 0;
 let pendingDetailTarget = "";
 let revealAllPricingErrors = false;
 const touchedPricingFields = new Set();
@@ -2535,6 +2545,7 @@ function navigate(view, detailTarget = "") {
 }
 
 function setAuthenticatedUser(user, taxAvailability = null) {
+  authenticationRevision += 1;
   state.user = user;
   state.taxAvailability = taxAvailability;
   $("#currentUserName").textContent = user.name;
@@ -2543,6 +2554,7 @@ function setAuthenticatedUser(user, taxAvailability = null) {
 
 function clearAuthenticatedState() {
   aiAssistant.invalidate();
+  authenticationRevision += 1;
   state.user = null;
   state.products = [];
   state.selectedProduct = null;
@@ -3242,18 +3254,21 @@ restoreMarketReferenceFromSession();
 applyTheme(document.documentElement.dataset.theme, false);
 render();
 
-async function bootstrap(attempt = 0) {
+async function bootstrap(attempt = 0, revision = authenticationRevision) {
+  if (revision !== authenticationRevision) return;
   try {
     const response = await api.get("/auth/me", { handleUnauthorized: false });
+    if (revision !== authenticationRevision) return;
     setAuthenticatedUser(response.user, response.taxEstimate);
   } catch (error) {
+    if (revision !== authenticationRevision) return;
     if (error instanceof ApiError && error.code === "STATIC_HOSTING") {
       showAuth("login", error.message);
       return;
     }
-    const isInactiveSession = error instanceof ApiError && error.status === 401;
+    const isInactiveSession = error instanceof ApiError && error.code === "SESSION_REQUIRED";
     if (!isInactiveSession && attempt < 2) {
-      window.setTimeout(() => void bootstrap(attempt + 1), 800);
+      window.setTimeout(() => void bootstrap(attempt + 1, revision), 800);
       return;
     }
     if (isInactiveSession) {

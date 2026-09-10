@@ -15,6 +15,71 @@ Localmente, configure no `.env`, que já é ignorado pelo Git. No Render, abra o
 
 O provedor usa `POST https://api.openai.com/v1/responses`, `text.format.type=json_schema`, `strict:true`, limite de 3000 tokens de saída e `store:false`. O contrato segue a [documentação de Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs); o modelo padrão [GPT-4.1 mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini) suporta esse formato. O uso da API exige credencial e disponibilidade na conta OpenAI.
 
+### Diagnóstico no Render
+
+O incidente investigado em 10/09/2026 tinha `OPENAI_API_KEY` ausente no Web Service, conforme conferência no painel pelo responsável. Nesse estado, `getAiAssistantConfig().isConfigured` é falso, `createAiFormProvider` retorna `null` e a rota autenticada falha **antes de chamar a OpenAI**. O tratamento anterior convertia tanto essa situação quanto erros distintos do provedor em `503 AI_UNAVAILABLE`, sem diagnóstico da causa. A aplicação publicada respondeu `/health` com banco conectado, mas aquela versão ainda não incluía o bloco `ai`.
+
+Para habilitar a análise, configure no **Render → fecart-2026 → Environment**:
+
+```text
+OPENAI_API_KEY=<informar o segredo somente no painel>
+AI_PROVIDER=openai
+AI_MODEL=gpt-4.1-mini
+AI_TIMEOUT_MS=25000
+```
+
+`render.yaml` já declara a chave com `sync: false`; isso não cadastra o segredo em um serviço existente. Não troque `SESSION_SECRET` nem `DATABASE_URL` para corrigir a IA. Mantenha `NODE_ENV=production` e `SESSION_COOKIE_SECURE=true`, como previsto no Blueprint. Salve a configuração e publique o commit atualizado com **Manual Deploy → Deploy latest commit**.
+
+Depois do deploy, `GET /health` inclui:
+
+```json
+{
+  "ai": {
+    "provider": "openai",
+    "configured": false,
+    "configurationErrors": ["OPENAI_API_KEY_MISSING"]
+  }
+}
+```
+
+Quando as variáveis forem aceitas, `configured` será `true` e `configurationErrors` será `[]`. Isso confirma somente presença/formato de configuração; não valida a chave, saldo ou permissão na OpenAI. `/health` não faz chamadas pagas e não muda o estado geral do servidor por indisponibilidade desse recurso opcional. Os outros motivos possíveis são `AI_PROVIDER_UNSUPPORTED`, `AI_MODEL_INVALID` e `AI_TIMEOUT_INVALID`. Não são exibidos valores de variáveis, credenciais ou mensagens do usuário.
+
+O log de inicialização `[AI] Configuration` mostra o mesmo diagnóstico seguro. Nas falhas, `[AI] Analysis failed` registra apenas `code`, `status` e `upstreamStatus` (nulo quando não houve resposta HTTP do provedor). Nunca registra o objeto de erro original, stack, cabeçalhos, prompt, resposta bruta ou texto do usuário.
+
+### Códigos de erro
+
+As respostas de erro continuam não sendo sucesso: `{ "error": "mensagem segura", "code": "CÓDIGO_INTERNO" }`. A interface apresenta mensagens locais e mantém os campos intactos. O contrato de erros externos segue a [referência oficial de erros da OpenAI](https://developers.openai.com/api/docs/guides/error-codes).
+
+| HTTP da aplicação | Código | Significado e ação |
+| --- | --- | --- |
+| 503 | `AI_NOT_CONFIGURED` | Configuração ausente ou inválida; conferir `ai.configurationErrors` e Environment. |
+| 502 | `AI_PROVIDER_AUTH_ERROR` | OpenAI respondeu 401; revisar a credencial/acesso da integração, sem encerrar a sessão do site. |
+| 502 | `AI_PROVIDER_FORBIDDEN` | OpenAI respondeu 403; conferir permissão ou restrição de acesso. |
+| 502 | `AI_MODEL_UNAVAILABLE` | Modelo inexistente ou indisponível para a conta (`model_not_found`/404). |
+| 502 | `AI_PROVIDER_BAD_REQUEST` | OpenAI rejeitou a requisição/configuração (400/422); revisar modelo e contrato estruturado. |
+| 503 | `AI_PROVIDER_QUOTA_EXCEEDED` | Créditos, orçamento ou quota da integração esgotados; repetir sem corrigir o limite não resolve. |
+| 429 | `AI_PROVIDER_RATE_LIMITED` | Limite temporário do provedor; aguardar antes de tentar novamente. |
+| 429 | `AI_RATE_LIMITED` | Oito análises por minuto por conta/IP na aplicação; respeitar `Retry-After`. |
+| 409 | `AI_REQUEST_IN_PROGRESS` | Já existe análise pendente para a conta. |
+| 504 | `AI_TIMEOUT` | Prazo de análise excedido, inclusive durante a leitura da resposta. |
+| 503 | `AI_CONNECTION_ERROR` | Falha de rede ao conectar ao provedor. |
+| 503 | `AI_UNAVAILABLE` | Falha temporária do provedor, como 500/503. |
+| 502 | `AI_INVALID_RESPONSE` | JSON, estrutura, evidências ou valores inválidos; nenhum campo aplicado. |
+| 422 | `AI_INSUFFICIENT_INFORMATION` | Texto insuficiente ou recusa do modelo. |
+| 400/413 | `INVALID_AI_REQUEST` | Corpo inválido, mensagem fora do limite ou corpo excessivo. |
+| 500 | `AI_INTERNAL_ERROR` | Falha inesperada, incluindo falha anterior ao provedor no processamento da rota. |
+| 401 | `SESSION_REQUIRED` | Sessão do site ausente/expirada; entrar novamente. |
+
+HTTP 401 de OpenAI é convertido em erro de integração 502 com código próprio; não vira `SESSION_REQUIRED`. Nenhum erro é transformado em 200, dado fictício ou extração alternativa por regex.
+
+### Como interpretar `/auth/me` 401
+
+`js/main.js` chama `/auth/me` no carregamento inicial, com `credentials: "include"` pelo api-client. Sem sessão, a resposta `401 SESSION_REQUIRED` leva ao login e não gera novas tentativas. O Console pode manter essa requisição depois de um login bem-sucedido. Abrir o modal e analisar uma mensagem não chama `/auth/me` novamente. Falhas transitórias de inicialização permitem até duas novas tentativas.
+
+Apenas `SESSION_REQUIRED` significa sessão expirada, inclusive no bootstrap. Respostas e tentativas antigas são descartadas se o estado de autenticação tiver mudado. O backend mantém sessões PostgreSQL, salva a sessão antes de concluir login/cadastro e usa cookie `HttpOnly`, `SameSite=Lax`, `Secure` em produção e `trust proxy=1` para HTTPS terminado no Render.
+
+Não foi possível comprovar a ordem do 401 da captura sem o histórico das requisições e os logs da sessão. Se ele aparecer **após** login, confira a sequência na aba Network e se o navegador envia o cookie `pricing.sid`, sem copiar seu valor. Um 401 de `/auth/me` significa ausência de usuário reconhecido naquela requisição; não é uma chamada à OpenAI. Falha de banco segue o tratamento de erro do servidor e não deve ser interpretada como senha inválida ou `SESSION_REQUIRED`.
+
 ## Fluxo e arquitetura
 
 1. `js/ui/ai-assistant.js` abre o modal e envia somente a mensagem, sem histórico, formulário completo ou dados da conta.
@@ -84,7 +149,11 @@ O formulário atual não tem campos de alíquotas individuais de ICMS, IPI, PIS/
 
 Execute `pnpm lint`, `pnpm test` e `pnpm build`. Os testes de provider e da rota usam respostas simuladas; não consomem créditos nem dependem de banco ou chave real. Cobrem os exemplos do usuário, decimal/R$/porcentagem, lote, ausência, zero, limites, JSON inválido, prompt injection, timeout, autenticação, rate limit, concorrência, confirmação e cancelamento.
 
+Na correção de diagnóstico de 10/09/2026 passaram 239 testes, lint e build. A verificação do bundle no navegador cobriu a prévia dos brigadeiros em 1440×900 e 390×844, confirmação com aplicação parcial e configuração ausente com erro real 503. O modelo foi simulado nesses testes; não houve chamada autenticada real à OpenAI. As verificações públicas no Render confirmaram `/health` 200 com banco conectado e `401 SESSION_REQUIRED` para `/auth/me` e `/ai/parse-pricing` quando chamados sem cookie.
+
 Após configurar a chave no Render, entre na aplicação e abra **Preencher com IA**. Teste:
+
+Primeiro reproduza a entrada do incidente: “quero vender brigadeiros. gasto R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens e quero margem de 30%”. Antes de confirmar, o formulário deve continuar intacto. A prévia deve conter produto brigadeiros, matéria-prima `0,40`, embalagem `0,10` (ambas normalizadas pelo lote de 100) e margem `30%`. Confirme em **Aplicar ao simulador**; frete já preenchido deve ser preservado e folha, volume mensal, tributos e demais obrigatórios não informados devem continuar pendentes. Os testes automatizados cobrem esse fluxo com retorno de modelo simulado; a chamada real depende da credencial no Render.
 
 1. “Vendo bolo de chocolate. Gasto 18 reais de ingredientes, 3 reais de embalagem e tenho perda de 10%. Quero margem de 25%.” Confira os cinco campos e aplique.
 2. Preencha frete `5` manualmente e peça “Mude minha margem para 20%.” Somente a margem deve mudar após confirmação.
