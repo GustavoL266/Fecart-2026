@@ -7,7 +7,7 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
-import { getConfig, getFocusNfeConfig, getSearchApiConfig, getAiAssistantConfig, aiAssistantHealth, marketHealth } from "./lib/config.js";
+import { getConfig, getFocusNfeConfig, getSearchApiConfig, getAiAssistantConfig, aiAssistantHealth, deploymentHealth, marketHealth } from "./lib/config.js";
 import { createAiFormProvider } from "./lib/ai-form-assistant.js";
 import { createAiPricingRouter, handleAiRequestError } from "./lib/ai-pricing-route.js";
 import { pool, verifyDatabase } from "./lib/database.js";
@@ -34,7 +34,7 @@ const app = express();
 const PgSession = connectPgSimple(session);
 
 console.info("[AI] Configuration", aiAssistantHealth(aiConfig));
-console.info(`[AI] provider=gemini configured=${aiConfig.isConfigured} model=${aiConfig.configurationErrors.includes("AI_MODEL_INVALID") || aiConfig.model === aiConfig.apiKey ? "invalid" : aiConfig.model}`);
+console.info("[Deploy] Configuration", deploymentHealth());
 
 console.info(`[Fiscal/NCM] provider=FocusNFe configured=${focusNfeConfig.isConfigured} environment=${focusNfeConfig.environment}`);
 console.info("[Market] Provider: SearchAPI Google Shopping");
@@ -247,6 +247,7 @@ app.get("/health", async (req, res, next) => {
       },
       market: marketHealth(searchApiConfig),
       ai: aiAssistantHealth(aiConfig),
+      deployment: deploymentHealth(),
       taxEstimate: taxProvider.health(),
     });
   } catch (error) {

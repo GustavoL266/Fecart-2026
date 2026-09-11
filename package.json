@@ -10,6 +10,7 @@
     "build": "node scripts/build.mjs",
     "lint": "node scripts/lint.mjs",
     "focus:check": "node scripts/check-focus-nfe.mjs",
+    "gemini:check": "node scripts/check-gemini.mjs",
     "searchapi:check": "node scripts/check-searchapi.mjs",
     "test": "node --test --test-isolation=none"
   },

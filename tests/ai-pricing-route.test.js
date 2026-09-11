@@ -167,7 +167,9 @@ test("401 da Gemini permanece erro de integração, sem SESSION_REQUIRED nem dad
   assert.equal(result.status, 502);
   assert.equal(result.body.code, "GEMINI_UNAUTHORIZED");
   assert.deepEqual(Object.keys(result.body), ["error", "code"]);
-  assert.deepEqual(records, [["[AI] Analysis failed", { provider: "gemini", code: "GEMINI_UNAUTHORIZED", status: 502, upstreamStatus: 401 }]]);
+  assert.deepEqual(records, [["[AI] Analysis failed", {
+    provider: "gemini", code: "GEMINI_UNAUTHORIZED", status: 502, upstreamStatus: 401, upstreamCode: "UNAUTHENTICATED",
+  }]]);
   assert.doesNotMatch(JSON.stringify([result.body, records]), /SESSION_REQUIRED|test-only-secret|PRIVATE_|Authorization|stack/);
 });
 
@@ -186,9 +188,31 @@ test("rota diferencia rate limit do provedor de quota e de falha temporária", a
     assert.equal(result.status, status);
     assert.equal(result.body.code, code);
     assert.notEqual(result.body.code, "AI_RATE_LIMITED");
-    assert.deepEqual(records[0][1], { provider: "gemini", code, status, upstreamStatus });
+    assert.deepEqual(records[0][1], { provider: "gemini", code, status, upstreamStatus, upstreamCode: "RESOURCE_EXHAUSTED" });
     assert.doesNotMatch(JSON.stringify([result.body, records]), /PRIVATE_DETAIL|test-only-secret/);
   }
+});
+
+test("BAD_REQUEST registra identificadores estruturados seguros sem corpo externo", async (t) => {
+  const records = [];
+  const provider = createGeminiFormProvider({ apiKey: "test-only-secret", model: "gemini-3.5-flash-lite", timeoutMs: 5000 }, {
+    fetchImpl: async () => Response.json({ error: {
+      status: "INVALID_ARGUMENT", message: "PRIVATE_MESSAGE test-only-secret PRIVATE_USER_CONTENT",
+      details: [{
+        "@type": "type.googleapis.com/google.rpc.BadRequest",
+        fieldViolations: [{ field: "generationConfig.responseFormat.text.schema", description: "PRIVATE_DESCRIPTION" }],
+      }],
+    } }, { status: 400 }),
+  });
+  const request = await serverFor(t, provider, {}, { logger: { warn: (...args) => records.push(args) } });
+  const result = await request();
+  assert.equal(result.status, 502);
+  assert.equal(result.body.code, "GEMINI_BAD_REQUEST");
+  assert.deepEqual(records, [["[AI] Analysis failed", {
+    provider: "gemini", code: "GEMINI_BAD_REQUEST", status: 502, upstreamStatus: 400,
+    upstreamCode: "INVALID_ARGUMENT", upstreamField: "generationConfig.responseFormat.text.schema",
+  }]]);
+  assert.doesNotMatch(JSON.stringify([result.body, records]), /PRIVATE_|test-only-secret|description/);
 });
 
 test("falha inesperada anterior ao provider retorna 500 seguro, sem fingir indisponibilidade externa", async (t) => {

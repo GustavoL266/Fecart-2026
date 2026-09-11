@@ -30,7 +30,8 @@ function assistantErrorMessage(error) {
   if (code === "GEMINI_NOT_CONFIGURED") return "O assistente ainda não está configurado neste ambiente. Você pode preencher os dados manualmente.";
   if (code === "GEMINI_UNAUTHORIZED") return "Não foi possível autenticar o assistente no provedor de IA. Avise o responsável pelo site.";
   if (code === "GEMINI_FORBIDDEN") return "O provedor de IA não autorizou esta operação. Avise o responsável pelo site.";
-  if (code === "GEMINI_MODEL_UNAVAILABLE" || code === "GEMINI_BAD_REQUEST") return "A configuração da integração de IA precisa ser revisada pelo responsável pelo site.";
+  if (code === "GEMINI_MODEL_UNAVAILABLE") return "O modelo de IA configurado não está disponível para esta integração. Avise o responsável pelo site.";
+  if (code === "GEMINI_BAD_REQUEST") return "O provedor recusou o formato da análise. Avise o responsável pelo site.";
   if (code === "GEMINI_QUOTA_EXCEEDED") return "O limite de uso ou de créditos da integração de IA foi atingido. Avise o responsável pelo site.";
   if (code === "GEMINI_RATE_LIMITED") return "O provedor de IA está limitando as análises. Aguarde um pouco e tente novamente.";
   if (code === "GEMINI_TIMEOUT") return "A análise demorou mais que o esperado. Tente novamente em alguns instantes.";

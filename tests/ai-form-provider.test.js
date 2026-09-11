@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { aiAssistantHealth, getAiAssistantConfig } from "../lib/config.js";
+import { aiAssistantHealth, deploymentHealth, getAiAssistantConfig } from "../lib/config.js";
 import { createAiFormProvider, parsePricingMessage } from "../lib/ai-form-assistant.js";
-import { createGeminiFormProvider } from "../lib/gemini-form-provider.js";
+import { createGeminiFormProvider, verifyGeminiModelAccess } from "../lib/gemini-form-provider.js";
 
 const config = { apiKey: "test-only-secret", model: "gemini-3.5-flash-lite", timeoutMs: 5000 };
 const extraction = { entries: [{ field: "deliveryCost", value: 7, evidence: "frete de 7 reais", batchUnits: null, batchEvidence: null }] };
@@ -37,18 +37,35 @@ test("configuração opcional ausente ou inválida mantém simulador manual disp
 
 test("diagnóstico IA informa presença/configuração sem validar a chave nem expor valores", () => {
   const missing = aiAssistantHealth(getAiAssistantConfig({ GEMINI_API_KEY: "   " }));
-  assert.deepEqual(missing, { provider: "gemini", configured: false, configurationErrors: ["GEMINI_API_KEY_MISSING"] });
+  assert.deepEqual(missing, {
+    provider: "gemini", configured: false, model: "gemini-3.5-flash-lite", timeoutMs: 25000,
+    apiVersion: "v1beta", method: "generateContent", structuredOutput: "generationConfig.responseFormat.text",
+    configurationErrors: ["GEMINI_API_KEY_MISSING"],
+  });
   // This arbitrary value passes presence checks, not a live Gemini authentication check.
   const present = aiAssistantHealth(getAiAssistantConfig({ GEMINI_API_KEY: "test-only-secret" }));
-  assert.deepEqual(present, { provider: "gemini", configured: true, configurationErrors: [] });
+  assert.deepEqual(present, {
+    provider: "gemini", configured: true, model: "gemini-3.5-flash-lite", timeoutMs: 25000,
+    apiVersion: "v1beta", method: "generateContent", structuredOutput: "generationConfig.responseFormat.text",
+    configurationErrors: [],
+  });
   const invalid = aiAssistantHealth(getAiAssistantConfig({
     GEMINI_API_KEY: "test-only-secret", AI_PROVIDER: "PRIVATE_PROVIDER", AI_MODEL: "<PRIVATE_MODEL>", AI_TIMEOUT_MS: "PRIVATE_TIMEOUT",
   }));
   assert.deepEqual(invalid, {
-    provider: "unsupported", configured: false,
+    provider: "unsupported", configured: false, model: null, timeoutMs: 25000,
+    apiVersion: "v1beta", method: "generateContent", structuredOutput: "generationConfig.responseFormat.text",
     configurationErrors: ["AI_PROVIDER_UNSUPPORTED", "AI_MODEL_INVALID", "AI_TIMEOUT_INVALID"],
   });
   assert.doesNotMatch(JSON.stringify([missing, present, invalid]), /test-only-secret|PRIVATE_|apiKey|Authorization|operational/);
+});
+
+test("diagnóstico de deploy aceita somente o commit SHA do Render", () => {
+  assert.deepEqual(deploymentHealth({}), { commit: null });
+  assert.deepEqual(deploymentHealth({ RENDER_GIT_COMMIT: "PRIVATE_BRANCH" }), { commit: null });
+  assert.deepEqual(deploymentHealth({ RENDER_GIT_COMMIT: "8EECC0203DD683152AB742A251738AD05FE9015A" }), {
+    commit: "8eecc0203dd683152ab742a251738ad05fe9015a",
+  });
 });
 
 test("Blueprint Render prevê segredo externo e parâmetros de IA sem embutir uma chave", () => {
@@ -82,6 +99,55 @@ test("Gemini recebe mensagem e schema; chave somente no cabeçalho do backend", 
   assert.equal("tools" in request.body, false);
   assert.equal("store" in request.body, false);
   assert.doesNotMatch(request.options.body + request.url, /test-only-secret|DATABASE_URL|SESSION_SECRET/);
+});
+
+test("preflight confirma modelo da conta e suporte a generateContent sem enviar prompt", async () => {
+  let request;
+  const result = await verifyGeminiModelAccess(config, { fetchImpl: async (url, options) => {
+    request = { url, options };
+    return response({ name: "models/gemini-3.5-flash-lite", supportedGenerationMethods: ["generateContent", "countTokens"] });
+  } });
+  assert.deepEqual(result, { model: "gemini-3.5-flash-lite", generateContent: true });
+  assert.equal(request.url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite");
+  assert.equal(request.options.method, "GET");
+  assert.equal(request.options.headers["x-goog-api-key"], "test-only-secret");
+  assert.equal("body" in request.options, false);
+});
+
+test("preflight distingue modelo indisponível e método incompatível", async () => {
+  const missing = verifyGeminiModelAccess(config, { fetchImpl: async () => response({
+    error: { status: "NOT_FOUND", message: "PRIVATE_MODEL_DETAIL" },
+  }, 404) });
+  await assert.rejects(() => missing, {
+    code: "GEMINI_MODEL_UNAVAILABLE", status: 502, upstreamStatus: 404, upstreamCode: "NOT_FOUND",
+  });
+  const unsupported = verifyGeminiModelAccess(config, { fetchImpl: async () => response({
+    name: "models/gemini-3.5-flash-lite", supportedGenerationMethods: ["countTokens"],
+  }) });
+  await assert.rejects(() => unsupported, {
+    code: "GEMINI_MODEL_UNAVAILABLE", status: 502, upstreamStatus: 200, upstreamCode: "METHOD_NOT_SUPPORTED",
+  });
+});
+
+test("parâmetro ou schema rejeitado preserva somente código e campo Google RPC seguros", async () => {
+  const provider = createGeminiFormProvider(config, { fetchImpl: async () => response({ error: {
+    status: "INVALID_ARGUMENT",
+    message: "PRIVATE_USER_CONTENT test-only-secret",
+    details: [{
+      "@type": "type.googleapis.com/google.rpc.BadRequest",
+      fieldViolations: [
+        { field: "generationConfig.responseFormat.text.schema.properties.entries", description: "PRIVATE_DESCRIPTION" },
+        { field: "PRIVATE_UNSAFE_FIELD", description: "PRIVATE_DESCRIPTION" },
+      ],
+    }],
+  } }, 400) });
+  await assert.rejects(() => provider.extract("frete 7"), (error) => {
+    assert.equal(error.code, "GEMINI_BAD_REQUEST");
+    assert.equal(error.upstreamCode, "INVALID_ARGUMENT");
+    assert.equal(error.upstreamField, "generationConfig.responseFormat.text.schema.properties.entries");
+    assert.doesNotMatch(JSON.stringify(error), /PRIVATE_|test-only-secret|description|message/);
+    return true;
+  });
 });
 
 test("prompt injection continua como dado do usuário, sem ferramentas ou acesso a segredos", async () => {
