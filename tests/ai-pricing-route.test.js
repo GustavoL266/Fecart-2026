@@ -96,7 +96,7 @@ test("chave ausente reproduz 503 antes de qualquer chamada à Gemini", async (t)
   assert.equal(result.status, 503);
   assert.equal(result.body.code, "GEMINI_NOT_CONFIGURED");
   assert.equal(calls, 0);
-  assert.deepEqual(records, [["[AI] Analysis failed", { provider: "gemini", code: "GEMINI_NOT_CONFIGURED", status: 503, upstreamStatus: null }]]);
+  assert.deepEqual(records, [["[AI] Analysis failed", { code: "GEMINI_NOT_CONFIGURED", status: 503 }]]);
 });
 
 test("rota preserva null/ausência como não alterar e mantém zero explícito", async (t) => {
@@ -133,8 +133,8 @@ test("JSON malformado e corpo excessivo não expõem trechos da mensagem nem cha
   }
   assert.equal(calls, 0);
   assert.deepEqual(records.map((record) => record[1]), [
-    { provider: "gemini", code: "INVALID_AI_REQUEST", status: 400, upstreamStatus: null },
-    { provider: "gemini", code: "INVALID_AI_REQUEST", status: 413, upstreamStatus: null },
+    { code: "INVALID_AI_REQUEST", status: 400 },
+    { code: "INVALID_AI_REQUEST", status: 413 },
   ]);
   assert.doesNotMatch(JSON.stringify(records), /PRIVATE_USER_CONTENT/);
 });
@@ -167,9 +167,11 @@ test("401 da Gemini permanece erro de integração, sem SESSION_REQUIRED nem dad
   assert.equal(result.status, 502);
   assert.equal(result.body.code, "GEMINI_UNAUTHORIZED");
   assert.deepEqual(Object.keys(result.body), ["error", "code"]);
-  assert.deepEqual(records, [["[AI] Analysis failed", {
-    provider: "gemini", code: "GEMINI_UNAUTHORIZED", status: 502, upstreamStatus: 401, upstreamCode: "UNAUTHENTICATED",
-  }]]);
+  assert.deepEqual(records, [
+    ["[AI] upstreamStatus", 401],
+    ["[AI] upstreamErrorCode", 401],
+    ["[AI] upstreamErrorStatus", "UNAUTHENTICATED"],
+  ]);
   assert.doesNotMatch(JSON.stringify([result.body, records]), /SESSION_REQUIRED|test-only-secret|PRIVATE_|Authorization|stack/);
 });
 
@@ -188,12 +190,16 @@ test("rota diferencia rate limit do provedor de quota e de falha temporária", a
     assert.equal(result.status, status);
     assert.equal(result.body.code, code);
     assert.notEqual(result.body.code, "AI_RATE_LIMITED");
-    assert.deepEqual(records[0][1], { provider: "gemini", code, status, upstreamStatus, upstreamCode: "RESOURCE_EXHAUSTED" });
+    assert.deepEqual(records, [
+      ["[AI] upstreamStatus", upstreamStatus],
+      ["[AI] upstreamErrorCode", upstreamStatus],
+      ["[AI] upstreamErrorStatus", "RESOURCE_EXHAUSTED"],
+    ]);
     assert.doesNotMatch(JSON.stringify([result.body, records]), /PRIVATE_DETAIL|test-only-secret/);
   }
 });
 
-test("BAD_REQUEST registra identificadores estruturados seguros sem corpo externo", async (t) => {
+test("BAD_REQUEST registra somente status estruturados seguros sem corpo externo", async (t) => {
   const records = [];
   const provider = createGeminiFormProvider({ apiKey: "test-only-secret", model: "gemini-3.5-flash-lite", timeoutMs: 5000 }, {
     fetchImpl: async () => Response.json({ error: {
@@ -208,10 +214,11 @@ test("BAD_REQUEST registra identificadores estruturados seguros sem corpo extern
   const result = await request();
   assert.equal(result.status, 502);
   assert.equal(result.body.code, "GEMINI_BAD_REQUEST");
-  assert.deepEqual(records, [["[AI] Analysis failed", {
-    provider: "gemini", code: "GEMINI_BAD_REQUEST", status: 502, upstreamStatus: 400,
-    upstreamCode: "INVALID_ARGUMENT", upstreamField: "generationConfig.responseFormat.text.schema",
-  }]]);
+  assert.deepEqual(records, [
+    ["[AI] upstreamStatus", 400],
+    ["[AI] upstreamErrorCode", null],
+    ["[AI] upstreamErrorStatus", "INVALID_ARGUMENT"],
+  ]);
   assert.doesNotMatch(JSON.stringify([result.body, records]), /PRIVATE_|test-only-secret|description/);
 });
 
@@ -226,7 +233,7 @@ test("falha inesperada anterior ao provider retorna 500 seguro, sem fingir indis
   assert.equal(result.status, 500);
   assert.equal(result.body.code, "AI_INTERNAL_ERROR");
   assert.equal(calls, 0);
-  assert.deepEqual(records, [["[AI] Analysis failed", { provider: "gemini", code: "AI_INTERNAL_ERROR", status: 500, upstreamStatus: null }]]);
+  assert.deepEqual(records, [["[AI] Analysis failed", { code: "AI_INTERNAL_ERROR", status: 500 }]]);
   assert.doesNotMatch(JSON.stringify([result.body, records]), /PRIVATE_|stack/);
 });
 

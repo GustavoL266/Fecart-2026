@@ -2,11 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { parsePricingMessage } from "../lib/ai-form-assistant.js";
-import { AI_FIELD_RULES, validateAiExtraction } from "../lib/ai-pricing-schema.js";
+import { AI_FIELD_RULES, AI_OUTPUT_JSON_SCHEMA, validateAiExtraction } from "../lib/ai-pricing-schema.js";
 
 const entry = (field, value, evidence, batchUnits = null, batchEvidence = null) => ({ field, value, evidence, batchUnits, batchEvidence });
 const extract = (message, entries) => validateAiExtraction({ entries }, message);
 const invalid = { code: "AI_INVALID_RESPONSE", status: 502 };
+
+test("limite de entries continua rigoroso no backend sem maxItems no schema externo", () => {
+  const repeated = Array.from({ length: Object.keys(AI_FIELD_RULES).length + 1 }, () => ({
+    field: "deliveryCost", value: 7, evidence: "frete 7", batchUnits: null, batchEvidence: null,
+  }));
+  assert.throws(() => validateAiExtraction({ entries: repeated }, "frete 7"), invalid);
+  assert.equal("maxItems" in AI_OUTPUT_JSON_SCHEMA.properties.entries, false);
+});
 
 test("extrai todos os dados do bolo sem inventar ausentes nem preço calculado", () => {
   const message = "Vendo bolo de chocolate. Gasto 18 reais de ingredientes, 3 reais de embalagem e tenho perda de 10%. Quero margem de 25%.";

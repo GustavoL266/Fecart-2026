@@ -39,14 +39,14 @@ test("diagnóstico IA informa presença/configuração sem validar a chave nem e
   const missing = aiAssistantHealth(getAiAssistantConfig({ GEMINI_API_KEY: "   " }));
   assert.deepEqual(missing, {
     provider: "gemini", configured: false, model: "gemini-3.5-flash-lite", timeoutMs: 25000,
-    apiVersion: "v1beta", method: "generateContent", structuredOutput: "generationConfig.responseFormat.text",
+    apiVersion: "v1beta", method: "generateContent", structuredOutput: "generationConfig.responseMimeType+responseJsonSchema",
     configurationErrors: ["GEMINI_API_KEY_MISSING"],
   });
   // This arbitrary value passes presence checks, not a live Gemini authentication check.
   const present = aiAssistantHealth(getAiAssistantConfig({ GEMINI_API_KEY: "test-only-secret" }));
   assert.deepEqual(present, {
     provider: "gemini", configured: true, model: "gemini-3.5-flash-lite", timeoutMs: 25000,
-    apiVersion: "v1beta", method: "generateContent", structuredOutput: "generationConfig.responseFormat.text",
+    apiVersion: "v1beta", method: "generateContent", structuredOutput: "generationConfig.responseMimeType+responseJsonSchema",
     configurationErrors: [],
   });
   const invalid = aiAssistantHealth(getAiAssistantConfig({
@@ -54,7 +54,7 @@ test("diagnóstico IA informa presença/configuração sem validar a chave nem e
   }));
   assert.deepEqual(invalid, {
     provider: "unsupported", configured: false, model: null, timeoutMs: 25000,
-    apiVersion: "v1beta", method: "generateContent", structuredOutput: "generationConfig.responseFormat.text",
+    apiVersion: "v1beta", method: "generateContent", structuredOutput: "generationConfig.responseMimeType+responseJsonSchema",
     configurationErrors: ["AI_PROVIDER_UNSUPPORTED", "AI_MODEL_INVALID", "AI_TIMEOUT_INVALID"],
   });
   assert.doesNotMatch(JSON.stringify([missing, present, invalid]), /test-only-secret|PRIVATE_|apiKey|Authorization|operational/);
@@ -94,8 +94,11 @@ test("Gemini recebe mensagem e schema; chave somente no cabeçalho do backend", 
   assert.equal(request.body.generationConfig.maxOutputTokens, 3000);
   assert.equal(request.body.generationConfig.candidateCount, 1);
   assert.deepEqual(request.body.contents, [{ role: "user", parts: [{ text: "Coloque frete de 7 reais." }] }]);
-  assert.equal(request.body.generationConfig.responseFormat.text.mimeType, "application/json");
-  assert.equal(request.body.generationConfig.responseFormat.text.schema.additionalProperties, false);
+  assert.equal(request.body.generationConfig.responseMimeType, "application/json");
+  assert.equal(request.body.generationConfig.responseJsonSchema.additionalProperties, false);
+  assert.equal("maxItems" in request.body.generationConfig.responseJsonSchema.properties.entries, false);
+  assert.equal("responseFormat" in request.body.generationConfig, false);
+  assert.equal("responseSchema" in request.body.generationConfig, false);
   assert.equal("tools" in request.body, false);
   assert.equal("store" in request.body, false);
   assert.doesNotMatch(request.options.body + request.url, /test-only-secret|DATABASE_URL|SESSION_SECRET/);
@@ -119,17 +122,18 @@ test("preflight distingue modelo indisponível e método incompatível", async (
     error: { status: "NOT_FOUND", message: "PRIVATE_MODEL_DETAIL" },
   }, 404) });
   await assert.rejects(() => missing, {
-    code: "GEMINI_MODEL_UNAVAILABLE", status: 502, upstreamStatus: 404, upstreamCode: "NOT_FOUND",
+    code: "GEMINI_MODEL_UNAVAILABLE", status: 502, upstreamStatus: 404,
+    upstreamErrorStatus: "NOT_FOUND",
   });
   const unsupported = verifyGeminiModelAccess(config, { fetchImpl: async () => response({
     name: "models/gemini-3.5-flash-lite", supportedGenerationMethods: ["countTokens"],
   }) });
   await assert.rejects(() => unsupported, {
-    code: "GEMINI_MODEL_UNAVAILABLE", status: 502, upstreamStatus: 200, upstreamCode: "METHOD_NOT_SUPPORTED",
+    code: "GEMINI_MODEL_UNAVAILABLE", status: 502, upstreamStatus: 200, upstreamErrorStatus: "METHOD_NOT_SUPPORTED",
   });
 });
 
-test("parâmetro ou schema rejeitado preserva somente código e campo Google RPC seguros", async () => {
+test("parâmetro ou schema rejeitado preserva somente código e status Google RPC seguros", async () => {
   const provider = createGeminiFormProvider(config, { fetchImpl: async () => response({ error: {
     status: "INVALID_ARGUMENT",
     message: "PRIVATE_USER_CONTENT test-only-secret",
@@ -143,8 +147,8 @@ test("parâmetro ou schema rejeitado preserva somente código e campo Google RPC
   } }, 400) });
   await assert.rejects(() => provider.extract("frete 7"), (error) => {
     assert.equal(error.code, "GEMINI_BAD_REQUEST");
-    assert.equal(error.upstreamCode, "INVALID_ARGUMENT");
-    assert.equal(error.upstreamField, "generationConfig.responseFormat.text.schema.properties.entries");
+    assert.equal(error.upstreamErrorCode, undefined);
+    assert.equal(error.upstreamErrorStatus, "INVALID_ARGUMENT");
     assert.doesNotMatch(JSON.stringify(error), /PRIVATE_|test-only-secret|description|message/);
     return true;
   });

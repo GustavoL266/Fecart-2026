@@ -13,11 +13,11 @@ O assistente interpreta uma mensagem, apresenta uma prévia e preenche apenas os
 
 Localmente, configure no `.env`, que já é ignorado pelo Git. No Render, abra o Web Service do projeto, **Environment → Add Environment Variable**, cadastre `GEMINI_API_KEY` com sua chave real e salve. Em serviços existentes, substitua os valores antigos de `AI_PROVIDER` e `AI_MODEL` pelos da tabela. Depois faça **Manual Deploy → Deploy latest commit**. Nunca grave a chave no frontend, no GitHub ou neste documento. Uma configuração ausente ou inválida desabilita apenas o assistente.
 
-O provedor usa REST nativo via `fetch` do Node, sem SDK ou camada de compatibilidade OpenAI. A chamada é `POST https://generativelanguage.googleapis.com/v1beta/models/{AI_MODEL}:generateContent`. A chave vai somente no cabeçalho `x-goog-api-key`, nunca na URL. O contrato usa `systemInstruction`, uma mensagem em `contents` e `generationConfig.responseFormat.text` com `mimeType: "application/json"` e o JSON Schema. Há um candidato e limite de 3000 tokens; nenhum histórico ou ferramenta é enviado.
+O provedor usa REST nativo via `fetch` do Node, sem SDK ou camada de compatibilidade OpenAI. A chamada é `POST https://generativelanguage.googleapis.com/v1beta/models/{AI_MODEL}:generateContent`. A chave vai somente no cabeçalho `x-goog-api-key`, nunca na URL. O contrato usa `systemInstruction`, uma mensagem em `contents`, `generationConfig.responseMimeType: "application/json"` e `generationConfig.responseJsonSchema`. Há um candidato e limite de 3000 tokens; nenhum histórico ou ferramenta é enviado.
 
-O modelo estável [Gemini 3.5 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite) foi confirmado novamente na documentação em 11/09/2026: o identificador é `gemini-3.5-flash-lite`, ele é voltado a baixa latência, baixo custo e extração simples, aceita `generateContent` e suporta saída estruturada. O modelo também consta nas [tabelas atuais de limites da API](https://ai.google.dev/gemini-api/docs/rate-limits). O [contrato REST de saída estruturada](https://ai.google.dev/gemini-api/docs/generate-content/structured-output) e a [referência generateContent](https://ai.google.dev/api/generate-content) documentam `responseFormat.text` e os demais parâmetros usados. A referência também oferece `responseMimeType`/`responseJsonSchema` como outra representação; esta integração não mistura as duas formas. O modelo fica configurável por ambiente; o nome precisa começar com `gemini-`, sem barras, query string ou caracteres de controle.
+O modelo estável [Gemini 3.5 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite) foi confirmado novamente na documentação em 11/09/2026: o identificador é `gemini-3.5-flash-lite`, ele é voltado a baixa latência, baixo custo e extração simples, aceita `generateContent` e suporta saída estruturada. O modelo também consta nas [tabelas atuais de limites da API](https://ai.google.dev/gemini-api/docs/rate-limits). A [referência generateContent](https://ai.google.dev/api/generate-content) documenta `responseMimeType` e `responseJsonSchema`, enquanto o [guia de migração](https://ai.google.dev/gemini-api/docs/migrate-to-interactions#structured-output) mantém esses controles dentro de `generationConfig` para `generateContent`. Esta integração não envia junto `responseFormat` nem `responseSchema`. O modelo fica configurável por ambiente; o nome precisa começar com `gemini-`, sem barras, query string ou caracteres de controle.
 
-O schema externo usa somente recursos documentados: `object`, `array`, `string`, `number`, `integer`, `null`, união de tipos para nulabilidade, `required`, `enum`, `items` e `additionalProperties: false`. A validação Zod rigorosa do backend continua sendo a autoridade para evidências, normalização de lote, limites e campos aceitos.
+O schema externo usa somente recursos documentados: `object`, `array`, `string`, `number`, `integer`, `null`, união de tipos para nulabilidade, `required`, `enum`, `items` e `additionalProperties: false`. Ele omite deliberadamente `maxItems`: a chamada real retornou 400 quando `maxItems: 35` era combinado com o enum de 35 campos. A validação Zod rigorosa do backend continua limitando o array a 35 entradas e sendo a autoridade para evidências, duplicatas, normalização de lote, limites e campos aceitos.
 
 Esta funcionalidade agora depende exclusivamente de `GEMINI_API_KEY`. `OPENAI_API_KEY`, `AI_PROVIDER=openai` e o modelo anterior não são usados. Em um serviço Render existente, **troque também AI_PROVIDER e AI_MODEL**, pois variáveis antigas explícitas prevalecem sobre os novos padrões. Depois de migrar, a antiga chave OpenAI pode ser removida do ambiente deste projeto.
 
@@ -47,7 +47,7 @@ Depois do deploy, `GET /health` inclui:
     "timeoutMs": 25000,
     "apiVersion": "v1beta",
     "method": "generateContent",
-    "structuredOutput": "generationConfig.responseFormat.text",
+    "structuredOutput": "generationConfig.responseMimeType+responseJsonSchema",
     "configurationErrors": ["GEMINI_API_KEY_MISSING"]
   },
   "deployment": {
@@ -58,7 +58,7 @@ Depois do deploy, `GET /health` inclui:
 
 Quando as variáveis forem aceitas, `configured` será `true` e `configurationErrors` será `[]`. Compare `model`, `timeoutMs` e `deployment.commit` com o valor esperado e o commit enviado ao GitHub. Isso confirma somente presença/formato de configuração e o processo publicado; não valida chave, saldo, permissão nem disponibilidade do modelo para a conta. `/health` não faz chamadas pagas e não muda o estado geral do servidor por indisponibilidade desse recurso opcional. Os outros motivos possíveis são `AI_PROVIDER_UNSUPPORTED`, `AI_MODEL_INVALID` e `AI_TIMEOUT_INVALID`. Não são exibidos valores de variáveis, credenciais ou mensagens do usuário.
 
-O log de inicialização `[AI] Configuration` mostra o mesmo diagnóstico seguro e `[Deploy] Configuration` mostra somente o SHA validado. Nas falhas, `[AI] Analysis failed` registra `provider`, `code`, `status`, `upstreamStatus` e, quando a Gemini os fornece, `upstreamCode` e um `upstreamField` limitado a `generationConfig`, `systemInstruction` ou `contents`. Descrições livres de violações são descartadas. Análises válidas registram `provider=gemini` e `status=200`. Nunca são registrados o objeto de erro original, stack, cabeçalhos, prompt, resposta bruta ou texto do usuário.
+O log de inicialização `[AI] Configuration` mostra o mesmo diagnóstico seguro e `[Deploy] Configuration` mostra somente o SHA validado. Em falha HTTP da Gemini são registrados somente `[AI] upstreamStatus`, `[AI] upstreamErrorCode` e `[AI] upstreamErrorStatus`. Mensagens livres do provedor são descartadas. Análises válidas registram `provider=gemini` e `status=200`. Nunca são registrados o objeto de erro original, stack, cabeçalhos, prompt, resposta bruta ou texto do usuário.
 
 Para comprovar a disponibilidade na conta e o contrato real, abra o **Shell** do Web Service depois do deploy e execute:
 
@@ -66,13 +66,15 @@ Para comprovar a disponibilidade na conta e o contrato real, abra o **Shell** do
 pnpm gemini:check
 ```
 
-O comando faz primeiro um `GET /v1beta/models/{AI_MODEL}` sem prompt e confirma `generateContent`. Em seguida faz uma única geração estruturada com o caso de brigadeiros e valida a normalização do lote no backend. A saída contém somente `ok`, modelo, método, contrato e, em falha, os mesmos códigos/metadados seguros. O comando não imprime chave, cabeçalhos, prompt, corpo bruto ou stack. Essa geração pode consumir quota/créditos e não deve ser executada em repetição automática.
+O comando faz primeiro um `GET /v1beta/models/{AI_MODEL}` sem prompt e confirma `generateContent`. Em seguida faz duas gerações estruturadas: o caso mínimo do bolo e o lote de brigadeiros, cuja normalização é validada no backend. A saída contém somente `ok`, modelo, método, contrato e, em falha, os mesmos códigos/metadados seguros. O comando não imprime chave, cabeçalhos, prompt, corpo bruto ou stack. Essas gerações podem consumir quota/créditos e não devem ser executadas em repetição automática.
+
+`pnpm gemini:probe` é o diagnóstico incremental de desenvolvimento. Ele usa o prompt fixo de bolo, reproduz os dois payloads rejeitados, aumenta o schema por etapas e mostra somente nome da etapa, status/códigos upstream e metadados estruturais da resposta. Ele faz várias chamadas reais, inclusive controles que devem retornar 400, e não deve ser executado como monitor periódico.
 
 ### Incidente HTTP 502 de 11/09/2026
 
 No momento da investigação, `https://fecart-2026.onrender.com/health` respondeu `200`, banco conectado e `ai.provider: "gemini"`, `ai.configured: true`, sem erros locais de configuração. O `app.js` publicado tinha o mesmo SHA-256 do bundle do commit então presente no repositório. Isso comprova o frontend publicado e que a aplicação aceitou presença/formato das variáveis, mas não comprova a chave, a conta, o modelo efetivo anterior a este diagnóstico nem o backend exato sem um SHA publicado.
 
-A frase do modal usada naquela versão correspondia tanto a `GEMINI_MODEL_UNAVAILABLE` quanto a `GEMINI_BAD_REQUEST`. Por isso a imagem e o HTTP 502 isolado não determinam qual dos dois códigos veio no JSON. A frase específica comprova que foi uma resposta JSON tratada pela aplicação; um 502 HTML da infraestrutura cairia na mensagem genérica de indisponibilidade. A versão atual separa as mensagens. Para fechar a causa raiz, reproduza uma vez e cruze o corpo seguro da resposta, o log `[AI] Analysis failed`, `/health` e `pnpm gemini:check`; não copie cookies, chave, mensagem do usuário ou resposta bruta.
+A resposta real de produção confirmou `502 GEMINI_BAD_REQUEST`. O probe autenticado com `gemini-3.5-flash-lite` reproduziu duas rejeições independentes: `responseFormat.text.mimeType: "application/json"` retornou 400 `INVALID_ARGUMENT`, e o schema já migrado ainda retornou 400 enquanto continha `entries.maxItems: 35` junto do enum de 35 campos. `responseMimeType + responseJsonSchema` mínimo retornou 200; o schema completo sem `maxItems` retornou 200; adicionar `systemInstruction`, `candidateCount: 1` e `maxOutputTokens: 3000` manteve HTTP 200. O `pnpm gemini:check` real passou tanto para “Quero vender bolo e quero margem de 10%” quanto para o lote de brigadeiros. Assim, o `GEMINI_BAD_REQUEST` desapareceu sem desativar Structured Output nem relaxar a validação do backend.
 
 ### Códigos de erro
 
@@ -84,7 +86,7 @@ As respostas de erro continuam não sendo sucesso: `{ "error": "mensagem segura"
 | 502 | `GEMINI_UNAUTHORIZED` | HTTP 401 ou `ErrorInfo.reason` igual a `API_KEY_INVALID`/`API_KEY_EXPIRED`, inclusive em HTTP 400; revisar a credencial sem encerrar a sessão do site. |
 | 502 | `GEMINI_FORBIDDEN` | Gemini respondeu 403; conferir permissão ou restrição de acesso. |
 | 502 | `GEMINI_MODEL_UNAVAILABLE` | Modelo inexistente ou indisponível para a conta (404). |
-| 502 | `GEMINI_BAD_REQUEST` | Gemini rejeitou a requisição/configuração (400/422); `upstreamCode`/`upstreamField` seguros distinguem parâmetro ou schema rejeitado. |
+| 502 | `GEMINI_BAD_REQUEST` | Gemini rejeitou a requisição/configuração (400/422); logs expõem somente status/código upstream estruturados. |
 | 503 | `GEMINI_QUOTA_EXCEEDED` | Créditos, orçamento ou quota da integração esgotados; repetir sem corrigir o limite não resolve. |
 | 429 | `GEMINI_RATE_LIMITED` | Limite temporário do provedor; aguardar antes de tentar novamente. |
 | 429 | `AI_RATE_LIMITED` | Oito análises por minuto por conta/IP na aplicação; respeitar `Retry-After`. |
@@ -179,7 +181,7 @@ O formulário atual não tem campos de alíquotas individuais de ICMS, IPI, PIS/
 
 Execute `pnpm lint`, `pnpm test` e `pnpm build`. Os testes de provider e da rota usam respostas simuladas; não consomem créditos nem dependem de banco ou chave real. Cobrem os exemplos do usuário, decimal/R$/porcentagem, lote, ausência, zero, limites, JSON inválido, prompt injection, timeout, autenticação, rate limit, concorrência, confirmação e cancelamento.
 
-Na investigação do HTTP 502 de 11/09/2026 passaram 251 testes com respostas externas simuladas, lint de 75 arquivos JavaScript e build. Os contratos cobrem endpoint nativo, cabeçalho da chave, JSON Schema, preflight de modelo/método, multipartes, bloqueio de conteúdo e distinção entre quota e limite temporário. Os três exemplos abaixo percorrem provider, validação e aplicação parcial reais com resposta do modelo simulada. Não houve chamada autenticada à Gemini: `pnpm gemini:check` retornou com segurança `GEMINI_NOT_CONFIGURED` porque a chave não estava configurada no ambiente local. A validação real depende da configuração no Render, do novo deploy e da execução única desse comando no Shell do serviço.
+Na correção do HTTP 502 de 11/09/2026 passaram 252 testes, lint de 76 arquivos JavaScript e build. Os contratos cobrem endpoint nativo, cabeçalho da chave, JSON Schema externo compatível, limite posterior no backend, preflight de modelo/método, multipartes, bloqueio de conteúdo e distinção entre quota e limite temporário. Houve chamada autenticada real com `gemini-3.5-flash-lite`: os dois controles incompatíveis retornaram 400, o payload final retornou 200 e `pnpm gemini:check` validou os casos de bolo e brigadeiros de ponta a ponta. A chave permaneceu somente no `.env` ignorado pelo Git.
 
 - “Quero vender bolo, gastei R$ 15 para fazer e quero margem de 10%”: prévia de produto, matéria-prima `15` e margem `10`.
 - “Faço brigadeiro. Ingredientes custam R$ 20, embalagem R$ 5 e quero margem de 30%.”: prévia de produto, matéria-prima `20`, embalagem `5` e margem `30`.
