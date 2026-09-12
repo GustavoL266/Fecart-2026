@@ -19,10 +19,13 @@
 .ai-assistant-dialog button:disabled:not([aria-busy="true"]) { cursor: default; }
 .ai-assistant-preview { margin-top: 22px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--subtle-surface); }
 .ai-assistant-preview h3 { margin: 0 0 16px; font-size: 1rem; }
-.ai-assistant-fields { display: grid; gap: 12px; margin: 0 0 16px; }
-.ai-assistant-fields > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; min-width: 0; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
-.ai-assistant-fields dt { color: var(--muted); font-size: .84rem; line-height: 1.5; overflow-wrap: anywhere; }
-.ai-assistant-fields dd { min-width: 0; margin: 0; color: var(--ink); font-size: .88rem; font-weight: 750; line-height: 1.5; overflow-wrap: anywhere; text-align: right; white-space: pre-wrap; }
+.ai-assistant-fields { display: grid; gap: 18px; margin: 0 0 16px; }
+.ai-assistant-source-group h4 { margin: 0 0 10px; color: var(--muted); font-size: .76rem; letter-spacing: .055em; text-transform: uppercase; }
+.ai-assistant-source-fields { display: grid; gap: 12px; margin: 0; }
+.ai-assistant-source-fields > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; min-width: 0; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.ai-assistant-source-fields dt { color: var(--muted); font-size: .84rem; line-height: 1.5; overflow-wrap: anywhere; }
+.ai-assistant-source-fields dd { min-width: 0; margin: 0; color: var(--ink); font-size: .88rem; font-weight: 750; line-height: 1.5; overflow-wrap: anywhere; text-align: right; white-space: pre-wrap; }
+.ai-assistant-estimate-warning { margin: 0 0 16px; padding: 12px; border: 1px solid color-mix(in srgb, var(--green) 32%, var(--line)); border-radius: 10px; background: var(--green-soft); color: var(--ink); font-size: .82rem; line-height: 1.5; }
 .ai-assistant-pending { margin: 4px 0 16px; padding: 14px; border: 1px solid color-mix(in srgb, var(--red) 30%, var(--line)); border-radius: 10px; background: var(--risk-surface); }
 .ai-assistant-pending h4 { margin: 0 0 8px; font-size: .9rem; }
 .ai-assistant-pending ul { display: grid; gap: 7px; margin: 0 0 14px; padding-left: 20px; color: var(--ink); font-size: .84rem; line-height: 1.5; }
@@ -38,8 +41,8 @@
 @media (max-width: 600px) {
   .ai-assistant-dialog { width: calc(100% - 20px); max-width: calc(100% - 20px); max-height: calc(100dvh - 20px); padding: 20px; border-radius: 16px; }
   .ai-assistant-preview { padding: 14px; }
-  .ai-assistant-fields > div { grid-template-columns: minmax(0, 1fr); gap: 3px; }
-  .ai-assistant-fields dd { text-align: left; }
+  .ai-assistant-source-fields > div { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  .ai-assistant-source-fields dd { text-align: left; }
   .ai-assistant-actions { flex-direction: column; }
   .ai-assistant-actions button { width: 100%; }
 }

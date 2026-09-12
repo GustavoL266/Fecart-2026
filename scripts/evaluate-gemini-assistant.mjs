@@ -1,13 +1,17 @@
 import { getAiAssistantConfig } from "../lib/config.js";
-import { validateAiExtraction } from "../lib/ai-pricing-schema.js";
+import { finalizeAiPricingAnalysis, validateAiExtraction } from "../lib/ai-pricing-schema.js";
 import { createGeminiFormProvider, verifyGeminiModelAccess } from "../lib/gemini-form-provider.js";
 import { parsePricingMessage } from "../lib/ai-form-assistant.js";
+import { calculatePricing } from "../js/domain/pricing-calculator.js";
+import { applyAssistantFields, CAPACITY_FIELD_IDS, PRICING_FIELD_IDS, validatePricingForm } from "../js/ui/form.js";
 
 // Fixed, non-personal prompts only. Output is intentionally limited to public
 // validated fields and controlled pending codes; raw model data/evidence is never logged.
 const cases = [
   { id: "bolo-minimal", message: "Quero vender bolo e quero margem de 10%", fields: { productName: "bolo", desiredNetMargin: 10 }, pending: [] },
-  { id: "brigadeiros-lote", message: "Quero vender brigadeiros. Gasto R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens e quero margem de 30%.", fields: { productName: "brigadeiros", materialCost: 0.4, packagingCost: 0.1, desiredNetMargin: 30 }, pending: [] },
+  { id: "brigadeiros-lote", message: "Faço brigadeiros, gasto R$ 40 por lote de 100 unidades e quero margem de 30%.", fields: { productName: "brigadeiros", materialCost: 0.4, desiredNetMargin: 30 }, pending: [], ready: true },
+  { id: "camiseta-complete", message: "Quero vender camiseta, pago R$ 25 por peça e quero margem de 20%.", fields: { productName: "camiseta", materialCost: 25, desiredNetMargin: 20 }, pending: [], ready: true },
+  { id: "marmita-complete", message: "Quero vender marmita, gasto R$ 12 por unidade e quero margem de 25%.", fields: { productName: "marmita", materialCost: 12, desiredNetMargin: 25 }, pending: [], ready: true },
   { id: "componentes", message: "Pago R$ 600 por um lote de 50 camisetas, mais R$ 150 de estampagem para as mesmas 50 peças, R$ 2 de embalagem por unidade e margem de 35%.", fields: { materialCost: 12, otherDirectExpenses: 3, packagingCost: 2, desiredNetMargin: 35 }, pending: [] },
   { id: "total-sem-quantidade", message: "Gastei R$ 350 em ingredientes e R$ 80 em embalagens. Quero margem de 30%.", fields: { desiredNetMargin: 30 }, pending: ["AI_COST_BASIS_UNKNOWN", "AI_COST_BASIS_UNKNOWN"] },
   { id: "misto", message: "Cada bolo usa R$ 18,50 de ingredientes e gasto R$ 50 de caixas para 100 bolos. Quero margem de 20%.", fields: { materialCost: 18.5, packagingCost: 0.5, desiredNetMargin: 20 }, pending: [] },
@@ -21,17 +25,25 @@ const cases = [
   },
   {
     id: "clarification-unit",
-    message: "Quero vender um bolo, usei 15 reais para fazer, e quero lucro de 10%",
+    message: "Quero vender um bolo, usei 15 reais para fazer e quero lucro de 10%",
     clarification: "por unidade",
     initialPending: ["AI_COST_BASIS_UNKNOWN"],
     fields: { productName: "bolo", desiredNetMargin: 10, materialCost: 15 },
-    pending: [],
+    pending: [], ready: true,
   },
 ];
 const selectedIds = new Set(process.argv.slice(2).filter((argument) => argument !== "--"));
 const selectedCases = selectedIds.size ? cases.filter(({ id }) => selectedIds.has(id)) : cases;
-const sameObject = (actual, expected) => Object.keys(actual).length === Object.keys(expected).length
-  && Object.entries(expected).every(([field, value]) => actual[field] === value);
+const includesExpected = (actual, expected) => Object.entries(expected).every(([field, value]) => actual[field] === value);
+const simulatorCheck = (fields) => {
+  const controls = Object.fromEntries([
+    ...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS, "productName", "productDescription",
+  ].map((id) => [id, { value: "" }]));
+  applyAssistantFields(fields, controls);
+  const validation = validatePricingForm(controls);
+  if (!validation.isValid) return { formValid: false, technicalPrice: null };
+  return { formValid: true, technicalPrice: calculatePricing(validation.inputs).technicalPrice };
+};
 
 const config = getAiAssistantConfig();
 if (!config.isConfigured) {
@@ -52,6 +64,7 @@ try {
         const initialCodes = first.pending.map(({ code }) => code);
         const previousAnalysis = {
           fields: first.fields,
+          sources: first.sources,
           pending: first.pending.map(({ code, field }) => ({ code, field })),
           needsClarification: first.needsClarification,
         };
@@ -59,18 +72,20 @@ try {
           message: expected.clarification,
           clarification: { context: message, previousAnalysis },
         } });
+        const simulator = simulatorCheck(result.fields);
         const pendingCodes = result.pending.map(({ code }) => code);
         const initialMatches = first.needsClarification === true
-          && initialCodes.length === expected.initialPending.length
-          && expected.initialPending.every((code, index) => initialCodes[index] === code);
-        const matchesExpected = initialMatches && sameObject(result.fields, expected.fields)
-          && result.needsClarification === false
-          && pendingCodes.length === expected.pending.length;
+          && expected.initialPending.every((code) => initialCodes.includes(code));
+        const matchesExpected = initialMatches && includesExpected(result.fields, expected.fields)
+          && result.needsClarification === false && result.calculationReady === expected.ready
+          && expected.pending.every((code) => pendingCodes.includes(code))
+          && (!expected.ready || simulator.formValid);
         if (!matchesExpected) failed = true;
         process.stdout.write(`${JSON.stringify({
           id, upstreamStatus: 200, initialPendingCodes: initialCodes,
           fields: result.fields, pendingCodes: result.pending.map(({ code, field }) => ({ code, field })),
-          needsClarification: result.needsClarification, matchesExpected,
+          sources: result.sources, needsClarification: result.needsClarification,
+          calculationReady: result.calculationReady, ...simulator, matchesExpected,
         })}\n`);
       } catch (error) {
         failed = true;
@@ -78,6 +93,8 @@ try {
           id, upstreamStatus: Number.isInteger(error?.upstreamStatus) ? error.upstreamStatus : null,
           code: typeof error?.code === "string" ? error.code : "AI_INTERNAL_ERROR",
           status: Number.isInteger(error?.status) ? error.status : 500,
+          validationPath: typeof error?.validationPath === "string" ? error.validationPath : null,
+          validationIssueType: typeof error?.validationIssueType === "string" ? error.validationIssueType : null,
           matchesExpected: false,
         })}\n`);
       }
@@ -86,15 +103,18 @@ try {
     let extraction;
     try {
       extraction = await provider.extract(message);
-      const result = validateAiExtraction(extraction, message);
+      const result = finalizeAiPricingAnalysis(validateAiExtraction(extraction, message), {}, config.fillMode);
+      const simulator = simulatorCheck(result.fields);
       const pendingCodes = result.pending.map(({ code }) => code);
-      const matchesExpected = !expected.error && sameObject(result.fields, expected.fields)
-        && pendingCodes.length === expected.pending.length
-        && expected.pending.every((code, index) => pendingCodes[index] === code);
+      const matchesExpected = !expected.error && includesExpected(result.fields, expected.fields)
+        && expected.pending.every((code) => pendingCodes.includes(code))
+        && (expected.ready === undefined || result.calculationReady === expected.ready)
+        && (!expected.ready || (result.needsClarification === false && simulator.formValid));
       if (!matchesExpected) failed = true;
       process.stdout.write(`${JSON.stringify({
-        id, upstreamStatus: 200, fields: result.fields,
+        id, upstreamStatus: 200, fields: result.fields, sources: result.sources,
         pendingCodes: result.pending.map(({ code, field }) => ({ code, field })),
+        calculationReady: result.calculationReady, ...simulator,
         matchesExpected,
       })}\n`);
     } catch (error) {
@@ -106,16 +126,13 @@ try {
         try { validateAiExtraction({ entries: [entry] }, message); } catch (entryError) { validation = entryError?.code || "AI_INTERNAL_ERROR"; }
         return {
           field: typeof entry?.field === "string" ? entry.field : null,
+          source: typeof entry?.source === "string" ? entry.source : null,
           valueType: entry?.value === null ? "null" : typeof entry?.value,
-          value: ["number", "string"].includes(typeof entry?.value) ? entry.value : null,
           basis: typeof entry?.basis === "string" ? entry.basis : null,
           certainty: typeof entry?.certainty === "string" ? entry.certainty : null,
           batchUnits: Number.isFinite(entry?.batchUnits) ? entry.batchUnits : null,
-          hasBatchEvidence: typeof entry?.batchEvidence === "string" && entry.batchEvidence.length > 0,
-          hasCorrectionEvidence: typeof entry?.correctionEvidence === "string" && entry.correctionEvidence.length > 0,
+          evidenceIsEmpty: entry?.evidence === "",
           evidenceIsLiteral: typeof entry?.evidence === "string" && canonical(message).includes(canonical(entry.evidence)),
-          batchEvidenceIsLiteral: entry?.batchEvidence === null || (typeof entry?.batchEvidence === "string" && canonical(message).includes(canonical(entry.batchEvidence))),
-          correctionEvidenceIsLiteral: entry?.correctionEvidence === null || (typeof entry?.correctionEvidence === "string" && canonical(message).includes(canonical(entry.correctionEvidence))),
           validation,
         };
       }) : undefined;
@@ -125,6 +142,8 @@ try {
         status: Number.isInteger(error?.status) ? error.status : 500,
         upstreamErrorCode: Number.isInteger(error?.upstreamErrorCode) ? error.upstreamErrorCode : null,
         upstreamErrorStatus: typeof error?.upstreamErrorStatus === "string" ? error.upstreamErrorStatus : null,
+        validationPath: typeof error?.validationPath === "string" ? error.validationPath : null,
+        validationIssueType: typeof error?.validationIssueType === "string" ? error.validationIssueType : null,
         matchesExpected,
         ...(!matchesExpected && safeEntries ? { safeEntries } : {}),
       })}\n`);

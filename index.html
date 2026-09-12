@@ -809,13 +809,14 @@
       <form data-ai-form>
         <label for="aiAssistantMessage">Descreva o produto e seus custos</label>
         <textarea id="aiAssistantMessage" data-ai-message rows="5" maxlength="4000" placeholder="Ex.: Quero vender brigadeiros. Gasto R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens e quero margem de 30%." aria-describedby="aiAssistantHint" autocomplete="off"></textarea>
-        <p id="aiAssistantHint" class="helper-text">Você também pode pedir: “Mude minha margem para 20%”. Confira os dados antes de aplicar. Os campos não mencionados serão mantidos.</p>
+        <p id="aiAssistantHint" class="helper-text">Você também pode pedir: “Mude minha margem para 20%”. Confira os dados informados, inferidos e estimados antes de aplicar.</p>
         <button type="submit" data-ai-analyze disabled>Analisar informações</button>
       </form>
       <p data-ai-status class="ai-assistant-status" role="status" aria-live="polite" hidden></p>
       <section data-ai-preview class="ai-assistant-preview" aria-labelledby="aiAssistantPreviewTitle" hidden>
         <h3 id="aiAssistantPreviewTitle">Resultado da análise</h3>
-        <dl data-ai-fields class="ai-assistant-fields"></dl>
+        <div data-ai-fields class="ai-assistant-fields"></div>
+        <p data-ai-estimate-warning class="ai-assistant-estimate-warning" hidden>Valores marcados como estimados foram sugeridos pela IA e podem ser ajustados antes de aplicar.</p>
         <section data-ai-pending class="ai-assistant-pending" aria-labelledby="aiAssistantPendingTitle" hidden>
           <h4 id="aiAssistantPendingTitle">Preciso confirmar:</h4>
           <ul data-ai-pending-list></ul>
@@ -825,10 +826,11 @@
             <button type="submit" data-ai-clarify disabled>Analisar esclarecimento</button>
           </form>
         </section>
-        <p class="helper-text">Ao aplicar, o simulador usa suas fórmulas atuais para recalcular. Complete os demais campos obrigatórios caso estejam vazios.</p>
+        <p class="helper-text">Ao aplicar, o simulador usa suas fórmulas atuais para recalcular; a IA não calcula o preço final.</p>
       </section>
       <div class="ai-assistant-actions">
         <button type="button" data-ai-apply hidden disabled>Aplicar ao simulador</button>
+        <button type="button" data-ai-adjust class="secondary-button" hidden>Ajustar dados</button>
         <button type="button" data-ai-search hidden>Pesquisar no mercado</button>
         <button type="button" data-ai-cancel class="secondary-button">Cancelar</button>
       </div>

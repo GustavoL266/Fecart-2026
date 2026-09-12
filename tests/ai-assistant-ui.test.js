@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createAiAssistant, validateAssistantResponse } from "../js/ui/ai-assistant.js";
-import { applyAssistantFields, CAPACITY_FIELD_IDS, PRICING_FIELD_IDS, readAssistantRateContext, validateAssistantFields, validatePricingForm } from "../js/ui/form.js";
+import { applyAssistantFields, CAPACITY_FIELD_IDS, PRICING_FIELD_IDS, readAssistantFieldContext, readAssistantRateContext, validateAssistantFields, validatePricingForm } from "../js/ui/form.js";
 import { calculatePricing } from "../js/domain/pricing-calculator.js";
 import { parsePricingMessage } from "../lib/ai-form-assistant.js";
 
@@ -11,10 +11,13 @@ function controls(values = {}) {
   return Object.fromEntries(ids.map((id) => [id, { value: values[id] ?? "" }]));
 }
 
-function response(fields, pending = []) {
+function response(fields, pending = [], sourceOverrides = {}) {
+  const resolvedFields = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== null));
+  const sources = Object.fromEntries(Object.keys(resolvedFields).map((field) => [field, sourceOverrides[field] || "user_provided"]));
   return {
     fields,
-    summary: Object.entries(fields).filter(([, value]) => value !== null).map(([field, value]) => ({ field, label: field, value: String(value) })),
+    sources,
+    summary: Object.entries(resolvedFields).map(([field, value]) => ({ field, label: field, value: String(value), source: sources[field] })),
     pending,
     needsClarification: pending.length > 0,
   };
@@ -53,7 +56,7 @@ class Element {
 }
 
 function fixture({ parse = async () => response({ desiredNetMargin: 20 }), apply } = {}) {
-  const names = ["form", "message", "analyze", "preview", "fields", "pending", "pending-list", "clarification-form", "clarification", "clarify", "status", "apply", "search", "cancel", "close"];
+  const names = ["form", "message", "analyze", "preview", "fields", "estimate-warning", "pending", "pending-list", "clarification-form", "clarification", "clarify", "status", "apply", "adjust", "search", "cancel", "close"];
   const elements = Object.fromEntries(names.map((name) => [name, new Element()]));
   const dialog = new Element();
   const openButton = new Element();
@@ -161,7 +164,7 @@ test("resposta exige prévia de cada campo válido e não aceita saída vazia ou
   assert.deepEqual(validateAssistantResponse(response({ materialCost: 20, packagingCost: null })).fields, { materialCost: 20 });
   assert.deepEqual(validateAssistantFields({ materialCost: null }), {});
   for (const raw of [null, [], { fields: [] }, { fields: {} }, { fields: { materialCost: 20 }, summary: [] },
-    { fields: { materialCost: 20 }, summary: [{ field: "desiredNetMargin", label: "Margem", value: "20%" }] },
+    { fields: { materialCost: 20 }, sources: { materialCost: "user_provided" }, summary: [{ field: "desiredNetMargin", label: "Margem", value: "20%", source: "user_provided" }] },
     { fields: { materialCost: 20, packagingCost: 1 }, summary: [response({ materialCost: 20 }).summary[0], response({ materialCost: 20 }).summary[0]] }]) {
     assert.throws(() => validateAssistantResponse(raw));
   }
@@ -305,7 +308,7 @@ test("brigadeiros: prévia de lote preserva pendências e só confirmação alte
   const message = "quero vender brigadeiros. gasto R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens e quero margem de 30%";
   const fields = controls({ deliveryCost: "5" });
   const entry = (field, value, evidence, batchUnits = null, batchEvidence = null) => ({
-    field, value, evidence,
+    field, value, source: "user_provided", evidence,
     basis: ["materialCost", "packagingCost"].includes(field) ? "batch-total" : "not-applicable",
     certainty: "certain", batchUnits, batchEvidence, correctionEvidence: null,
   });
@@ -320,7 +323,7 @@ test("brigadeiros: prévia de lote preserva pendências e só confirmação alte
   await ui.enter(message);
   await ui.elements.form.emit("submit");
   assert.equal(ui.elements.preview.hidden, false);
-  assert.equal(ui.elements.fields.children.length, 4);
+  assert.equal(ui.elements.fields.children.length, 1);
   assert.equal(fields.materialCost.value, "");
   assert.equal(fields.productName.value, "");
   await ui.elements.apply.emit("click");
@@ -356,6 +359,42 @@ test("contexto do assistente contém somente quatro percentuais válidos exibido
   assert.deepEqual(readAssistantRateContext(fields), { desiredNetMargin: 25 });
 });
 
+test("contexto completo preserva inputs manuais válidos sem enviar mercado ou capacidade", () => {
+  const fields = controls({
+    productName: "Bolo", productDescription: "Chocolate", materialCost: "15,50", packagingCost: "2",
+    desiredNetMargin: "10", marketPrice: "99", workerCount: "3", wasteRate: "inválido",
+  });
+  assert.deepEqual(readAssistantFieldContext(fields), {
+    materialCost: 15.5,
+    packagingCost: 2,
+    desiredNetMargin: 10,
+    productName: "Bolo",
+    productDescription: "Chocolate",
+  });
+});
+
+test("prévia separa origens, mostra aviso e Ajustar dados não aplica valores", async () => {
+  const ui = fixture({ parse: async () => response(
+    { productName: "bolo", materialCost: 15, deliveryCost: 0, packagingCost: 2 },
+    [],
+    { deliveryCost: "inferred", packagingCost: "estimated" },
+  ) });
+  const message = "Quero vender bolo e gasto R$ 15 por unidade.";
+  await ui.enter(message);
+  await ui.elements.form.emit("submit");
+  assert.equal(ui.elements.fields.children.length, 3);
+  assert.equal(ui.elements.fields.children[0].children[0].textContent, "Informado pelo usuário");
+  assert.equal(ui.elements.fields.children[1].children[0].textContent, "Inferido com segurança");
+  assert.equal(ui.elements.fields.children[2].children[0].textContent, "Estimado pela IA");
+  assert.equal(ui.elements["estimate-warning"].hidden, false);
+  assert.deepEqual(ui.applied, []);
+  await ui.elements.adjust.emit("click");
+  assert.equal(ui.elements.preview.hidden, true);
+  assert.equal(ui.elements.message.value, message);
+  assert.equal(ui.elements.message.focused, true);
+  assert.deepEqual(ui.applied, []);
+});
+
 test("pendência aparece sem aplicação e esclarecimento reanalisa o contexto original", async () => {
   const calls = [];
   const issue = { code: "AI_COST_BASIS_UNKNOWN", field: "materialCost", message: "O custo é por unidade ou pelo lote?" };
@@ -377,6 +416,7 @@ test("pendência aparece sem aplicação e esclarecimento reanalisa o contexto o
   assert.equal(calls[1].options.clarification.context, original);
   assert.deepEqual(calls[1].options.clarification.previousAnalysis, {
     fields: { desiredNetMargin: 30 },
+    sources: { desiredNetMargin: "user_provided" },
     pending: [{ code: "AI_COST_BASIS_UNKNOWN", field: "materialCost" }],
     needsClarification: true,
   });
@@ -414,7 +454,7 @@ test("falha no esclarecimento preserva prévia anterior e texto digitado", async
   await ui.elements.clarification.emit("input");
   await ui.elements["clarification-form"].emit("submit");
   assert.equal(ui.elements.preview.hidden, false);
-  assert.equal(ui.elements.fields.children.length, 2);
+  assert.equal(ui.elements.fields.children.length, 1);
   assert.equal(ui.elements.pending.hidden, false);
   assert.equal(ui.elements.clarification.value, "por unidade");
   assert.equal(ui.elements.message.value, original);

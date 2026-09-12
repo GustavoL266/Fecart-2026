@@ -7,7 +7,7 @@ import { AI_FIELD_RULES, AI_MAX_EXTRACTION_ENTRIES, AI_OUTPUT_JSON_SCHEMA, valid
 const batchFields = new Set(["materialCost", "packagingCost", "deliveryCost", "insuranceCost", "otherDirectExpenses"]);
 const monthlyFields = new Set(["monthlyPayroll", "monthlyFixedCosts"]);
 const entry = (field, value, evidence, batchUnits = null, batchEvidence = null, overrides = {}) => ({
-  field, value, evidence,
+  field, value, source: "user_provided", evidence,
   basis: monthlyFields.has(field) ? "monthly-total" : batchFields.has(field) ? (batchUnits === null ? "unit" : "batch-total") : "not-applicable",
   certainty: "certain", batchUnits, batchEvidence, correctionEvidence: null, ...overrides,
 });
@@ -20,6 +20,53 @@ test("limite de entries continua rigoroso no backend sem maxItems no schema exte
   }));
   assert.throws(() => validateAiExtraction({ entries: repeated }, "frete 7"), invalid);
   assert.equal("maxItems" in AI_OUTPUT_JSON_SCHEMA.properties.entries, false);
+});
+
+test("origem estimated permite ausência de evidência, mas mantém limites conservadores", () => {
+  const message = "Ingredientes por unidade R$ 15.";
+  const accepted = extract(message, [
+    entry("materialCost", 15, message),
+    entry("packagingCost", 2, "", null, null, { source: "estimated" }),
+    entry("wasteRate", 5, "", null, null, { source: "estimated" }),
+  ]);
+  assert.deepEqual(accepted.sources, {
+    materialCost: "user_provided", packagingCost: "estimated", wasteRate: "estimated",
+  });
+  assert.equal(accepted.summary.find(({ field }) => field === "packagingCost").source, "estimated");
+
+  const absurd = extract(message, [
+    entry("materialCost", 15, message),
+    entry("packagingCost", 500, "", null, null, { source: "estimated" }),
+    entry("wasteRate", 90, "", null, null, { source: "estimated" }),
+  ]);
+  assert.deepEqual(absurd.fields, { materialCost: 15 });
+  assert.deepEqual(absurd.pending.map(({ code, field }) => ({ code, field })), [
+    { code: "AI_VALUE_OUT_OF_RANGE", field: "packagingCost" },
+    { code: "AI_VALUE_OUT_OF_RANGE", field: "wasteRate" },
+  ]);
+  assert.throws(() => extract(message, [
+    entry("packagingCost", 2, "embalagem inventada", null, null, { source: "estimated" }),
+  ]), invalid);
+});
+
+test("origem inferred exige evidência literal para uma consequência direta", () => {
+  const message = "Venda com retirada no local e sem frete.";
+  const result = extract(message, [entry("deliveryCost", 0, "sem frete", null, null, { source: "inferred" })]);
+  assert.deepEqual(result.fields, { deliveryCost: 0 });
+  assert.deepEqual(result.sources, { deliveryCost: "inferred" });
+  assert.throws(() => extract(message, [entry("deliveryCost", 0, "entrega inventada", null, null, { source: "inferred" })]), invalid);
+});
+
+test("modo complete lista somente obrigatórios que a Gemini não conseguiu preencher", async () => {
+  const result = await parsePricingMessage({
+    provider: { fillMode: "complete", extract: async () => ({ entries: [entry("desiredNetMargin", 20, "margem 20%")] }) },
+    input: { message: "margem 20%", currentFields: { deliveryCost: 7 } },
+  });
+  assert.equal(result.fields.deliveryCost, 7);
+  assert.equal(result.sources.deliveryCost, "user_provided");
+  assert.equal(result.calculationReady, false);
+  assert.equal(result.pending.some(({ field }) => field === "deliveryCost"), false);
+  assert.equal(result.pending.some(({ code, field }) => code === "AI_REQUIRED_FIELD_MISSING" && field === "materialCost"), true);
 });
 
 test("extrai todos os dados unitários explícitos do bolo sem inventar ausentes nem preço calculado", () => {
@@ -378,6 +425,7 @@ test("esclarecimento por unidade preserva campos anteriores e valida somente o c
       context: initialMessage,
       previousAnalysis: {
         fields: first.fields,
+        sources: first.sources,
         pending: first.pending.map(({ code, field }) => ({ code, field })),
         needsClarification: first.needsClarification,
       },
@@ -392,6 +440,7 @@ test("esclarecimento de lote sem quantidade mantém pendência e com rendimento 
   const initialMessage = "Faço brigadeiros. Gastei R$ 40 em ingredientes e quero margem de 20%.";
   const previousAnalysis = {
     fields: { productName: "brigadeiros", desiredNetMargin: 20 },
+    sources: { productName: "user_provided", desiredNetMargin: "user_provided" },
     pending: [{ code: "AI_COST_BASIS_UNKNOWN", field: "materialCost" }],
     needsClarification: true,
   };
@@ -418,6 +467,7 @@ test("esclarecimento vazio, campo não pendente e validação final têm código
   const context = "Ingredientes R$ 15; frete por unidade R$ 7.";
   const previousAnalysis = {
     fields: { productName: "bolo" },
+    sources: { productName: "user_provided" },
     pending: [{ code: "AI_COST_BASIS_UNKNOWN", field: "materialCost" }],
     needsClarification: true,
   };
@@ -432,6 +482,7 @@ test("esclarecimento vazio, campo não pendente e validação final têm código
 
   const invalidRates = {
     fields: { productName: "bolo", taxRate: 20, desiredNetMargin: 90 },
+    sources: { productName: "user_provided", taxRate: "user_provided", desiredNetMargin: "user_provided" },
     pending: previousAnalysis.pending,
     needsClarification: true,
   };

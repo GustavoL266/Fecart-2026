@@ -901,6 +901,27 @@ function readAssistantRateContext(elements) {
   }));
 }
 
+/** Safe current values used only by the backend to preserve manual inputs over AI estimates. */
+function readAssistantFieldContext(elements) {
+  const context = {};
+  for (const fieldId of PRICING_FIELD_IDS) {
+    if (fieldId === "marketPrice") continue;
+    const parsed = parseBrazilianNumber(elements[fieldId]?.value);
+    if (parsed.status !== "valid") continue;
+    try {
+      Object.assign(context, validateAssistantFields({ [fieldId]: parsed.value }));
+    } catch { /* Invalid form values remain visible locally but are not sent as trusted context. */ }
+  }
+  for (const fieldId of ["productName", "productDescription"]) {
+    const value = String(elements[fieldId]?.value || "").trim();
+    if (!value) continue;
+    try {
+      Object.assign(context, validateAssistantFields({ [fieldId]: value }));
+    } catch { /* The normal form validation remains responsible for invalid local text. */ }
+  }
+  return context;
+}
+
 function readFiscalContext(elements) {
   return {
     ncmCode: String(elements.ncmCode?.value || "").replace(/\D/g, ""),
@@ -1066,20 +1087,27 @@ const AI_ASSISTANT_MESSAGES = Object.freeze({
 const AI_PENDING_CODES = new Set([
   "AI_COST_BASIS_UNKNOWN", "AI_BATCH_UNITS_REQUIRED", "AI_BATCH_UNITS_INVALID",
   "AI_NEGATIVE_VALUE", "AI_VALUE_OUT_OF_RANGE", "AI_AMBIGUOUS_VALUE",
-  "AI_CONFIRM_FIELD", "AI_MEANING_UNCERTAIN", "AI_RATE_SUM_INVALID",
+  "AI_CONFIRM_FIELD", "AI_MEANING_UNCERTAIN", "AI_RATE_SUM_INVALID", "AI_REQUIRED_FIELD_MISSING",
 ]);
+const AI_VALUE_SOURCES = new Set(["user_provided", "inferred", "estimated"]);
 
 function validateAssistantResponse(response) {
   const fields = validateAssistantFields(response?.fields);
   const fieldIds = Object.keys(fields);
+  if (!response?.sources || typeof response.sources !== "object" || Array.isArray(response.sources)) throw new Error("AI_INVALID_RESPONSE");
+  const sourceIds = Object.keys(response.sources);
+  if (sourceIds.length !== fieldIds.length || sourceIds.some((field) => !Object.hasOwn(fields, field)
+    || !AI_VALUE_SOURCES.has(response.sources[field]))) throw new Error("AI_INVALID_RESPONSE");
+  const sources = Object.fromEntries(fieldIds.map((field) => [field, response.sources[field]]));
   if (!Array.isArray(response.summary) || response.summary.length !== fieldIds.length) throw new Error("AI_INVALID_RESPONSE");
   const seen = new Set();
   const summary = response.summary.map((item) => {
     if (!item || !Object.hasOwn(fields, item.field) || seen.has(item.field)
       || typeof item.label !== "string" || !item.label || item.label.length > 120
-      || typeof item.value !== "string" || !item.value || item.value.length > 2300) throw new Error("AI_INVALID_RESPONSE");
+      || typeof item.value !== "string" || !item.value || item.value.length > 2300
+      || item.source !== sources[item.field]) throw new Error("AI_INVALID_RESPONSE");
     seen.add(item.field);
-    return { field: item.field, label: item.label, value: item.value };
+    return { field: item.field, label: item.label, value: item.value, source: item.source };
   });
   if (!Array.isArray(response.pending)) throw new Error("AI_INVALID_RESPONSE");
   const pendingSeen = new Set();
@@ -1099,7 +1127,9 @@ function validateAssistantResponse(response) {
   if (!fieldIds.length && !pending.length) {
     throw Object.assign(new Error(AI_ASSISTANT_MESSAGES.insufficient), { code: "AI_INSUFFICIENT_INFORMATION" });
   }
-  return { fields, summary, pending, needsClarification };
+  if (Object.hasOwn(response, "calculationReady") && typeof response.calculationReady !== "boolean") throw new Error("AI_INVALID_RESPONSE");
+  const calculationReady = typeof response.calculationReady === "boolean" ? response.calculationReady : null;
+  return { fields, sources, summary, pending, needsClarification, calculationReady };
 }
 
 function assistantErrorMessage(error) {
@@ -1134,6 +1164,7 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
   const analyzeButton = select("[data-ai-analyze]");
   const preview = select("[data-ai-preview]");
   const fieldsList = select("[data-ai-fields]");
+  const estimateWarning = select("[data-ai-estimate-warning]");
   const pendingSection = select("[data-ai-pending]");
   const pendingList = select("[data-ai-pending-list]");
   const clarificationForm = select("[data-ai-clarification-form]");
@@ -1141,6 +1172,7 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
   const clarifyButton = select("[data-ai-clarify]");
   const status = select("[data-ai-status]");
   const applyButton = select("[data-ai-apply]");
+  const adjustButton = select("[data-ai-adjust]");
   const searchButton = select("[data-ai-search]");
   const cancelButton = select("[data-ai-cancel]");
   let result = null;
@@ -1161,12 +1193,15 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
     const hasPending = Boolean(result?.pending.length);
     preview.hidden = !showingResult;
     fieldsList.hidden = !hasFields;
+    estimateWarning.hidden = !showingResult || !result?.summary.some((item) => item.source === "estimated");
     pendingSection.hidden = !showingResult || !hasPending;
     clarificationForm.hidden = !showingResult || !hasPending;
     clarification.readOnly = loading;
     clarifyButton.disabled = loading || !clarification.value.trim();
-    applyButton.hidden = phase !== "preview" || !hasFields;
-    applyButton.disabled = phase !== "preview" || !hasFields;
+    const unresolvedCompleteResult = hasPending && result?.calculationReady === false;
+    applyButton.hidden = phase !== "preview" || !hasFields || unresolvedCompleteResult;
+    applyButton.disabled = phase !== "preview" || !hasFields || unresolvedCompleteResult;
+    adjustButton.hidden = !showingResult || loading;
     searchButton.hidden = phase !== "applied" || !result?.fields.marketQuery;
     cancelButton.textContent = ["applied", "partial-applied"].includes(phase) ? "Fechar" : "Cancelar";
   }
@@ -1210,14 +1245,31 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
   function renderResult() {
     fieldsList.replaceChildren();
     pendingList.replaceChildren();
-    for (const item of result.summary) {
-      const row = dialog.ownerDocument.createElement("div");
-      const label = dialog.ownerDocument.createElement("dt");
-      const value = dialog.ownerDocument.createElement("dd");
-      label.textContent = item.label;
-      value.textContent = item.value;
-      row.append(label, value);
-      fieldsList.append(row);
+    const groups = [
+      ["user_provided", "Informado pelo usuário"],
+      ["inferred", "Inferido com segurança"],
+      ["estimated", "Estimado pela IA"],
+    ];
+    for (const [source, title] of groups) {
+      const items = result.summary.filter((item) => item.source === source);
+      if (!items.length) continue;
+      const section = dialog.ownerDocument.createElement("section");
+      section.className = "ai-assistant-source-group";
+      const heading = dialog.ownerDocument.createElement("h4");
+      heading.textContent = title;
+      const list = dialog.ownerDocument.createElement("dl");
+      list.className = "ai-assistant-source-fields";
+      for (const item of items) {
+        const row = dialog.ownerDocument.createElement("div");
+        const label = dialog.ownerDocument.createElement("dt");
+        const value = dialog.ownerDocument.createElement("dd");
+        label.textContent = item.label;
+        value.textContent = item.value;
+        row.append(label, value);
+        list.append(row);
+      }
+      section.append(heading, list);
+      fieldsList.append(section);
     }
     for (const item of result.pending) {
       const row = dialog.ownerDocument.createElement("li");
@@ -1294,6 +1346,7 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
     }
     const previousAnalysis = {
       fields: { ...result.fields },
+      sources: { ...result.sources },
       pending: result.pending.map(({ code, field }) => ({ code, field })),
       needsClarification: true,
     };
@@ -1331,6 +1384,10 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
   clarificationForm.addEventListener("submit", clarify);
   clarification.addEventListener("input", update);
   applyButton.addEventListener("click", apply);
+  adjustButton.addEventListener("click", () => {
+    clearAnalysis({ clearText: false });
+    textarea.focus();
+  });
   cancelButton.addEventListener("click", close);
   select("[data-ai-close]").addEventListener("click", close);
   dialog.addEventListener("cancel", (event) => { event.preventDefault(); close(); });
@@ -2066,6 +2123,11 @@ const aiAssistant = createAiAssistant({
   parse: (message, { signal, clarification } = {}) => api.post("/ai/parse-pricing", {
     message,
     currentRates: readAssistantRateContext(elements),
+    currentFields: readAssistantFieldContext({
+      ...elements,
+      productName: $("#productName"),
+      productDescription: $("#productDescription"),
+    }),
     ...(clarification ? { clarification } : {}),
   }, { signal }),
   hasSession: () => Boolean(state.user),

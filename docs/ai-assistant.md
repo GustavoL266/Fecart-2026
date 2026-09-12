@@ -1,6 +1,6 @@
 # Preenchimento assistido por IA
 
-O assistente interpreta uma mensagem, apresenta uma prévia e preenche apenas os campos confirmados. Ele não calcula nem recomenda o preço final. O módulo financeiro `js/domain/pricing-calculator.js` permanece intacto, compartilhado pelo navegador e pelo servidor.
+O assistente interpreta uma mensagem, completa os inputs necessários com hipóteses identificadas, apresenta uma prévia e preenche apenas os campos confirmados. Ele não calcula nem recomenda o preço final. O módulo financeiro `js/domain/pricing-calculator.js` permanece intacto, compartilhado pelo navegador e pelo servidor.
 
 ## Configuração
 
@@ -9,11 +9,12 @@ O assistente interpreta uma mensagem, apresenta uma prévia e preenche apenas os
 | `GEMINI_API_KEY` | Credencial Gemini, somente no processo do backend | Vazia; recurso indisponível |
 | `AI_PROVIDER` | Implementação do provedor | `gemini` |
 | `AI_MODEL` | Modelo Gemini compatível com saída estruturada | `gemini-3.5-flash-lite` |
+| `AI_FILL_MODE` | `complete` sugere todos os inputs obrigatórios; `partial` somente extrai | `complete` |
 | `AI_TIMEOUT_MS` | Tempo máximo da chamada, inteiro de 100 a 60000 ms | `25000` |
 
 Localmente, configure no `.env`, que já é ignorado pelo Git. No Render, abra o Web Service do projeto, **Environment → Add Environment Variable**, cadastre `GEMINI_API_KEY` com sua chave real e salve. Em serviços existentes, substitua os valores antigos de `AI_PROVIDER` e `AI_MODEL` pelos da tabela. Depois faça **Manual Deploy → Deploy latest commit**. Nunca grave a chave no frontend, no GitHub ou neste documento. Uma configuração ausente ou inválida desabilita apenas o assistente.
 
-O provedor usa REST nativo via `fetch` do Node, sem SDK ou camada de compatibilidade OpenAI. A chamada é `POST https://generativelanguage.googleapis.com/v1beta/models/{AI_MODEL}:generateContent`. A chave vai somente no cabeçalho `x-goog-api-key`, nunca na URL. O contrato usa `systemInstruction`, uma mensagem em `contents`, `generationConfig.responseMimeType: "application/json"` e `generationConfig.responseJsonSchema`. A extração usa `temperature: 0`, um candidato e limite de 3000 tokens. A primeira análise não envia histórico; um esclarecimento envia somente contexto efêmero, campos anteriores validados e pendências, sem ferramentas, formulário completo ou dados da conta.
+O provedor usa REST nativo via `fetch` do Node, sem SDK ou camada de compatibilidade OpenAI. A chamada é `POST https://generativelanguage.googleapis.com/v1beta/models/{AI_MODEL}:generateContent`. A chave vai somente no cabeçalho `x-goog-api-key`, nunca na URL. O contrato usa `systemInstruction`, uma mensagem em `contents`, `generationConfig.responseMimeType: "application/json"` e `generationConfig.responseJsonSchema`. A extração usa `temperature: 0`, um candidato e limite de 3000 tokens. O schema exige `source` em cada entry, com `user_provided`, `inferred` ou `estimated`. A primeira análise não envia histórico nem os inputs atuais à Gemini; um esclarecimento envia somente contexto efêmero, campos/origens anteriores validados e pendências, sem ferramentas, formulário completo ou dados da conta.
 
 O modelo estável [Gemini 3.5 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite) foi confirmado novamente na documentação em 11/09/2026: o identificador é `gemini-3.5-flash-lite`, ele é voltado a baixa latência, baixo custo e extração simples, aceita `generateContent` e suporta saída estruturada. O modelo também consta nas [tabelas atuais de limites da API](https://ai.google.dev/gemini-api/docs/rate-limits). A [referência generateContent](https://ai.google.dev/api/generate-content) documenta `responseMimeType` e `responseJsonSchema`, enquanto o [guia de migração](https://ai.google.dev/gemini-api/docs/migrate-to-interactions#structured-output) mantém esses controles dentro de `generationConfig` para `generateContent`. Esta integração não envia junto `responseFormat` nem `responseSchema`. O modelo fica configurável por ambiente; o nome precisa começar com `gemini-`, sem barras, query string ou caracteres de controle.
 
@@ -31,6 +32,7 @@ Para habilitar a análise, configure no **Render → fecart-2026 → Environment
 GEMINI_API_KEY=<informar o segredo somente no painel>
 AI_PROVIDER=gemini
 AI_MODEL=gemini-3.5-flash-lite
+AI_FILL_MODE=complete
 AI_TIMEOUT_MS=25000
 ```
 
@@ -44,6 +46,7 @@ Depois do deploy, `GET /health` inclui:
     "provider": "gemini",
     "configured": false,
     "model": "gemini-3.5-flash-lite",
+    "fillMode": "complete",
     "timeoutMs": 25000,
     "apiVersion": "v1beta",
     "method": "generateContent",
@@ -56,7 +59,7 @@ Depois do deploy, `GET /health` inclui:
 }
 ```
 
-Quando as variáveis forem aceitas, `configured` será `true` e `configurationErrors` será `[]`. Compare `model`, `timeoutMs` e `deployment.commit` com o valor esperado e o commit enviado ao GitHub. Isso confirma somente presença/formato de configuração e o processo publicado; não valida chave, saldo, permissão nem disponibilidade do modelo para a conta. `/health` não faz chamadas pagas e não muda o estado geral do servidor por indisponibilidade desse recurso opcional. Os outros motivos possíveis são `AI_PROVIDER_UNSUPPORTED`, `AI_MODEL_INVALID` e `AI_TIMEOUT_INVALID`. Não são exibidos valores de variáveis, credenciais ou mensagens do usuário.
+Quando as variáveis forem aceitas, `configured` será `true` e `configurationErrors` será `[]`. Compare `model`, `fillMode`, `timeoutMs` e `deployment.commit` com o valor esperado e o commit enviado ao GitHub. Isso confirma somente presença/formato de configuração e o processo publicado; não valida chave, saldo, permissão nem disponibilidade do modelo para a conta. `/health` não faz chamadas pagas e não muda o estado geral do servidor por indisponibilidade desse recurso opcional. Os outros motivos possíveis são `AI_PROVIDER_UNSUPPORTED`, `AI_MODEL_INVALID`, `AI_FILL_MODE_INVALID` e `AI_TIMEOUT_INVALID`. Não são exibidos valores de variáveis, credenciais ou mensagens do usuário.
 
 O log de inicialização `[AI] Configuration` mostra o mesmo diagnóstico seguro e `[Deploy] Configuration` mostra somente o SHA validado. Em falha HTTP da Gemini são registrados somente `[AI] upstreamStatus`, `[AI] upstreamErrorCode` e `[AI] upstreamErrorStatus`. O fluxo também registra os booleanos seguros `clarification`, `previousAnalysisPresent`, `responseParsed`, `mergeSucceeded` e `validationSucceeded`. Uma validação recusada inclui somente caminho do campo, tipo e código interno. Mensagens livres do provedor são descartadas. Análises válidas registram `provider=gemini` e `status=200`. Nunca são registrados o objeto de erro original, stack, cabeçalhos, prompt, resposta bruta ou texto do usuário.
 
@@ -116,12 +119,12 @@ Não foi possível comprovar a ordem do 401 da captura sem o histórico das requ
 
 ## Fluxo e arquitetura
 
-1. `js/ui/ai-assistant.js` abre o modal e envia a mensagem e, quando presentes, somente os quatro percentuais que compartilham o denominador (`taxRate`, `paymentFeeRate`, `commissionRate` e `desiredNetMargin`). Em follow-up, envia separadamente a resposta curta, o contexto efêmero e apenas `fields`, códigos e campos pendentes da análise anterior. Não envia o formulário completo nem dados da conta.
+1. `js/ui/ai-assistant.js` abre o modal e envia a mensagem, os percentuais atuais e um `currentFields` estrito com inputs válidos já presentes. O backend usa esse conjunto somente para impedir que uma estimativa substitua valor manual; ele não é enviado à Gemini. Em follow-up, envia separadamente a resposta curta, o contexto efêmero e apenas `fields`, `sources`, códigos e campos pendentes da análise anterior. Não envia dados da conta.
 2. `lib/ai-pricing-route.js` exige a mesma autenticação do site e aplica limites por conta e IP.
 3. `lib/ai-form-assistant.js` seleciona o provedor e orquestra a validação. Novos provedores devem implementar `extract(message)`; o restante do fluxo pode ser reutilizado.
-4. `lib/gemini-form-provider.js` recebe a mensagem inicial ou, no esclarecimento, a resposta com o contexto anterior. Cada componente tem campo, valor, evidência literal, base (`unit`, `batch-total`, `monthly-total`, `not-applicable` ou `unknown`), certeza, quantidade/evidência do lote e evidência de correção. O schema do segundo turno limita `field` aos campos pendentes; os percentuais atuais nunca são enviados à Gemini.
-5. `lib/ai-pricing-schema.js` valida o retorno, normaliza cada componente antes da soma e gera rótulos, valores e pendências controladas de forma determinística. No follow-up, combina apenas campos esclarecidos com os anteriores, sem sobrescrever por `null` ou ausência, e valida novamente campos, descontos e soma percentual. A extração bruta e o prompt não são enviados ao navegador.
-6. Somente **Aplicar ao simulador** chama `applyAssistantFields` e o controlador existente em `js/main.js`. Não há eventos sintéticos, simulação de digitação nem cálculo financeiro pelo modelo.
+4. `lib/gemini-form-provider.js` recebe a mensagem inicial ou, no esclarecimento, a resposta com o contexto anterior. Cada componente tem campo, valor, origem, evidência, base (`unit`, `batch-total`, `monthly-total`, `not-applicable` ou `unknown`), certeza, quantidade/evidência do lote e evidência de correção. O schema do segundo turno limita `field` aos campos pendentes; inputs atuais e percentuais nunca são enviados à Gemini.
+5. `lib/ai-pricing-schema.js` valida o retorno, normaliza cada componente antes da soma, impõe limites extras a estimativas e gera rótulos, valores e pendências controladas. No modo completo, faz merge com inputs manuais, converte percentuais para frações e chama `validatePricingInputs`, o mesmo validador do motor financeiro. `calculationReady` só é verdadeiro quando esse conjunto passa. No follow-up, combina apenas campos esclarecidos com os anteriores. A extração bruta e o prompt não são enviados ao navegador.
+6. A prévia agrupa valores informados, inferidos e estimados e exibe o aviso de revisão. Somente **Aplicar ao simulador** chama `applyAssistantFields` e o controlador existente em `js/main.js`, que revalida, renderiza e executa a fórmula normal. **Ajustar dados** volta à descrição sem aplicar. Não há cálculo financeiro pelo modelo.
 7. Uma pendência pode ser respondida no próprio modal. O navegador mantém a descrição original apenas em memória e solicita uma extração parcial. Se a chamada ou o merge falhar, conserva a prévia anterior e o texto digitado; em sucesso, substitui a pendência pela prévia combinada. Esse conteúdo não é salvo no banco nem em histórico local.
 
 ### Contrato público
@@ -131,7 +134,8 @@ Não foi possível comprovar a ordem do 401 da captura sem o histórico das requ
 ```json
 {
   "message": "Coloque matéria-prima como R$ 20 e margem em 30%.",
-  "currentRates": { "taxRate": 6, "paymentFeeRate": 2.8, "commissionRate": 0 }
+  "currentRates": { "taxRate": 6, "paymentFeeRate": 2.8, "commissionRate": 0 },
+  "currentFields": { "deliveryCost": 5, "taxRate": 6, "paymentFeeRate": 2.8 }
 }
 ```
 
@@ -140,12 +144,14 @@ Resposta:
 ```json
 {
   "fields": { "materialCost": 20, "desiredNetMargin": 30 },
+  "sources": { "materialCost": "user_provided", "desiredNetMargin": "user_provided" },
   "summary": [
-    { "field": "materialCost", "label": "Matéria-prima por unidade", "value": "R$ 20,00" },
-    { "field": "desiredNetMargin", "label": "Margem líquida desejada", "value": "30%" }
+    { "field": "materialCost", "label": "Matéria-prima por unidade", "value": "R$ 20,00", "source": "user_provided" },
+    { "field": "desiredNetMargin", "label": "Margem líquida desejada", "value": "30%", "source": "user_provided" }
   ],
   "pending": [],
-  "needsClarification": false
+  "needsClarification": false,
+  "calculationReady": false
 }
 ```
 
@@ -158,6 +164,7 @@ Um esclarecimento usa o mesmo endpoint, mas não concatena a resposta como uma n
     "context": "Quero vender um bolo, usei 15 reais para fazer, e quero lucro de 10%",
     "previousAnalysis": {
       "fields": { "productName": "bolo", "desiredNetMargin": 10 },
+      "sources": { "productName": "user_provided", "desiredNetMargin": "user_provided" },
       "pending": [{ "code": "AI_COST_BASIS_UNKNOWN", "field": "materialCost" }],
       "needsClarification": true
     }
@@ -167,7 +174,7 @@ Um esclarecimento usa o mesmo endpoint, mas não concatena a resposta como uma n
 
 A Gemini pode retornar somente a entry de `materialCost`. O backend valida essa entry contra o contexto e a resposta, mescla `materialCost: 15` com produto e margem anteriores e devolve `needsClarification: false`. O objeto `previousAnalysis` é estrito, não aceita campos pendentes como resolvidos nem permite que o follow-up altere outro campo.
 
-`currentRates` é opcional, estrito e limitado aos quatro campos listados; ele serve apenas para impedir uma soma de percentuais igual ou superior a 100%. As porcentagens são pontos percentuais (`30` significa `30%`). O formulário faz sua conversão habitual para frações ao calcular. Campos ausentes são omitidos; entradas `null` são descartadas. Zero é aplicado quando informado ou quando a retirada do desconto é explícita.
+`currentRates` continua compatível e limitado aos quatro campos do denominador. `currentFields` aceita apenas produto e inputs financeiros permitidos; valores inválidos ou mercado/capacidade não entram. As porcentagens são pontos percentuais (`30` significa `30%`). Campos ausentes e `null` não apagam valores; zero explícito é aplicado. Uma nova informação do usuário prevalece sobre o formulário, e um input manual válido prevalece sobre uma estimativa.
 
 Uma resposta estruturalmente malformada, sem evidência literal ou com campos desconhecidos continua sendo rejeitada integralmente. Um valor reconhecido, mas semanticamente incompleto — base de custo desconhecida, lote sem quantidade, ambiguidade, negativo ou fora dos limites — não vira dado fictício nem 502 genérico: o campo afetado é omitido de `fields` e aparece em `pending` com código e pergunta controlados pelo backend. Campos independentes válidos continuam disponíveis para prévia e confirmação.
 
@@ -185,11 +192,11 @@ Uma resposta estruturalmente malformada, sem evidência literal ou com campos de
 | Mercado | `marketQuery`, `marketPrice` somente quando o usuário fornece um valor da concorrência |
 | Contexto fiscal explícito | `taxRate` (carga TOTAL manual), `cfop`, `taxSituation`, `taxRegime`, `customerType`, `operationPurpose`, `productOrigin`, `originState`, `destinationState`, `countryOfOrigin` |
 
-O formulário atual não tem campos de alíquotas individuais de ICMS, IPI, PIS/COFINS, DIFAL ou IBS/CBS. Esses dados não são convertidos em carga tributária total. O NCM é uma confirmação da integração Focus NFe, e continua sendo escolhido pelo fluxo fiscal existente. Não se inventam códigos, taxas, horas produtivas ou volume mensal. Não há campo separado de tipo/categoria de produto nesta tela para preencher.
+O formulário atual não tem campos de alíquotas individuais de ICMS, IPI, PIS/COFINS, DIFAL ou IBS/CBS. Esses dados não são convertidos em carga tributária total. O NCM é uma confirmação da integração Focus NFe e continua sendo escolhido pelo fluxo fiscal existente. O modo completo não estima códigos fiscais nem capacidade produtiva. Quando escala mensal, carga manual, taxas, prazos ou capital não foram informados, usa cenário neutro identificado: quantidade mensal `1` e os parâmetros dependentes do negócio em `0`. Esses valores servem apenas para liberar uma simulação revisável, não descrevem a operação real.
 
-“R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens” resulta em matéria-prima `0,40` e embalagem `0,10` por unidade, com a divisão identificada na prévia. O backend faz apenas essa normalização de entrada; o lote não vira produção mensal. Vários componentes são normalizados separadamente e depois somados no campo correspondente. Se os dados não identificarem claramente um custo unitário ou de lote, o campo vira pendência visível e não é aplicado silenciosamente.
+“R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens” resulta em matéria-prima `0,40` e embalagem `0,10` por unidade, com a divisão identificada na prévia. O backend faz apenas essa normalização de entrada; o lote não vira produção mensal. Se `expectedMonthlyUnits=1` aparecer sem escala informada, sua origem é `estimated`, nunca uma cópia do lote ou uma inferência de faturamento. Vários componentes são normalizados separadamente e depois somados no campo correspondente. Se os dados não identificarem claramente um custo unitário ou de lote, o campo vira pendência visível e não é aplicado silenciosamente.
 
-“Adicione R$ 4 de frete” define frete como `4`; não soma a valores desconhecidos do formulário. “Retire o desconto” zera as duas modalidades. Campos obrigatórios ainda vazios continuam pendentes e o dashboard informa que é necessário completá-los.
+“Adicione R$ 4 de frete” define frete como `4`; não soma a valores desconhecidos do formulário. “Retire o desconto” zera as duas modalidades. No modo completo, o provedor tenta preencher cada obrigatório não crítico; se ainda faltar algum, o backend cria `AI_REQUIRED_FIELD_MISSING`. Produto, custo principal, margem ou base de lote realmente ambíguos continuam exigindo decisão da pessoa.
 
 “Pesquise iPhone 15 Pro Max no mercado” prepara `marketQuery` e oferece **Pesquisar no mercado** após a aplicação. A pesquisa real permanece na integração atual SearchAPI / Google Shopping; seus providers e o fluxo fiscal não foram substituídos.
 
@@ -199,7 +206,8 @@ O formulário atual não tem campos de alíquotas individuais de ICMS, IPI, PIS/
 - Percentuais são de zero até menos de 100%; a soma de tributos totais, taxas, comissão e margem, combinando a extração com os percentuais atuais informados pelo navegador, deve ser menor que 100%. O validador financeiro existente verifica novamente o conjunto completo do formulário.
 - Valores negativos, limites impossíveis, divisor zero, base ausente e ambiguidades reconhecidas geram pendências por campo. Eles nunca são corrigidos, tornados positivos ou aplicados parcialmente como componente de um total.
 - Valores monetários são limitados a R$ 1 bilhão; quantidade mensal deve ser positiva; funcionários são inteiros até 1 milhão; horas por funcionário/mês até 744; prazos até 3650 dias. Textos, selects e UFs também têm limites e listas de opções.
-- Evidências devem ser trechos da mensagem original. Números, percentuais, significado do campo e quantidade do lote são conferidos antes da normalização. Essa checagem reduz invenções, mas a confirmação humana continua necessária para resolver erros semânticos de extração.
+- Valores `user_provided` exigem evidência literal com número, unidade e significado; `inferred` exige trecho literal que sustente a consequência; `estimated` exige evidência vazia e não pode se apresentar como dado do usuário. Quantidade do lote continua literal e conferida antes da normalização.
+- Estimativas respeitam os limites do formulário e limites mais estreitos: perda até 30%, carga manual até 35%, taxa de pagamento até 15%, comissão até 40%, margem estimada até 60%, prazos até 365 dias e embalagem/frete proporcionais ao custo principal. Por exemplo, embalagem estimada de R$ 500 para material de R$ 15 é recusada como `AI_VALUE_OUT_OF_RANGE`.
 - O modelo não recebe ferramentas, arquivos, variáveis de ambiente ou segredos no prompt. A chave é enviada somente no cabeçalho HTTP do backend. Instruções dentro da mensagem são tratadas como dados de extração.
 - O backend retorna erros próprios, sem propagar corpos de erro, prompts ou cabeçalhos da API externa. Limita a mensagem a 4000 caracteres e o corpo da resposta externa a 100 kB.
 - O rate limit é oito chamadas por minuto por usuário e por IP, além de uma solicitação simultânea por usuário. Os contadores estão em memória por processo: ao escalar para várias instâncias, configure um store compartilhado para manter o orçamento global.
@@ -218,13 +226,17 @@ Na evolução da interpretação do mesmo dia, a suíte passou a cobrir 272 test
 
 Na correção do follow-up em 12/09/2026, a suíte passou a cobrir 280 testes. Foram adicionados casos de “por unidade”, lote sem quantidade, “pelo lote, rende 100 unidades”, resposta parcial, resposta vazia, merge sem apagar valores, validação posterior e preservação da prévia em erro. A avaliação real do caso `clarification-unit` com `gemini-3.5-flash-lite` retornou HTTP 200 tanto para a análise inicial quanto para o segundo `generateContent`; o resultado combinado foi produto `bolo`, matéria-prima `15`, margem `10`, `pending: []` e `needsClarification: false`. Em uma matriz real executada em sequência houve timeouts e um 503 transitórios; os quatro casos afetados passaram com HTTP 200 ao serem repetidos isoladamente.
 
+Na ativação do modo completo em 12/09/2026, passaram 291 testes. A chamada real final retornou HTTP 200 nos casos `clarification-unit`, `brigadeiros-lote`, `camiseta-complete` e `marmita-complete`; todos terminaram com `pending: []`, `calculationReady: true`, formulário válido após aplicação e preço técnico finito. O bolo preservou matéria-prima `15` e margem `10` como `user_provided`, estimou perda `5`, embalagem `0,50`, quantidade mensal mínima `1` e parâmetros neutros restantes, e produziu R$ 18,10 pela fórmula canônica. Duas tentativas intermediárias do bolo receberam 503 transitório da Gemini e foram classificadas como `GEMINI_UNAVAILABLE`; a repetição final passou sem alteração do contrato.
+
 - “Quero vender bolo, meu custo de ingredientes por unidade é R$ 15 e quero margem de 10%”: prévia de produto, matéria-prima `15` e margem `10`.
 - “Faço brigadeiro. Ingredientes por unidade custam R$ 20, embalagem por unidade R$ 5 e quero margem de 30%.”: prévia de produto, matéria-prima `20`, embalagem `5` e margem `30`.
 - “Quero mudar minha margem para 20%.”: apenas margem `20`; demais campos preservados.
 
 Após configurar a chave no Render, entre na aplicação e abra **Preencher com IA**. Teste:
 
-Primeiro reproduza a entrada do incidente: “quero vender brigadeiros. gasto R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens e quero margem de 30%”. Antes de confirmar, o formulário deve continuar intacto. A prévia deve conter produto brigadeiros, matéria-prima `0,40`, embalagem `0,10` (ambas normalizadas pelo lote de 100) e margem `30%`. Confirme em **Aplicar ao simulador**; frete já preenchido deve ser preservado e folha, volume mensal, tributos e demais obrigatórios não informados devem continuar pendentes. Os testes automatizados e a avaliação real local cobrem esse fluxo; a validação do serviço publicado ainda depende da credencial e do commit efetivamente implantados no Render.
+Com `AI_FILL_MODE=complete`, reproduza: “Faço brigadeiros, gasto R$ 40 por lote de 100 unidades e quero margem de 30%.” Antes de confirmar, o formulário deve continuar intacto. A prévia deve conter produto, matéria-prima `0,40`, margem `30%` e as hipóteses restantes em **Estimado pela IA**. `calculationReady` deve ser verdadeiro e **Aplicar ao simulador** deve produzir o preço técnico pela fórmula existente. Um frete manual válido já presente prevalece sobre frete estimado.
+
+O fluxo crítico é: “Quero vender um bolo, usei 15 reais para fazer e quero lucro de 10%”; responda “por unidade” à dúvida de base. O segundo turno deve preservar produto, margem e estimativas, adicionar matéria-prima `15`, eliminar as pendências e deixar o formulário válido. Execute também `pnpm gemini:evaluate -- clarification-unit brigadeiros-lote camiseta-complete marmita-complete` para validar os prompts fixos contra a conta configurada. O script aplica os campos a controles equivalentes aos do formulário, chama `validatePricingForm` e só marca aderência quando consegue calcular `technicalPrice`.
 
 1. “Vendo bolo de chocolate. Gasto 18 reais de ingredientes por unidade, 3 reais de embalagem por unidade e tenho perda de 10%. Quero margem de 25%.” Confira os cinco campos e aplique.
 2. Preencha frete `5` manualmente e peça “Mude minha margem para 20%.” Somente a margem deve mudar após confirmação.

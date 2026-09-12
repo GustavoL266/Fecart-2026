@@ -113,6 +113,27 @@ export function readAssistantRateContext(elements) {
   }));
 }
 
+/** Safe current values used only by the backend to preserve manual inputs over AI estimates. */
+export function readAssistantFieldContext(elements) {
+  const context = {};
+  for (const fieldId of PRICING_FIELD_IDS) {
+    if (fieldId === "marketPrice") continue;
+    const parsed = parseBrazilianNumber(elements[fieldId]?.value);
+    if (parsed.status !== "valid") continue;
+    try {
+      Object.assign(context, validateAssistantFields({ [fieldId]: parsed.value }));
+    } catch { /* Invalid form values remain visible locally but are not sent as trusted context. */ }
+  }
+  for (const fieldId of ["productName", "productDescription"]) {
+    const value = String(elements[fieldId]?.value || "").trim();
+    if (!value) continue;
+    try {
+      Object.assign(context, validateAssistantFields({ [fieldId]: value }));
+    } catch { /* The normal form validation remains responsible for invalid local text. */ }
+  }
+  return context;
+}
+
 function readFiscalContext(elements) {
   return {
     ncmCode: String(elements.ncmCode?.value || "").replace(/\D/g, ""),

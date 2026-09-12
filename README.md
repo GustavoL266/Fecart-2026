@@ -14,7 +14,7 @@ Antes de propor uma implementação, tenha em mente:
 2. O Express serve a interface e as APIs no mesmo processo. O PostgreSQL é necessário para iniciar o servidor completo, autenticar e salvar produtos.
 3. O arquivo [app.js](app.js) é **gerado**. O código editável está em [js/](js/) e precisa passar por [scripts/build.mjs](scripts/build.mjs).
 4. O cálculo oficial está em [js/domain/pricing-calculator.js](js/domain/pricing-calculator.js). Navegador e backend usam esse mesmo módulo; gráficos e cards apenas exibem seus resultados.
-5. A IA **interpreta entradas e prepara um preenchimento parcial**. Ela nunca deve determinar o preço final nem substituir as fórmulas.
+5. A IA **interpreta entradas e, no modo `complete`, sugere os inputs necessários para uma estimativa imediata**. Ela nunca deve determinar o preço final nem substituir as fórmulas.
 6. A consulta de mercado atual é **SearchAPI.io / Google Shopping**. Menções antigas a Amazon ou a outro marketplace não descrevem o provedor ativo.
 7. A **Focus NFe pesquisa e confirma NCM**. A **IBPT estima a carga do card de maior preço de mercado**. Essas responsabilidades são diferentes da carga tributária manual utilizada no preço sustentável.
 8. Produtos salvos pertencem ao usuário autenticado. Reutilizar um produto, editar seus metadados e recalcular uma nova simulação são operações diferentes.
@@ -97,7 +97,7 @@ A área de mercado apresenta média, mediana, menor e maior preço. O card **Mai
 
 O botão **Preencher com IA** abre um modal integrado ao tema do site. A pessoa descreve seu produto ou pede uma alteração curta, como “Mude minha margem para 20%”. O sistema mostra uma prévia e só altera o formulário após **Aplicar ao simulador**.
 
-Uma frase com custos de um lote explícito pode ser normalizada para custos unitários. Componentes mistos são normalizados separadamente antes da soma. Base ausente, ambiguidade, valor impossível ou lote sem quantidade aparecem como pendências no modal; a pessoa pode esclarecer sem reescrever a descrição. Informações não mencionadas permanecem como estavam, e somente campos válidos confirmados são aplicados.
+Uma frase com custos de um lote explícito pode ser normalizada para custos unitários. Componentes mistos são normalizados separadamente antes da soma. Base ausente, ambiguidade, valor impossível ou lote sem quantidade aparecem como pendências no modal; a pessoa pode esclarecer sem reescrever a descrição. No modo completo, campos obrigatórios não informados recebem estimativas identificadas, valores manuais já presentes prevalecem sobre estimativas e somente a confirmação aplica tudo ao formulário.
 
 ### Salvamento e Meus produtos
 
@@ -213,7 +213,7 @@ Isso tem consequências importantes para manutenção:
 
 ## Recursos implementados
 
-- Preenchimento assistido por IA com prévia obrigatória, alterações parciais e validação no backend, sem substituir as fórmulas financeiras.
+- Preenchimento assistido por IA com prévia obrigatória agrupada por origem, modo completo, limites de estimativa e validação canônica no backend, sem substituir as fórmulas financeiras.
 - Valores monetários com fonte adaptada ao comprimento e ao container, sem quebra, corte ou invasão dos cards vizinhos.
 - Cadastro, login, logout e recuperação da sessão em `/auth/me`.
 - Rotas protegidas para criar, listar, consultar, editar e excluir produtos.
@@ -318,7 +318,7 @@ Os nomes abaixo são os IDs reais usados pelo formulário. Ao adicionar um campo
 - No input e no contrato de IA, `25` representa `25%`.
 - No domínio financeiro e em `pricing.inputs`, esse mesmo percentual é a fração `0.25`.
 - O parser do formulário aceita números brasileiros, como `1.234,56`, e diferencia campo vazio de valor inválido. Não envie strings com `R$` ou `%` diretamente para a função de cálculo.
-- Um campo obrigatório vazio permanece pendente. Não transforme ausência em zero para fazer o dashboard produzir um número.
+- No preenchimento manual, um campo obrigatório vazio permanece pendente. No modo completo da IA, uma hipótese neutra em zero só pode ser aplicada após aparecer como `estimated` na prévia e receber confirmação.
 - Custos opcionais vazios são normalizados para zero no cálculo; mercado vazio permanece `null`.
 - `emptyOptionalFields` acompanha o salvamento para distinguir o que estava vazio do que foi digitado explicitamente.
 - No patch da IA, `null` ou ausência significa **preservar**, enquanto `0` significa aplicar zero.
@@ -413,9 +413,9 @@ Para origem nacional, a alíquota federal vem de `nacionalfederal`; para importa
 
 ### Assistente de preenchimento por IA
 
-O botão **Preencher com IA** abre uma descrição livre e mostra campos e pendências antes de **Aplicar ao simulador**. O provedor padrão é Gemini, modelo `gemini-3.5-flash-lite`, com saída estruturada por JSON Schema. Na primeira análise, a rota autenticada `POST /ai/parse-pricing` recebe `message` e, opcionalmente, apenas os quatro percentuais atuais usados para validar o denominador; somente `message` chega à Gemini. No esclarecimento, recebe também o contexto efêmero e a análise anterior já validada, sem formulário completo, conta ou credenciais. Campos ausentes são preservados; apenas o controlador atual do formulário aplica o patch e chama o cálculo existente. Esclarecimentos ficam em memória no modal e não são salvos no banco.
+O botão **Preencher com IA** abre uma descrição livre e mostra campos e pendências antes de **Aplicar ao simulador**. O provedor padrão é Gemini, modelo `gemini-3.5-flash-lite`, com saída estruturada por JSON Schema. Com `AI_FILL_MODE=complete`, cada valor é classificado como `user_provided`, `inferred` ou `estimated`; a prévia separa essas origens e avisa que sugestões podem ser ajustadas. A rota autenticada `POST /ai/parse-pricing` recebe `message`, percentuais atuais e um conjunto estrito de inputs válidos já presentes. Somente `message` chega à Gemini: o backend usa `currentFields` para preservar valores manuais no lugar de estimativas. No esclarecimento, recebe também contexto efêmero, origens, campos anteriores validados e pendências, sem dados da conta ou credenciais. Apenas o controlador atual aplica o patch e chama o cálculo existente. Esclarecimentos ficam em memória no modal e não são salvos no banco.
 
-Configure `GEMINI_API_KEY` exclusivamente no backend. Os padrões são `AI_PROVIDER=gemini`, `AI_MODEL=gemini-3.5-flash-lite` e `AI_TIMEOUT_MS=25000`. No Render, abra o **Web Service → Environment → Add Environment Variable**, adicione a chave e substitua também os valores antigos de `AI_PROVIDER` e `AI_MODEL`: variáveis explícitas prevalecem sobre os padrões novos. Depois use **Manual Deploy → Deploy latest commit**. A declaração `sync: false` no Blueprint não preenche o segredo de um serviço existente. `OPENAI_API_KEY` não é mais necessária em nenhuma funcionalidade deste projeto e pode ser removida do ambiente.
+Configure `GEMINI_API_KEY` exclusivamente no backend. Os padrões são `AI_PROVIDER=gemini`, `AI_MODEL=gemini-3.5-flash-lite`, `AI_FILL_MODE=complete` e `AI_TIMEOUT_MS=25000`. No Render, abra o **Web Service → Environment → Add Environment Variable**, adicione a chave e substitua também valores antigos explícitos: variáveis do serviço prevalecem sobre os padrões novos. Depois use **Manual Deploy → Deploy latest commit**. A declaração `sync: false` no Blueprint não preenche o segredo de um serviço existente. `OPENAI_API_KEY` não é mais necessária em nenhuma funcionalidade deste projeto e pode ser removida do ambiente.
 
 Sem configuração ou durante falhas externas, o simulador manual continua funcionando. Há limites de oito análises por minuto por conta e por IP, com uma análise simultânea por conta. A aplicação não salva conversas nem registra a mensagem em logs. Consulte [docs/ai-assistant.md](docs/ai-assistant.md) para os campos, limites, arquitetura e roteiro de teste.
 
@@ -445,6 +445,7 @@ A referência editável é [.env.example](.env.example), e a interpretação efe
 | `GEMINI_API_KEY` | Credencial do preenchimento IA | Somente backend; sem ela, o formulário manual continua disponível. |
 | `AI_PROVIDER` | Implementação do provedor IA | Padrão e implementação atual: `gemini`. |
 | `AI_MODEL` | Modelo de extração estruturada | Padrão configurado: `gemini-3.5-flash-lite`. |
+| `AI_FILL_MODE` | Política de preenchimento do assistente | Padrão `complete`; `partial` conserva o comportamento de somente extrair. |
 | `AI_TIMEOUT_MS` | Timeout da análise IA | Padrão `25000`; inteiro entre 100 e 60000. |
 
 Ao copiar `.env.example`, o token fictício de Focus não se torna uma credencial válida. Configure um token real de homologação ou deixe `FOCUS_NFE_TOKEN` vazio para desenvolver sem essa consulta. Não use um teste de “variável presente” como confirmação de que a API está operacional.
@@ -480,7 +481,7 @@ O frontend e a API são servidos pelo mesmo processo; não há um segundo servid
 - `DATABASE_URL não foi definida` ou falha de conexão: inicie o PostgreSQL e confira host, porta, usuário, senha e nome do banco no `.env`.
 - `MIGRATIONS_PENDING`: execute `npm run migrate` (ou `pnpm migrate`) antes de iniciar a aplicação.
 - `market.configured: false` no `/health`: confira se `SEARCHAPI_API_KEY` foi configurada no backend. O endpoint nunca mostra a chave.
-- `ai.configured: false` no `/health`: consulte `ai.configurationErrors`. `GEMINI_API_KEY_MISSING` significa que a chave não foi cadastrada no backend desse ambiente. Confira também `AI_PROVIDER`, `AI_MODEL` e `AI_TIMEOUT_MS`; não altere segredos de sessão para corrigir a IA.
+- `ai.configured: false` no `/health`: consulte `ai.configurationErrors`. `GEMINI_API_KEY_MISSING` significa que a chave não foi cadastrada no backend desse ambiente. Confira também `AI_PROVIDER`, `AI_MODEL`, `AI_FILL_MODE` e `AI_TIMEOUT_MS`; não altere segredos de sessão para corrigir a IA.
 - IA configurada, mas análise falha: compare `ai.model`, `ai.timeoutMs` e `deployment.commit`; depois cruze o JSON seguro da rota com `[AI] upstreamStatus`, `[AI] upstreamErrorCode` e `[AI] upstreamErrorStatus`. Nenhuma mensagem, chave, cabeçalho ou corpo de resposta é registrado. Execute uma vez `pnpm gemini:check` no Shell do Render para verificar conta, método e geração estruturada. Consulte a tabela em [docs/ai-assistant.md](docs/ai-assistant.md#códigos-de-erro).
 - `/auth/me` 401 no carregamento sem sessão é a checagem inicial que abre o login. Se ocorrer após autenticar, confira a ordem das requisições e o envio do cookie sem expor seu valor. Somente `SESSION_REQUIRED` encerra a sessão no frontend; 401 externo não deve deslogar. O bootstrap descarta respostas/tentativas antigas após mudança de autenticação.
 - `market.configured: true` confirma somente que a variável existe. Depois de uma pesquisa, consulte os logs `[Market] Status` e `[Market] Results` para distinguir credencial inválida (`401`), falta de permissão (`403`), limite (`429`) e falha externa (`5xx`).
@@ -660,7 +661,7 @@ Esse texto ajuda a solicitar a leitura do contexto explicitamente, sem depender 
 | Busca de mercado | `js/services/market-service.js`, `lib/market-search.js`, `lib/searchapi-market-provider.js` | Preserve moeda, referência manual, seleção individual e distinção entre falha externa e sessão expirada. |
 | NCM e classificação | Módulos de classificação, `lib/focus-nfe-client.js`, rotas fiscais | Preserve confirmação explícita, relevância e vínculo à consulta atual. |
 | Card IBPT | `lib/ibpt-tax-provider.js`, `js/services/tax-service.js`, `js/ui/dashboard.js` | Confira origem, código exato, arquivo, vigência e invalidação do resultado anterior. |
-| IA | `lib/ai-*`, `lib/gemini-form-provider.js`, `js/ui/ai-assistant.js`, `js/ui/form.js` | Valide extração e prévia; mantenha patch parcial, credenciais no backend e cálculo fora do modelo. |
+| IA | `lib/ai-*`, `lib/gemini-form-provider.js`, `js/ui/ai-assistant.js`, `js/ui/form.js` | Valide extração, origem, estimativas e prévia; mantenha credenciais no backend e cálculo fora do modelo. |
 | Autenticação/deploy | `server.js`, `lib/config.js`, `lib/database.js`, `render.yaml` | Confira ambiente real, sessão PostgreSQL, cookie e proxy sem expor credenciais. |
 
 ### Contratos que precisam continuar coerentes
@@ -725,6 +726,8 @@ Na correção do HTTP 502, em 11/09/2026, passaram **252 testes**, lint de 76 ar
 Na evolução da interpretação, também em 11/09/2026, passaram **272 testes**, lint de 77 arquivos JavaScript e build. A avaliação real `pnpm gemini:evaluate` cobriu dez casos fixos de componentes, bases, correções, números por extenso, ambiguidades, valores inválidos e preço de venda; as chamadas aceitas pela Gemini retornaram HTTP 200 e os campos ou pendências públicas corresponderam ao esperado. O backend manteve a validação estruturada e o motor financeiro permaneceu inalterado.
 
 Na correção do esclarecimento em 12/09/2026, passaram **280 testes**. O segundo turno passou a enviar resposta, contexto efêmero, campos anteriores e pendências separadamente; a saída Gemini fica restrita aos campos pendentes e é mesclada e validada no backend. A chamada real “por unidade” com `gemini-3.5-flash-lite` retornou HTTP 200 e preservou produto e margem ao completar matéria-prima em R$ 15,00. O bundle foi reconstruído e o motor financeiro permaneceu inalterado.
+
+Na evolução para `AI_FILL_MODE=complete`, em 12/09/2026, passaram **291 testes**. O Structured Output ganhou `source` por entry; o backend preserva inputs manuais sobre estimativas, impõe limites mais estreitos e chama `validatePricingInputs` antes de marcar `calculationReady`. A avaliação real final retornou HTTP 200 para bolo com esclarecimento “por unidade”, brigadeiros por lote, camiseta e marmita. Depois de aplicar, os quatro conjuntos passaram em `validatePricingForm` e produziram preço técnico pela fórmula existente; no bolo, a rodada registrada resultou em R$ 18,10 a partir das hipóteses exibidas na prévia.
 
 Os testes automatizados de APIs usam respostas simuladas e não demonstram a disponibilidade das credenciais de produção. A chamada real descrita acima usou exclusivamente o `.env` local e comprova o contrato e o acesso nessa conta, não as variáveis do serviço Render. Após o deploy, execute uma vez `pnpm gemini:check` no Shell do serviço para validar a conta de produção. Um resultado com mocks precisa ser relatado como tal. Capturas, navegadores temporários e relatórios locais de uma sessão não devem ser presumidos disponíveis em outro clone.
 

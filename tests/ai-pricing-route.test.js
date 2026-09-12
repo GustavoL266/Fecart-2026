@@ -8,7 +8,7 @@ import { createAiFormProvider } from "../lib/ai-form-assistant.js";
 import { getAiAssistantConfig } from "../lib/config.js";
 import { createGeminiFormProvider } from "../lib/gemini-form-provider.js";
 
-const extraction = { entries: [{ field: "deliveryCost", value: 7, evidence: "frete de 7 reais", basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null }] };
+const extraction = { entries: [{ field: "deliveryCost", value: 7, source: "user_provided", evidence: "frete de 7 reais", basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null }] };
 const input = { message: "Coloque frete de 7 reais." };
 
 async function serverFor(t, provider, rateLimitOptions = {}, { trustProxy = false, logger = { warn() {} }, sessionError } = {}) {
@@ -57,7 +57,7 @@ test("rota HTTP retorna patch e prévia validados, sem prompts ou extração bru
   assert.equal(result.status, 200);
   assert.deepEqual(result.body.fields, { deliveryCost: 7 });
   assert.equal(result.body.summary[0].field, "deliveryCost");
-  assert.deepEqual(Object.keys(result.body), ["fields", "summary", "pending", "needsClarification"]);
+  assert.deepEqual(Object.keys(result.body), ["fields", "sources", "summary", "pending", "needsClarification", "calculationReady"]);
   assert.deepEqual(result.body.pending, []);
   assert.equal(result.body.needsClarification, false);
   assert.equal(result.headers.get("cache-control"), "no-store");
@@ -66,7 +66,7 @@ test("rota HTTP retorna patch e prévia validados, sem prompts ou extração bru
 test("rota conclui esclarecimento parcial, preserva análise anterior e registra somente diagnóstico seguro", async (t) => {
   const initialMessage = "Quero vender um bolo, usei 15 reais para fazer, e quero lucro de 10%";
   const makeEntry = (field, value, evidence, basis = "not-applicable") => ({
-    field, value, evidence, basis, certainty: "certain",
+    field, value, source: "user_provided", evidence, basis, certainty: "certain",
     batchUnits: null, batchEvidence: null, correctionEvidence: null,
   });
   let calls = 0;
@@ -80,6 +80,7 @@ test("rota conclui esclarecimento parcial, preserva análise anterior e registra
     assert.equal(message, "por unidade");
     assert.equal(clarification.context, initialMessage);
     assert.deepEqual(clarification.previousAnalysis.fields, { productName: "bolo", desiredNetMargin: 10 });
+    assert.deepEqual(clarification.previousAnalysis.sources, { productName: "user_provided", desiredNetMargin: "user_provided" });
     return { entries: [makeEntry("materialCost", 15, "usei 15 reais para fazer", "unit")] };
   } };
   const records = [];
@@ -97,6 +98,7 @@ test("rota conclui esclarecimento parcial, preserva análise anterior e registra
       context: initialMessage,
       previousAnalysis: {
         fields: first.body.fields,
+        sources: first.body.sources,
         pending: first.body.pending.map(({ code, field }) => ({ code, field })),
         needsClarification: first.body.needsClarification,
       },
@@ -118,7 +120,7 @@ test("falha de validação registra somente caminho, tipo e código interno", as
   const records = [];
   const logger = { info: (...args) => records.push(args), warn: (...args) => records.push(args) };
   const request = await serverFor(t, { extract: async () => ({ entries: [{
-    field: "PRIVATE_INVALID_FIELD", value: 7, evidence: "PRIVATE_USER_CONTENT",
+    field: "PRIVATE_INVALID_FIELD", value: 7, source: "user_provided", evidence: "PRIVATE_USER_CONTENT",
     basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null,
   }] }) }, {}, { logger });
   const result = await request();
@@ -135,10 +137,10 @@ test("brigadeiros: provider simulado passa pelo HTTP e valida lote sem inventar 
   const message = "quero vender brigadeiros. gasto R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens e quero margem de 30%";
   const batchEvidence = "para produzir 100 unidades";
   const entries = [
-    { field: "productName", value: "brigadeiros", evidence: "quero vender brigadeiros", basis: "not-applicable", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
-    { field: "materialCost", value: 40, evidence: "gasto R$ 40 em ingredientes", basis: "batch-total", certainty: "certain", batchUnits: 100, batchEvidence, correctionEvidence: null },
-    { field: "packagingCost", value: 10, evidence: "R$ 10 em embalagens", basis: "batch-total", certainty: "certain", batchUnits: 100, batchEvidence, correctionEvidence: null },
-    { field: "desiredNetMargin", value: 30, evidence: "quero margem de 30%", basis: "not-applicable", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
+    { field: "productName", value: "brigadeiros", source: "user_provided", evidence: "quero vender brigadeiros", basis: "not-applicable", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
+    { field: "materialCost", value: 40, source: "user_provided", evidence: "gasto R$ 40 em ingredientes", basis: "batch-total", certainty: "certain", batchUnits: 100, batchEvidence, correctionEvidence: null },
+    { field: "packagingCost", value: 10, source: "user_provided", evidence: "R$ 10 em embalagens", basis: "batch-total", certainty: "certain", batchUnits: 100, batchEvidence, correctionEvidence: null },
+    { field: "desiredNetMargin", value: 30, source: "user_provided", evidence: "quero margem de 30%", basis: "not-applicable", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
   ];
   let calls = 0;
   const provider = createGeminiFormProvider({ apiKey: "test-only-secret", model: "gemini-3.5-flash-lite", timeoutMs: 5000 }, { fetchImpl: async (_url, options) => {
@@ -172,8 +174,8 @@ test("chave ausente reproduz 503 antes de qualquer chamada à Gemini", async (t)
 
 test("rota preserva null/ausência como não alterar e mantém zero explícito", async (t) => {
   const request = await serverFor(t, { extract: async () => ({ entries: [
-    { field: "deliveryCost", value: 0, evidence: "frete de 0 reais", basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
-    { field: "packagingCost", value: null, evidence: "", basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
+    { field: "deliveryCost", value: 0, source: "user_provided", evidence: "frete de 0 reais", basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
+    { field: "packagingCost", value: null, source: "user_provided", evidence: "", basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
   ] }) });
   const result = await request({ message: "Coloque frete de 0 reais." });
   assert.equal(result.status, 200);
@@ -186,7 +188,7 @@ test("taxas atuais são validadas localmente e nunca são enviadas ao provider",
   const provider = { extract: async (...args) => {
     providerArguments = args;
     return { entries: [{
-      field: "desiredNetMargin", value: 25, evidence: "margem para 25%", basis: "not-applicable",
+      field: "desiredNetMargin", value: 25, source: "user_provided", evidence: "margem para 25%", basis: "not-applicable",
       certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null,
     }] };
   } };
@@ -196,6 +198,24 @@ test("taxas atuais são validadas localmente e nunca são enviadas ao provider",
   assert.deepEqual(providerArguments, ["Mude a margem para 25%."]);
   assert.deepEqual(result.body.fields, {});
   assert.deepEqual(result.body.pending.map(({ code }) => code), ["AI_RATE_SUM_INVALID"]);
+});
+
+test("inputs manuais válidos prevalecem sobre estimativas sem serem enviados à Gemini", async (t) => {
+  let providerArguments;
+  const provider = { fillMode: "complete", extract: async (...args) => {
+    providerArguments = args;
+    return { entries: [{
+      field: "deliveryCost", value: 0, source: "estimated", evidence: "", basis: "unit",
+      certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null,
+    }] };
+  } };
+  const request = await serverFor(t, provider);
+  const result = await request({ message: "Quero revisar meus custos.", currentFields: { deliveryCost: 7 } });
+  assert.equal(result.status, 200);
+  assert.deepEqual(providerArguments, ["Quero revisar meus custos."]);
+  assert.equal(result.body.fields.deliveryCost, 7);
+  assert.equal(result.body.sources.deliveryCost, "user_provided");
+  assert.equal(result.body.pending.some(({ field }) => field === "deliveryCost"), false);
 });
 
 test("contexto percentual inválido é rejeitado antes da chamada paga", async (t) => {
