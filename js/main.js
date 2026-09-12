@@ -61,7 +61,11 @@ let ncmSearchState = emptyNcmSearchState();
 const aiAssistant = createAiAssistant({
   dialog: $("#aiAssistantDialog"),
   openButtons: document.querySelectorAll("[data-ai-open]"),
-  parse: (message, options) => api.post("/ai/parse-pricing", { message, currentRates: readAssistantRateContext(elements) }, options),
+  parse: (message, { signal, clarification } = {}) => api.post("/ai/parse-pricing", {
+    message,
+    currentRates: readAssistantRateContext(elements),
+    ...(clarification ? { clarification } : {}),
+  }, { signal }),
   hasSession: () => Boolean(state.user),
   onApply: applyAiPricingFields,
   onSearchMarket: () => {

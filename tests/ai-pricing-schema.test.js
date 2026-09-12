@@ -353,3 +353,90 @@ test("custos mensais são agregados como mensais e energia direta permanece por 
   ]);
   assert.deepEqual(result.fields, { monthlyFixedCosts: 1000, otherDirectExpenses: 2 });
 });
+
+test("esclarecimento por unidade preserva campos anteriores e valida somente o campo parcial", async () => {
+  const initialMessage = "Quero vender um bolo, usei 15 reais para fazer, e quero lucro de 10%";
+  let calls = 0;
+  const provider = { extract: async (message, clarification) => {
+    calls += 1;
+    if (calls === 1) return { entries: [
+      entry("productName", "bolo", "vender um bolo"),
+      entry("materialCost", 15, "usei 15 reais para fazer", null, null, { basis: "unknown" }),
+      entry("desiredNetMargin", 10, "lucro de 10%"),
+    ] };
+    assert.equal(message, "por unidade");
+    assert.equal(clarification.context, initialMessage);
+    assert.deepEqual(clarification.previousAnalysis.pending, [{ code: "AI_COST_BASIS_UNKNOWN", field: "materialCost" }]);
+    return { entries: [entry("materialCost", 15, "usei 15 reais para fazer", null, null, { basis: "unit" })] };
+  } };
+  const first = await parsePricingMessage({ provider, input: { message: initialMessage } });
+  assert.deepEqual(first.fields, { productName: "bolo", desiredNetMargin: 10 });
+  assert.equal(first.needsClarification, true);
+  const second = await parsePricingMessage({ provider, input: {
+    message: "por unidade",
+    clarification: {
+      context: initialMessage,
+      previousAnalysis: {
+        fields: first.fields,
+        pending: first.pending.map(({ code, field }) => ({ code, field })),
+        needsClarification: first.needsClarification,
+      },
+    },
+  } });
+  assert.deepEqual(second.fields, { productName: "bolo", desiredNetMargin: 10, materialCost: 15 });
+  assert.deepEqual(second.pending, []);
+  assert.equal(second.needsClarification, false);
+});
+
+test("esclarecimento de lote sem quantidade mantém pendência e com rendimento normaliza o lote", async () => {
+  const initialMessage = "Faço brigadeiros. Gastei R$ 40 em ingredientes e quero margem de 20%.";
+  const previousAnalysis = {
+    fields: { productName: "brigadeiros", desiredNetMargin: 20 },
+    pending: [{ code: "AI_COST_BASIS_UNKNOWN", field: "materialCost" }],
+    needsClarification: true,
+  };
+  const noQuantity = await parsePricingMessage({
+    provider: { extract: async () => ({ entries: [entry("materialCost", 40, "Gastei R$ 40 em ingredientes", null, null, { basis: "batch-total" })] }) },
+    input: { message: "pelo lote", clarification: { context: initialMessage, previousAnalysis } },
+  });
+  assert.deepEqual(noQuantity.fields, previousAnalysis.fields);
+  assert.deepEqual(noQuantity.pending.map(({ code, field }) => ({ code, field })), [{ code: "AI_BATCH_UNITS_REQUIRED", field: "materialCost" }]);
+  assert.equal(noQuantity.needsClarification, true);
+
+  const withQuantity = await parsePricingMessage({
+    provider: { extract: async () => ({ entries: [entry(
+      "materialCost", 40, "Gastei R$ 40 em ingredientes", 100, "pelo lote, rende 100 unidades", { basis: "batch-total" },
+    )] }) },
+    input: { message: "pelo lote, rende 100 unidades", clarification: { context: initialMessage, previousAnalysis } },
+  });
+  assert.deepEqual(withQuantity.fields, { productName: "brigadeiros", desiredNetMargin: 20, materialCost: 0.4 });
+  assert.match(withQuantity.summary.find(({ field }) => field === "materialCost").value, /40,00.*100 unidades/);
+  assert.equal(withQuantity.needsClarification, false);
+});
+
+test("esclarecimento vazio, campo não pendente e validação final têm códigos distintos", async () => {
+  const context = "Ingredientes R$ 15; frete por unidade R$ 7.";
+  const previousAnalysis = {
+    fields: { productName: "bolo" },
+    pending: [{ code: "AI_COST_BASIS_UNKNOWN", field: "materialCost" }],
+    needsClarification: true,
+  };
+  await assert.rejects(() => parsePricingMessage({
+    provider: { extract: async () => ({ entries: [] }) },
+    input: { message: " ", clarification: { context, previousAnalysis } },
+  }), { code: "INVALID_AI_REQUEST", status: 400 });
+  await assert.rejects(() => parsePricingMessage({
+    provider: { extract: async () => ({ entries: [entry("deliveryCost", 7, "frete por unidade R$ 7")] }) },
+    input: { message: "por unidade", clarification: { context, previousAnalysis } },
+  }), { code: "AI_CLARIFICATION_MERGE_FAILED", status: 422 });
+
+  const invalidRates = {
+    fields: { productName: "bolo", taxRate: 20, desiredNetMargin: 90 },
+    pending: previousAnalysis.pending,
+    needsClarification: true,
+  };
+  await assert.rejects(() => parsePricingMessage({
+    provider: { extract: async () => ({ entries: [entry("materialCost", 15, "Ingredientes R$ 15", null, null, { basis: "unit" })] }) },
+    input: { message: "por unidade", clarification: { context, previousAnalysis: invalidRates } },
+  }), { code: "AI_VALIDATION_FAILED", status: 422 });
+});

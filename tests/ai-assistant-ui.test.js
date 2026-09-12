@@ -12,7 +12,12 @@ function controls(values = {}) {
 }
 
 function response(fields, pending = []) {
-  return { fields, summary: Object.entries(fields).filter(([, value]) => value !== null).map(([field, value]) => ({ field, label: field, value: String(value) })), pending };
+  return {
+    fields,
+    summary: Object.entries(fields).filter(([, value]) => value !== null).map(([field, value]) => ({ field, label: field, value: String(value) })),
+    pending,
+    needsClarification: pending.length > 0,
+  };
 }
 
 class Element {
@@ -280,6 +285,8 @@ test("diagnósticos de configuração, provedor e timeout são seguros e não ap
     ["GEMINI_CONNECTION_ERROR", /conectar/],
     ["GEMINI_INVALID_RESPONSE", /validar/],
     ["GEMINI_UNAVAILABLE", /Gemini.*indisponível/],
+    ["AI_CLARIFICATION_MERGE_FAILED", /combinar.*análise anterior/],
+    ["AI_VALIDATION_FAILED", /validação final/],
     ["AI_INTERNAL_ERROR", /falha interna/],
   ]) {
     const ui = fixture({ parse: async () => { throw { code, message: "SECRET_WITH_PRIVATE_USER_MESSAGE" }; } });
@@ -352,8 +359,8 @@ test("contexto do assistente contém somente quatro percentuais válidos exibido
 test("pendência aparece sem aplicação e esclarecimento reanalisa o contexto original", async () => {
   const calls = [];
   const issue = { code: "AI_COST_BASIS_UNKNOWN", field: "materialCost", message: "O custo é por unidade ou pelo lote?" };
-  const ui = fixture({ parse: async (message) => {
-    calls.push(message);
+  const ui = fixture({ parse: async (message, options) => {
+    calls.push({ message, options });
     return calls.length === 1 ? response({ desiredNetMargin: 30 }, [issue]) : response({ materialCost: 7, desiredNetMargin: 30 });
   } });
   const original = "Gastei R$ 350 em ingredientes e quero margem de 30%.";
@@ -366,7 +373,13 @@ test("pendência aparece sem aplicação e esclarecimento reanalisa o contexto o
   ui.elements.clarification.value = "É o total de um lote de 50 unidades.";
   await ui.elements.clarification.emit("input");
   await ui.elements["clarification-form"].emit("submit");
-  assert.match(calls[1], /^Gastei R\$ 350[\s\S]*Esclarecimento do usuário: É o total/);
+  assert.equal(calls[1].message, "É o total de um lote de 50 unidades.");
+  assert.equal(calls[1].options.clarification.context, original);
+  assert.deepEqual(calls[1].options.clarification.previousAnalysis, {
+    fields: { desiredNetMargin: 30 },
+    pending: [{ code: "AI_COST_BASIS_UNKNOWN", field: "materialCost" }],
+    needsClarification: true,
+  });
   assert.equal(ui.elements.message.value, original);
   assert.equal(ui.elements.pending.hidden, true);
   assert.deepEqual(ui.applied, []);
@@ -384,6 +397,44 @@ test("resultado parcial aplica apenas campos válidos e mantém pendência visí
   assert.equal(ui.elements.pending.hidden, false);
   assert.equal(ui.elements["clarification-form"].hidden, false);
   assert.equal(ui.elements.apply.hidden, true);
+});
+
+test("falha no esclarecimento preserva prévia anterior e texto digitado", async () => {
+  const issue = { code: "AI_COST_BASIS_UNKNOWN", field: "materialCost", message: "O custo é por unidade ou pelo lote?" };
+  let calls = 0;
+  const ui = fixture({ parse: async () => {
+    calls += 1;
+    if (calls === 1) return response({ productName: "bolo", desiredNetMargin: 10 }, [issue]);
+    throw { code: "GEMINI_INVALID_RESPONSE" };
+  } });
+  const original = "Quero vender um bolo, usei 15 reais para fazer, e quero lucro de 10%";
+  await ui.enter(original);
+  await ui.elements.form.emit("submit");
+  ui.elements.clarification.value = "por unidade";
+  await ui.elements.clarification.emit("input");
+  await ui.elements["clarification-form"].emit("submit");
+  assert.equal(ui.elements.preview.hidden, false);
+  assert.equal(ui.elements.fields.children.length, 2);
+  assert.equal(ui.elements.pending.hidden, false);
+  assert.equal(ui.elements.clarification.value, "por unidade");
+  assert.equal(ui.elements.message.value, original);
+  assert.match(ui.elements.status.textContent, /validar a resposta/);
+  assert.equal(ui.elements.apply.hidden, false);
+});
+
+test("esclarecimento vazio não apaga prévia nem cria nova chamada", async () => {
+  const issue = { code: "AI_COST_BASIS_UNKNOWN", field: "materialCost", message: "O custo é por unidade ou pelo lote?" };
+  let calls = 0;
+  const ui = fixture({ parse: async () => { calls += 1; return response({ productName: "bolo" }, [issue]); } });
+  await ui.enter("Quero vender bolo e gastei R$ 15 em ingredientes.");
+  await ui.elements.form.emit("submit");
+  ui.elements.clarification.value = "   ";
+  await ui.elements.clarification.emit("input");
+  await ui.elements["clarification-form"].emit("submit");
+  assert.equal(calls, 1);
+  assert.equal(ui.elements.preview.hidden, false);
+  assert.equal(ui.elements.pending.hidden, false);
+  assert.equal(ui.elements.clarify.disabled, true);
 });
 
 test("frontend rejeita código, campo ou mensagem de pendência fora do contrato", () => {

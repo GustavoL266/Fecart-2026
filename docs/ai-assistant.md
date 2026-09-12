@@ -13,7 +13,7 @@ O assistente interpreta uma mensagem, apresenta uma prévia e preenche apenas os
 
 Localmente, configure no `.env`, que já é ignorado pelo Git. No Render, abra o Web Service do projeto, **Environment → Add Environment Variable**, cadastre `GEMINI_API_KEY` com sua chave real e salve. Em serviços existentes, substitua os valores antigos de `AI_PROVIDER` e `AI_MODEL` pelos da tabela. Depois faça **Manual Deploy → Deploy latest commit**. Nunca grave a chave no frontend, no GitHub ou neste documento. Uma configuração ausente ou inválida desabilita apenas o assistente.
 
-O provedor usa REST nativo via `fetch` do Node, sem SDK ou camada de compatibilidade OpenAI. A chamada é `POST https://generativelanguage.googleapis.com/v1beta/models/{AI_MODEL}:generateContent`. A chave vai somente no cabeçalho `x-goog-api-key`, nunca na URL. O contrato usa `systemInstruction`, uma mensagem em `contents`, `generationConfig.responseMimeType: "application/json"` e `generationConfig.responseJsonSchema`. A extração usa `temperature: 0`, um candidato e limite de 3000 tokens; nenhum histórico ou ferramenta é enviado.
+O provedor usa REST nativo via `fetch` do Node, sem SDK ou camada de compatibilidade OpenAI. A chamada é `POST https://generativelanguage.googleapis.com/v1beta/models/{AI_MODEL}:generateContent`. A chave vai somente no cabeçalho `x-goog-api-key`, nunca na URL. O contrato usa `systemInstruction`, uma mensagem em `contents`, `generationConfig.responseMimeType: "application/json"` e `generationConfig.responseJsonSchema`. A extração usa `temperature: 0`, um candidato e limite de 3000 tokens. A primeira análise não envia histórico; um esclarecimento envia somente contexto efêmero, campos anteriores validados e pendências, sem ferramentas, formulário completo ou dados da conta.
 
 O modelo estável [Gemini 3.5 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite) foi confirmado novamente na documentação em 11/09/2026: o identificador é `gemini-3.5-flash-lite`, ele é voltado a baixa latência, baixo custo e extração simples, aceita `generateContent` e suporta saída estruturada. O modelo também consta nas [tabelas atuais de limites da API](https://ai.google.dev/gemini-api/docs/rate-limits). A [referência generateContent](https://ai.google.dev/api/generate-content) documenta `responseMimeType` e `responseJsonSchema`, enquanto o [guia de migração](https://ai.google.dev/gemini-api/docs/migrate-to-interactions#structured-output) mantém esses controles dentro de `generationConfig` para `generateContent`. Esta integração não envia junto `responseFormat` nem `responseSchema`. O modelo fica configurável por ambiente; o nome precisa começar com `gemini-`, sem barras, query string ou caracteres de controle.
 
@@ -58,7 +58,7 @@ Depois do deploy, `GET /health` inclui:
 
 Quando as variáveis forem aceitas, `configured` será `true` e `configurationErrors` será `[]`. Compare `model`, `timeoutMs` e `deployment.commit` com o valor esperado e o commit enviado ao GitHub. Isso confirma somente presença/formato de configuração e o processo publicado; não valida chave, saldo, permissão nem disponibilidade do modelo para a conta. `/health` não faz chamadas pagas e não muda o estado geral do servidor por indisponibilidade desse recurso opcional. Os outros motivos possíveis são `AI_PROVIDER_UNSUPPORTED`, `AI_MODEL_INVALID` e `AI_TIMEOUT_INVALID`. Não são exibidos valores de variáveis, credenciais ou mensagens do usuário.
 
-O log de inicialização `[AI] Configuration` mostra o mesmo diagnóstico seguro e `[Deploy] Configuration` mostra somente o SHA validado. Em falha HTTP da Gemini são registrados somente `[AI] upstreamStatus`, `[AI] upstreamErrorCode` e `[AI] upstreamErrorStatus`. Mensagens livres do provedor são descartadas. Análises válidas registram `provider=gemini` e `status=200`. Nunca são registrados o objeto de erro original, stack, cabeçalhos, prompt, resposta bruta ou texto do usuário.
+O log de inicialização `[AI] Configuration` mostra o mesmo diagnóstico seguro e `[Deploy] Configuration` mostra somente o SHA validado. Em falha HTTP da Gemini são registrados somente `[AI] upstreamStatus`, `[AI] upstreamErrorCode` e `[AI] upstreamErrorStatus`. O fluxo também registra os booleanos seguros `clarification`, `previousAnalysisPresent`, `responseParsed`, `mergeSucceeded` e `validationSucceeded`. Uma validação recusada inclui somente caminho do campo, tipo e código interno. Mensagens livres do provedor são descartadas. Análises válidas registram `provider=gemini` e `status=200`. Nunca são registrados o objeto de erro original, stack, cabeçalhos, prompt, resposta bruta ou texto do usuário.
 
 Para comprovar a disponibilidade na conta e o contrato real, abra o **Shell** do Web Service depois do deploy e execute:
 
@@ -95,6 +95,8 @@ As respostas de erro continuam não sendo sucesso: `{ "error": "mensagem segura"
 | 503 | `GEMINI_CONNECTION_ERROR` | Falha de rede ao conectar ao provedor. |
 | 503 | `GEMINI_UNAVAILABLE` | Falha temporária do provedor, como 500/503. |
 | 502 | `GEMINI_INVALID_RESPONSE` | JSON, estrutura, evidências ou valores inválidos; nenhum campo aplicado. |
+| 422 | `AI_CLARIFICATION_MERGE_FAILED` | O contexto anterior é inválido ou a resposta tentou alterar um campo que não estava pendente; a prévia anterior é preservada. |
+| 422 | `AI_VALIDATION_FAILED` | O resultado combinado ficou inválido após o merge; a prévia anterior é preservada. |
 | 422 | `AI_INSUFFICIENT_INFORMATION` | Texto insuficiente ou recusa do modelo. |
 | 400/413 | `INVALID_AI_REQUEST` | Corpo inválido, mensagem fora do limite ou corpo excessivo. |
 | 500 | `AI_INTERNAL_ERROR` | Falha inesperada, incluindo falha anterior ao provedor no processamento da rota. |
@@ -114,13 +116,13 @@ Não foi possível comprovar a ordem do 401 da captura sem o histórico das requ
 
 ## Fluxo e arquitetura
 
-1. `js/ui/ai-assistant.js` abre o modal e envia a mensagem e, quando presentes, somente os quatro percentuais que compartilham o denominador (`taxRate`, `paymentFeeRate`, `commissionRate` e `desiredNetMargin`). Não envia o formulário completo, histórico ou dados da conta.
+1. `js/ui/ai-assistant.js` abre o modal e envia a mensagem e, quando presentes, somente os quatro percentuais que compartilham o denominador (`taxRate`, `paymentFeeRate`, `commissionRate` e `desiredNetMargin`). Em follow-up, envia separadamente a resposta curta, o contexto efêmero e apenas `fields`, códigos e campos pendentes da análise anterior. Não envia o formulário completo nem dados da conta.
 2. `lib/ai-pricing-route.js` exige a mesma autenticação do site e aplica limites por conta e IP.
 3. `lib/ai-form-assistant.js` seleciona o provedor e orquestra a validação. Novos provedores devem implementar `extract(message)`; o restante do fluxo pode ser reutilizado.
-4. `lib/gemini-form-provider.js` recebe somente a mensagem e pede entradas estruturadas. Cada componente tem campo, valor, evidência literal, base (`unit`, `batch-total`, `monthly-total`, `not-applicable` ou `unknown`), certeza, quantidade/evidência do lote e evidência de correção. Os percentuais atuais nunca são enviados à Gemini.
-5. `lib/ai-pricing-schema.js` valida o retorno, normaliza cada componente antes da soma e gera rótulos, valores e pendências controladas de forma determinística. A extração bruta e o prompt não são enviados ao navegador.
+4. `lib/gemini-form-provider.js` recebe a mensagem inicial ou, no esclarecimento, a resposta com o contexto anterior. Cada componente tem campo, valor, evidência literal, base (`unit`, `batch-total`, `monthly-total`, `not-applicable` ou `unknown`), certeza, quantidade/evidência do lote e evidência de correção. O schema do segundo turno limita `field` aos campos pendentes; os percentuais atuais nunca são enviados à Gemini.
+5. `lib/ai-pricing-schema.js` valida o retorno, normaliza cada componente antes da soma e gera rótulos, valores e pendências controladas de forma determinística. No follow-up, combina apenas campos esclarecidos com os anteriores, sem sobrescrever por `null` ou ausência, e valida novamente campos, descontos e soma percentual. A extração bruta e o prompt não são enviados ao navegador.
 6. Somente **Aplicar ao simulador** chama `applyAssistantFields` e o controlador existente em `js/main.js`. Não há eventos sintéticos, simulação de digitação nem cálculo financeiro pelo modelo.
-7. Uma pendência pode ser respondida no próprio modal. O navegador mantém a descrição original apenas em memória, anexa um bloco marcado de esclarecimento e solicita uma nova extração completa. Esse conteúdo não é salvo no banco nem em histórico local.
+7. Uma pendência pode ser respondida no próprio modal. O navegador mantém a descrição original apenas em memória e solicita uma extração parcial. Se a chamada ou o merge falhar, conserva a prévia anterior e o texto digitado; em sucesso, substitui a pendência pela prévia combinada. Esse conteúdo não é salvo no banco nem em histórico local.
 
 ### Contrato público
 
@@ -142,9 +144,28 @@ Resposta:
     { "field": "materialCost", "label": "Matéria-prima por unidade", "value": "R$ 20,00" },
     { "field": "desiredNetMargin", "label": "Margem líquida desejada", "value": "30%" }
   ],
-  "pending": []
+  "pending": [],
+  "needsClarification": false
 }
 ```
+
+Um esclarecimento usa o mesmo endpoint, mas não concatena a resposta como uma nova descrição completa:
+
+```json
+{
+  "message": "por unidade",
+  "clarification": {
+    "context": "Quero vender um bolo, usei 15 reais para fazer, e quero lucro de 10%",
+    "previousAnalysis": {
+      "fields": { "productName": "bolo", "desiredNetMargin": 10 },
+      "pending": [{ "code": "AI_COST_BASIS_UNKNOWN", "field": "materialCost" }],
+      "needsClarification": true
+    }
+  }
+}
+```
+
+A Gemini pode retornar somente a entry de `materialCost`. O backend valida essa entry contra o contexto e a resposta, mescla `materialCost: 15` com produto e margem anteriores e devolve `needsClarification: false`. O objeto `previousAnalysis` é estrito, não aceita campos pendentes como resolvidos nem permite que o follow-up altere outro campo.
 
 `currentRates` é opcional, estrito e limitado aos quatro campos listados; ele serve apenas para impedir uma soma de percentuais igual ou superior a 100%. As porcentagens são pontos percentuais (`30` significa `30%`). O formulário faz sua conversão habitual para frações ao calcular. Campos ausentes são omitidos; entradas `null` são descartadas. Zero é aplicado quando informado ou quando a retirada do desconto é explícita.
 
@@ -194,6 +215,8 @@ Execute `pnpm lint`, `pnpm test` e `pnpm build`. Os testes de provider e da rota
 Na correção do HTTP 502 de 11/09/2026 passaram 252 testes, lint de 76 arquivos JavaScript e build. Os contratos cobrem endpoint nativo, cabeçalho da chave, JSON Schema externo compatível, limite posterior no backend, preflight de modelo/método, multipartes, bloqueio de conteúdo e distinção entre quota e limite temporário. Houve chamada autenticada real com `gemini-3.5-flash-lite`: os dois controles incompatíveis retornaram 400, o payload final retornou 200 e `pnpm gemini:check` validou os casos de bolo e brigadeiros de ponta a ponta. A chave permaneceu somente no `.env` ignorado pelo Git.
 
 Na evolução da interpretação do mesmo dia, a suíte passou a cobrir 272 testes e o lint 77 arquivos JavaScript. `pnpm gemini:check` passou novamente, e `pnpm gemini:evaluate` validou os dez casos fixos contra a API real: todos os `generateContent` aceitos retornaram HTTP 200; campos inequívocos corresponderam ao esperado, totais sem quantidade e valores negativos viraram pendências, e preço de venda não virou custo. Essa chamada comprova o contrato e o acesso da conta local utilizada, não a configuração do serviço Render.
+
+Na correção do follow-up em 12/09/2026, a suíte passou a cobrir 280 testes. Foram adicionados casos de “por unidade”, lote sem quantidade, “pelo lote, rende 100 unidades”, resposta parcial, resposta vazia, merge sem apagar valores, validação posterior e preservação da prévia em erro. A avaliação real do caso `clarification-unit` com `gemini-3.5-flash-lite` retornou HTTP 200 tanto para a análise inicial quanto para o segundo `generateContent`; o resultado combinado foi produto `bolo`, matéria-prima `15`, margem `10`, `pending: []` e `needsClarification: false`. Em uma matriz real executada em sequência houve timeouts e um 503 transitórios; os quatro casos afetados passaram com HTTP 200 ao serem repetidos isoladamente.
 
 - “Quero vender bolo, meu custo de ingredientes por unidade é R$ 15 e quero margem de 10%”: prévia de produto, matéria-prima `15` e margem `10`.
 - “Faço brigadeiro. Ingredientes por unidade custam R$ 20, embalagem por unidade R$ 5 e quero margem de 30%.”: prévia de produto, matéria-prima `20`, embalagem `5` e margem `30`.

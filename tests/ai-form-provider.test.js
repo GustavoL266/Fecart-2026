@@ -107,6 +107,34 @@ test("Gemini recebe mensagem e schema; chave somente no cabeçalho do backend", 
   assert.doesNotMatch(request.options.body + request.url, /test-only-secret|DATABASE_URL|SESSION_SECRET/);
 });
 
+test("follow-up recebe contexto anterior e usa schema parcial limitado ao campo pendente", async () => {
+  let request;
+  const clarifiedExtraction = { entries: [{
+    field: "materialCost", value: 15, evidence: "usei 15 reais para fazer", basis: "unit",
+    certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null,
+  }] };
+  const clarification = {
+    context: "Quero vender um bolo, usei 15 reais para fazer, e quero lucro de 10%",
+    previousAnalysis: {
+      fields: { productName: "bolo", desiredNetMargin: 10 },
+      pending: [{ code: "AI_COST_BASIS_UNKNOWN", field: "materialCost" }],
+      needsClarification: true,
+    },
+  };
+  const provider = createGeminiFormProvider(config, { fetchImpl: async (url, options) => {
+    request = { url, options, body: JSON.parse(options.body) };
+    return response(payload(JSON.stringify(clarifiedExtraction)));
+  } });
+  assert.deepEqual(await provider.extract("por unidade", clarification), clarifiedExtraction);
+  assert.deepEqual(request.body.generationConfig.responseJsonSchema.properties.entries.items.properties.field.enum, ["materialCost"]);
+  assert.match(request.body.systemInstruction.parts[0].text, /somente para os campos pendentes/i);
+  const prompt = request.body.contents[0].parts[0].text;
+  assert.match(prompt, /Quero vender um bolo/);
+  assert.match(prompt, /por unidade/);
+  assert.match(prompt, /AI_COST_BASIS_UNKNOWN/);
+  assert.doesNotMatch(request.options.body + request.url, /test-only-secret|DATABASE_URL|SESSION_SECRET/);
+});
+
 test("preflight confirma modelo da conta e suporte a generateContent sem enviar prompt", async () => {
   let request;
   const result = await verifyGeminiModelAccess(config, { fetchImpl: async (url, options) => {

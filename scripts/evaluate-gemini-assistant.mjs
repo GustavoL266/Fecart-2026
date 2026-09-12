@@ -1,6 +1,7 @@
 import { getAiAssistantConfig } from "../lib/config.js";
 import { validateAiExtraction } from "../lib/ai-pricing-schema.js";
 import { createGeminiFormProvider, verifyGeminiModelAccess } from "../lib/gemini-form-provider.js";
+import { parsePricingMessage } from "../lib/ai-form-assistant.js";
 
 // Fixed, non-personal prompts only. Output is intentionally limited to public
 // validated fields and controlled pending codes; raw model data/evidence is never logged.
@@ -17,6 +18,14 @@ const cases = [
   {
     id: "venda-nao-custo", message: "Quero vender um lote de 100 canecas por R$ 2.000, mas não informei meus custos.",
     fields: { productName: "canecas" }, pending: [], acceptableErrors: ["AI_INSUFFICIENT_INFORMATION"],
+  },
+  {
+    id: "clarification-unit",
+    message: "Quero vender um bolo, usei 15 reais para fazer, e quero lucro de 10%",
+    clarification: "por unidade",
+    initialPending: ["AI_COST_BASIS_UNKNOWN"],
+    fields: { productName: "bolo", desiredNetMargin: 10, materialCost: 15 },
+    pending: [],
   },
 ];
 const selectedIds = new Set(process.argv.slice(2).filter((argument) => argument !== "--"));
@@ -37,6 +46,43 @@ try {
   const provider = createGeminiFormProvider(config);
   for (const expected of selectedCases) {
     const { id, message } = expected;
+    if (expected.clarification) {
+      try {
+        const first = await parsePricingMessage({ provider, input: { message } });
+        const initialCodes = first.pending.map(({ code }) => code);
+        const previousAnalysis = {
+          fields: first.fields,
+          pending: first.pending.map(({ code, field }) => ({ code, field })),
+          needsClarification: first.needsClarification,
+        };
+        const result = await parsePricingMessage({ provider, input: {
+          message: expected.clarification,
+          clarification: { context: message, previousAnalysis },
+        } });
+        const pendingCodes = result.pending.map(({ code }) => code);
+        const initialMatches = first.needsClarification === true
+          && initialCodes.length === expected.initialPending.length
+          && expected.initialPending.every((code, index) => initialCodes[index] === code);
+        const matchesExpected = initialMatches && sameObject(result.fields, expected.fields)
+          && result.needsClarification === false
+          && pendingCodes.length === expected.pending.length;
+        if (!matchesExpected) failed = true;
+        process.stdout.write(`${JSON.stringify({
+          id, upstreamStatus: 200, initialPendingCodes: initialCodes,
+          fields: result.fields, pendingCodes: result.pending.map(({ code, field }) => ({ code, field })),
+          needsClarification: result.needsClarification, matchesExpected,
+        })}\n`);
+      } catch (error) {
+        failed = true;
+        process.stdout.write(`${JSON.stringify({
+          id, upstreamStatus: Number.isInteger(error?.upstreamStatus) ? error.upstreamStatus : null,
+          code: typeof error?.code === "string" ? error.code : "AI_INTERNAL_ERROR",
+          status: Number.isInteger(error?.status) ? error.status : 500,
+          matchesExpected: false,
+        })}\n`);
+      }
+      continue;
+    }
     let extraction;
     try {
       extraction = await provider.extract(message);

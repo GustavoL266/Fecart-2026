@@ -1094,16 +1094,20 @@ function validateAssistantResponse(response) {
     pendingSeen.add(key);
     return { code: item.code, field: item.field, message: item.message };
   });
+  const needsClarification = pending.length > 0;
+  if (response.needsClarification !== needsClarification) throw new Error("AI_INVALID_RESPONSE");
   if (!fieldIds.length && !pending.length) {
     throw Object.assign(new Error(AI_ASSISTANT_MESSAGES.insufficient), { code: "AI_INSUFFICIENT_INFORMATION" });
   }
-  return { fields, summary, pending };
+  return { fields, summary, pending, needsClarification };
 }
 
 function assistantErrorMessage(error) {
   const code = error?.code || error?.message;
   if (code === "AI_INSUFFICIENT_INFORMATION") return AI_ASSISTANT_MESSAGES.insufficient;
   if (code === "AI_INVALID_RESPONSE" || code === "GEMINI_INVALID_RESPONSE") return AI_ASSISTANT_MESSAGES.invalid;
+  if (code === "AI_CLARIFICATION_MERGE_FAILED") return "Não foi possível combinar o esclarecimento com a análise anterior. A prévia anterior foi preservada.";
+  if (code === "AI_VALIDATION_FAILED") return "O esclarecimento não passou pela validação final. A prévia anterior foi preservada.";
   if (code === "GEMINI_UNAVAILABLE") return "A Gemini está temporariamente indisponível. Você ainda pode preencher os dados manualmente.";
   if (code === "GEMINI_NOT_CONFIGURED") return "O assistente ainda não está configurado neste ambiente. Você pode preencher os dados manualmente.";
   if (code === "GEMINI_UNAUTHORIZED") return "Não foi possível autenticar o assistente no provedor de IA. Avise o responsável pelo site.";
@@ -1152,7 +1156,7 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
     analyzeButton.disabled = loading || !textarea.value.trim();
     analyzeButton.setAttribute("aria-busy", String(loading));
     analyzeButton.textContent = loading ? "Analisando informações..." : "Analisar informações";
-    const showingResult = ["preview", "partial-applied"].includes(phase);
+    const showingResult = Boolean(result) && (["preview", "partial-applied"].includes(phase) || loading);
     const hasFields = Boolean(result && Object.keys(result.fields).length);
     const hasPending = Boolean(result?.pending.length);
     preview.hidden = !showingResult;
@@ -1222,12 +1226,19 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
     }
   }
 
-  async function runAnalysis(message) {
+  async function runAnalysis(message, { clarificationContext = null, preserveResult = false } = {}) {
     if (phase === "loading" || !dialog.open || !hasSession()) return;
-    clearAnalysis({ clearContext: false });
+    const preserved = preserveResult ? { result, phase } : null;
+    if (preserveResult) {
+      revision += 1;
+      abortController?.abort();
+      abortController = null;
+    } else {
+      clearAnalysis({ clearContext: false });
+    }
     if (!message || message.length > 4000) {
       showStatus(message ? "Use até 4.000 caracteres na descrição." : AI_ASSISTANT_MESSAGES.insufficient, "error");
-      return;
+      return false;
     }
     phase = "loading";
     const requestRevision = revision;
@@ -1235,7 +1246,10 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
     showStatus("Analisando informações...");
     update();
     try {
-      const response = await parse(message, { signal: abortController.signal });
+      const response = await parse(message, {
+        signal: abortController.signal,
+        ...(clarificationContext ? { clarification: clarificationContext } : {}),
+      });
       if (revision !== requestRevision || !dialog.open || !hasSession()) return;
       result = validateAssistantResponse(response);
       renderResult();
@@ -1243,11 +1257,19 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
       status.hidden = true;
       update();
       (Object.keys(result.fields).length ? applyButton : clarification).focus();
+      return true;
     } catch (error) {
       if (revision !== requestRevision || !dialog.open) return;
-      phase = "error";
+      if (preserved) {
+        result = preserved.result;
+        phase = preserved.phase;
+        renderResult();
+      } else {
+        phase = "error";
+      }
       showStatus(assistantErrorMessage(error), "error");
       update();
+      return false;
     } finally {
       if (revision === requestRevision) abortController = null;
     }
@@ -1264,13 +1286,26 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
     if (!["preview", "partial-applied"].includes(phase) || !result?.pending.length) return;
     const answer = clarification.value.trim();
     if (!answer) return;
-    const combined = `${analysisContext}\n\nEsclarecimento do usuário: ${answer}`;
+    const previousContext = analysisContext;
+    const combined = `${previousContext}\n\nEsclarecimento do usuário: ${answer}`;
     if (combined.length > 4000) {
       showStatus("A descrição e os esclarecimentos juntos devem ter até 4.000 caracteres.", "error");
       return;
     }
-    analysisContext = combined;
-    await runAnalysis(analysisContext);
+    const previousAnalysis = {
+      fields: { ...result.fields },
+      pending: result.pending.map(({ code, field }) => ({ code, field })),
+      needsClarification: true,
+    };
+    const succeeded = await runAnalysis(answer, {
+      clarificationContext: { context: previousContext, previousAnalysis },
+      preserveResult: true,
+    });
+    if (succeeded) {
+      analysisContext = combined;
+      clarification.value = "";
+      update();
+    }
   }
 
   function apply() {
@@ -2028,7 +2063,11 @@ let ncmSearchState = emptyNcmSearchState();
 const aiAssistant = createAiAssistant({
   dialog: $("#aiAssistantDialog"),
   openButtons: document.querySelectorAll("[data-ai-open]"),
-  parse: (message, options) => api.post("/ai/parse-pricing", { message, currentRates: readAssistantRateContext(elements) }, options),
+  parse: (message, { signal, clarification } = {}) => api.post("/ai/parse-pricing", {
+    message,
+    currentRates: readAssistantRateContext(elements),
+    ...(clarification ? { clarification } : {}),
+  }, { signal }),
   hasSession: () => Boolean(state.user),
   onApply: applyAiPricingFields,
   onSearchMarket: () => {

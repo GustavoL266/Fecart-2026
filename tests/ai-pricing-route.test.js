@@ -57,9 +57,78 @@ test("rota HTTP retorna patch e prévia validados, sem prompts ou extração bru
   assert.equal(result.status, 200);
   assert.deepEqual(result.body.fields, { deliveryCost: 7 });
   assert.equal(result.body.summary[0].field, "deliveryCost");
-  assert.deepEqual(Object.keys(result.body), ["fields", "summary", "pending"]);
+  assert.deepEqual(Object.keys(result.body), ["fields", "summary", "pending", "needsClarification"]);
   assert.deepEqual(result.body.pending, []);
+  assert.equal(result.body.needsClarification, false);
   assert.equal(result.headers.get("cache-control"), "no-store");
+});
+
+test("rota conclui esclarecimento parcial, preserva análise anterior e registra somente diagnóstico seguro", async (t) => {
+  const initialMessage = "Quero vender um bolo, usei 15 reais para fazer, e quero lucro de 10%";
+  const makeEntry = (field, value, evidence, basis = "not-applicable") => ({
+    field, value, evidence, basis, certainty: "certain",
+    batchUnits: null, batchEvidence: null, correctionEvidence: null,
+  });
+  let calls = 0;
+  const provider = { extract: async (message, clarification) => {
+    calls += 1;
+    if (calls === 1) return { entries: [
+      makeEntry("productName", "bolo", "vender um bolo"),
+      makeEntry("materialCost", 15, "usei 15 reais para fazer", "unknown"),
+      makeEntry("desiredNetMargin", 10, "lucro de 10%"),
+    ] };
+    assert.equal(message, "por unidade");
+    assert.equal(clarification.context, initialMessage);
+    assert.deepEqual(clarification.previousAnalysis.fields, { productName: "bolo", desiredNetMargin: 10 });
+    return { entries: [makeEntry("materialCost", 15, "usei 15 reais para fazer", "unit")] };
+  } };
+  const records = [];
+  const logger = {
+    info: (...args) => records.push(args),
+    warn: (...args) => records.push(args),
+  };
+  const request = await serverFor(t, provider, {}, { logger });
+  const first = await request({ message: initialMessage });
+  assert.equal(first.status, 200);
+  assert.equal(first.body.needsClarification, true);
+  const second = await request({
+    message: "por unidade",
+    clarification: {
+      context: initialMessage,
+      previousAnalysis: {
+        fields: first.body.fields,
+        pending: first.body.pending.map(({ code, field }) => ({ code, field })),
+        needsClarification: first.body.needsClarification,
+      },
+    },
+  });
+  assert.equal(second.status, 200);
+  assert.deepEqual(second.body.fields, { productName: "bolo", desiredNetMargin: 10, materialCost: 15 });
+  assert.deepEqual(second.body.pending, []);
+  assert.equal(second.body.needsClarification, false);
+  const diagnosticLines = records.map(([message]) => message).filter((message) => typeof message === "string");
+  for (const expected of [
+    "[AI] clarification=true", "[AI] previousAnalysisPresent=true", "[AI] upstreamStatus=200",
+    "[AI] responseParsed=true", "[AI] mergeSucceeded=true", "[AI] validationSucceeded=true",
+  ]) assert.ok(diagnosticLines.includes(expected), expected);
+  assert.doesNotMatch(JSON.stringify(records), /usei 15|por unidade|GEMINI_API_KEY|cookie|headers/i);
+});
+
+test("falha de validação registra somente caminho, tipo e código interno", async (t) => {
+  const records = [];
+  const logger = { info: (...args) => records.push(args), warn: (...args) => records.push(args) };
+  const request = await serverFor(t, { extract: async () => ({ entries: [{
+    field: "PRIVATE_INVALID_FIELD", value: 7, evidence: "PRIVATE_USER_CONTENT",
+    basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null,
+  }] }) }, {}, { logger });
+  const result = await request();
+  assert.equal(result.status, 502);
+  assert.equal(result.body.code, "GEMINI_INVALID_RESPONSE");
+  assert.ok(records.some(([message, details]) => message === "[AI] validationFailure"
+    && details.path === "entries.0.field"
+    && details.type === "invalid_enum_value"
+    && details.code === "GEMINI_INVALID_RESPONSE"));
+  assert.doesNotMatch(JSON.stringify(records), /PRIVATE_INVALID_FIELD|PRIVATE_USER_CONTENT|test-only-secret/);
 });
 
 test("brigadeiros: provider simulado passa pelo HTTP e valida lote sem inventar dados pendentes", async (t) => {
