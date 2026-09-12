@@ -8,7 +8,7 @@ import { createAiFormProvider } from "../lib/ai-form-assistant.js";
 import { getAiAssistantConfig } from "../lib/config.js";
 import { createGeminiFormProvider } from "../lib/gemini-form-provider.js";
 
-const extraction = { entries: [{ field: "deliveryCost", value: 7, evidence: "frete de 7 reais", batchUnits: null, batchEvidence: null }] };
+const extraction = { entries: [{ field: "deliveryCost", value: 7, evidence: "frete de 7 reais", basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null }] };
 const input = { message: "Coloque frete de 7 reais." };
 
 async function serverFor(t, provider, rateLimitOptions = {}, { trustProxy = false, logger = { warn() {} }, sessionError } = {}) {
@@ -57,7 +57,8 @@ test("rota HTTP retorna patch e prévia validados, sem prompts ou extração bru
   assert.equal(result.status, 200);
   assert.deepEqual(result.body.fields, { deliveryCost: 7 });
   assert.equal(result.body.summary[0].field, "deliveryCost");
-  assert.deepEqual(Object.keys(result.body), ["fields", "summary"]);
+  assert.deepEqual(Object.keys(result.body), ["fields", "summary", "pending"]);
+  assert.deepEqual(result.body.pending, []);
   assert.equal(result.headers.get("cache-control"), "no-store");
 });
 
@@ -65,10 +66,10 @@ test("brigadeiros: provider simulado passa pelo HTTP e valida lote sem inventar 
   const message = "quero vender brigadeiros. gasto R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens e quero margem de 30%";
   const batchEvidence = "para produzir 100 unidades";
   const entries = [
-    { field: "productName", value: "brigadeiros", evidence: "quero vender brigadeiros", batchUnits: null, batchEvidence: null },
-    { field: "materialCost", value: 40, evidence: "gasto R$ 40 em ingredientes", batchUnits: 100, batchEvidence },
-    { field: "packagingCost", value: 10, evidence: "R$ 10 em embalagens", batchUnits: 100, batchEvidence },
-    { field: "desiredNetMargin", value: 30, evidence: "quero margem de 30%", batchUnits: null, batchEvidence: null },
+    { field: "productName", value: "brigadeiros", evidence: "quero vender brigadeiros", basis: "not-applicable", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
+    { field: "materialCost", value: 40, evidence: "gasto R$ 40 em ingredientes", basis: "batch-total", certainty: "certain", batchUnits: 100, batchEvidence, correctionEvidence: null },
+    { field: "packagingCost", value: 10, evidence: "R$ 10 em embalagens", basis: "batch-total", certainty: "certain", batchUnits: 100, batchEvidence, correctionEvidence: null },
+    { field: "desiredNetMargin", value: 30, evidence: "quero margem de 30%", basis: "not-applicable", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
   ];
   let calls = 0;
   const provider = createGeminiFormProvider({ apiKey: "test-only-secret", model: "gemini-3.5-flash-lite", timeoutMs: 5000 }, { fetchImpl: async (_url, options) => {
@@ -84,6 +85,7 @@ test("brigadeiros: provider simulado passa pelo HTTP e valida lote sem inventar 
   assert.deepEqual(result.body.summary.map(({ field }) => field), ["productName", "materialCost", "packagingCost", "desiredNetMargin"]);
   assert.match(result.body.summary.find(({ field }) => field === "materialCost").value, /0,40.*100 unidades/);
   assert.match(result.body.summary.find(({ field }) => field === "packagingCost").value, /0,10.*100 unidades/);
+  assert.deepEqual(result.body.pending, []);
   assert.doesNotMatch(JSON.stringify(result.body), /monthlyPayroll|expectedMonthlyUnits|taxRate|finalPrice|suggestedPrice|test-only-secret|batchEvidence/);
 });
 
@@ -101,13 +103,41 @@ test("chave ausente reproduz 503 antes de qualquer chamada à Gemini", async (t)
 
 test("rota preserva null/ausência como não alterar e mantém zero explícito", async (t) => {
   const request = await serverFor(t, { extract: async () => ({ entries: [
-    { field: "deliveryCost", value: 0, evidence: "frete de 0 reais", batchUnits: null, batchEvidence: null },
-    { field: "packagingCost", value: null, evidence: "", batchUnits: null, batchEvidence: null },
+    { field: "deliveryCost", value: 0, evidence: "frete de 0 reais", basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
+    { field: "packagingCost", value: null, evidence: "", basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
   ] }) });
   const result = await request({ message: "Coloque frete de 0 reais." });
   assert.equal(result.status, 200);
   assert.deepEqual(result.body.fields, { deliveryCost: 0 });
   assert.equal(result.body.summary.length, 1);
+});
+
+test("taxas atuais são validadas localmente e nunca são enviadas ao provider", async (t) => {
+  let providerArguments;
+  const provider = { extract: async (...args) => {
+    providerArguments = args;
+    return { entries: [{
+      field: "desiredNetMargin", value: 25, evidence: "margem para 25%", basis: "not-applicable",
+      certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null,
+    }] };
+  } };
+  const request = await serverFor(t, provider);
+  const result = await request({ message: "Mude a margem para 25%.", currentRates: { taxRate: 60, paymentFeeRate: 10, commissionRate: 5 } });
+  assert.equal(result.status, 200);
+  assert.deepEqual(providerArguments, ["Mude a margem para 25%."]);
+  assert.deepEqual(result.body.fields, {});
+  assert.deepEqual(result.body.pending.map(({ code }) => code), ["AI_RATE_SUM_INVALID"]);
+});
+
+test("contexto percentual inválido é rejeitado antes da chamada paga", async (t) => {
+  let calls = 0;
+  const request = await serverFor(t, { extract: async () => { calls += 1; return extraction; } });
+  for (const currentRates of [{ taxRate: 100 }, { taxRate: "10" }, { unknown: 5 }]) {
+    const result = await request({ ...input, currentRates });
+    assert.equal(result.status, 400);
+    assert.equal(result.body.code, "INVALID_AI_REQUEST");
+  }
+  assert.equal(calls, 0);
 });
 
 test("rota HTTP rejeita corpo desconhecido antes de consumir chamada paga", async (t) => {

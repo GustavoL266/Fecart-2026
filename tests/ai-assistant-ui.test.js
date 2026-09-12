@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createAiAssistant, validateAssistantResponse } from "../js/ui/ai-assistant.js";
-import { applyAssistantFields, CAPACITY_FIELD_IDS, PRICING_FIELD_IDS, validateAssistantFields, validatePricingForm } from "../js/ui/form.js";
+import { applyAssistantFields, CAPACITY_FIELD_IDS, PRICING_FIELD_IDS, readAssistantRateContext, validateAssistantFields, validatePricingForm } from "../js/ui/form.js";
 import { calculatePricing } from "../js/domain/pricing-calculator.js";
 import { parsePricingMessage } from "../lib/ai-form-assistant.js";
 
@@ -11,8 +11,8 @@ function controls(values = {}) {
   return Object.fromEntries(ids.map((id) => [id, { value: values[id] ?? "" }]));
 }
 
-function response(fields) {
-  return { fields, summary: Object.entries(fields).filter(([, value]) => value !== null).map(([field, value]) => ({ field, label: field, value: String(value) })) };
+function response(fields, pending = []) {
+  return { fields, summary: Object.entries(fields).filter(([, value]) => value !== null).map(([field, value]) => ({ field, label: field, value: String(value) })), pending };
 }
 
 class Element {
@@ -48,7 +48,7 @@ class Element {
 }
 
 function fixture({ parse = async () => response({ desiredNetMargin: 20 }), apply } = {}) {
-  const names = ["form", "message", "analyze", "preview", "fields", "status", "apply", "search", "cancel", "close"];
+  const names = ["form", "message", "analyze", "preview", "fields", "pending", "pending-list", "clarification-form", "clarification", "clarify", "status", "apply", "search", "cancel", "close"];
   const elements = Object.fromEntries(names.map((name) => [name, new Element()]));
   const dialog = new Element();
   const openButton = new Element();
@@ -297,7 +297,11 @@ test("diagnósticos de configuração, provedor e timeout são seguros e não ap
 test("brigadeiros: prévia de lote preserva pendências e só confirmação altera controles", async () => {
   const message = "quero vender brigadeiros. gasto R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens e quero margem de 30%";
   const fields = controls({ deliveryCost: "5" });
-  const entry = (field, value, evidence, batchUnits = null, batchEvidence = null) => ({ field, value, evidence, batchUnits, batchEvidence });
+  const entry = (field, value, evidence, batchUnits = null, batchEvidence = null) => ({
+    field, value, evidence,
+    basis: ["materialCost", "packagingCost"].includes(field) ? "batch-total" : "not-applicable",
+    certainty: "certain", batchUnits, batchEvidence, correctionEvidence: null,
+  });
   // The model output is a fixture; the extraction validator and form controller are real.
   const provider = { extract: async () => ({ entries: [
     entry("productName", "brigadeiros", "quero vender brigadeiros"),
@@ -335,6 +339,61 @@ test("sessão encerrada impede abrir, aplicar e aceitar resposta pendente", asyn
   ui.controller.open();
   assert.equal(ui.dialog.open, false);
   assert.deepEqual(ui.applied, []);
+});
+
+test("contexto do assistente contém somente quatro percentuais válidos exibidos", () => {
+  const fields = controls({ taxRate: "6,5", paymentFeeRate: "2.8", commissionRate: "", desiredNetMargin: "25", materialCost: "999", deliveryCost: "7" });
+  assert.deepEqual(readAssistantRateContext(fields), { taxRate: 6.5, paymentFeeRate: 2.8, desiredNetMargin: 25 });
+  fields.taxRate.value = "100";
+  fields.paymentFeeRate.value = "inválido";
+  assert.deepEqual(readAssistantRateContext(fields), { desiredNetMargin: 25 });
+});
+
+test("pendência aparece sem aplicação e esclarecimento reanalisa o contexto original", async () => {
+  const calls = [];
+  const issue = { code: "AI_COST_BASIS_UNKNOWN", field: "materialCost", message: "O custo é por unidade ou pelo lote?" };
+  const ui = fixture({ parse: async (message) => {
+    calls.push(message);
+    return calls.length === 1 ? response({ desiredNetMargin: 30 }, [issue]) : response({ materialCost: 7, desiredNetMargin: 30 });
+  } });
+  const original = "Gastei R$ 350 em ingredientes e quero margem de 30%.";
+  await ui.enter(original);
+  await ui.elements.form.emit("submit");
+  assert.equal(ui.elements.pending.hidden, false);
+  assert.equal(ui.elements["pending-list"].children.length, 1);
+  assert.deepEqual(ui.applied, []);
+  assert.equal(ui.elements.message.value, original);
+  ui.elements.clarification.value = "É o total de um lote de 50 unidades.";
+  await ui.elements.clarification.emit("input");
+  await ui.elements["clarification-form"].emit("submit");
+  assert.match(calls[1], /^Gastei R\$ 350[\s\S]*Esclarecimento do usuário: É o total/);
+  assert.equal(ui.elements.message.value, original);
+  assert.equal(ui.elements.pending.hidden, true);
+  assert.deepEqual(ui.applied, []);
+  await ui.elements.apply.emit("click");
+  assert.deepEqual(ui.applied, [{ materialCost: 7, desiredNetMargin: 30 }]);
+});
+
+test("resultado parcial aplica apenas campos válidos e mantém pendência visível", async () => {
+  const issue = { code: "AI_BATCH_UNITS_REQUIRED", field: "packagingCost", message: "Quantas unidades o lote produz?" };
+  const ui = fixture({ parse: async () => response({ desiredNetMargin: 20 }, [issue]) });
+  await ui.enter("Margem 20%; embalagem R$ 80 por lote.");
+  await ui.elements.form.emit("submit");
+  await ui.elements.apply.emit("click");
+  assert.deepEqual(ui.applied, [{ desiredNetMargin: 20 }]);
+  assert.equal(ui.elements.pending.hidden, false);
+  assert.equal(ui.elements["clarification-form"].hidden, false);
+  assert.equal(ui.elements.apply.hidden, true);
+});
+
+test("frontend rejeita código, campo ou mensagem de pendência fora do contrato", () => {
+  for (const issue of [
+    { code: "PRIVATE_CODE", field: "materialCost", message: "texto" },
+    { code: "AI_COST_BASIS_UNKNOWN", field: "apiKey", message: "texto" },
+    { code: "AI_COST_BASIS_UNKNOWN", field: "materialCost", message: "" },
+  ]) assert.throws(() => validateAssistantResponse(response({}, [issue])), /AI_INVALID_RESPONSE/);
+  const duplicate = { code: "AI_COST_BASIS_UNKNOWN", field: "materialCost", message: "Confirme a base." };
+  assert.throws(() => validateAssistantResponse(response({}, [duplicate, duplicate])), /AI_INVALID_RESPONSE/);
 });
 
 test("reset, reuso de produto e logout invalidam o assistente existente", async () => {

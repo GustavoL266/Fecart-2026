@@ -13,11 +13,11 @@ O assistente interpreta uma mensagem, apresenta uma prévia e preenche apenas os
 
 Localmente, configure no `.env`, que já é ignorado pelo Git. No Render, abra o Web Service do projeto, **Environment → Add Environment Variable**, cadastre `GEMINI_API_KEY` com sua chave real e salve. Em serviços existentes, substitua os valores antigos de `AI_PROVIDER` e `AI_MODEL` pelos da tabela. Depois faça **Manual Deploy → Deploy latest commit**. Nunca grave a chave no frontend, no GitHub ou neste documento. Uma configuração ausente ou inválida desabilita apenas o assistente.
 
-O provedor usa REST nativo via `fetch` do Node, sem SDK ou camada de compatibilidade OpenAI. A chamada é `POST https://generativelanguage.googleapis.com/v1beta/models/{AI_MODEL}:generateContent`. A chave vai somente no cabeçalho `x-goog-api-key`, nunca na URL. O contrato usa `systemInstruction`, uma mensagem em `contents`, `generationConfig.responseMimeType: "application/json"` e `generationConfig.responseJsonSchema`. Há um candidato e limite de 3000 tokens; nenhum histórico ou ferramenta é enviado.
+O provedor usa REST nativo via `fetch` do Node, sem SDK ou camada de compatibilidade OpenAI. A chamada é `POST https://generativelanguage.googleapis.com/v1beta/models/{AI_MODEL}:generateContent`. A chave vai somente no cabeçalho `x-goog-api-key`, nunca na URL. O contrato usa `systemInstruction`, uma mensagem em `contents`, `generationConfig.responseMimeType: "application/json"` e `generationConfig.responseJsonSchema`. A extração usa `temperature: 0`, um candidato e limite de 3000 tokens; nenhum histórico ou ferramenta é enviado.
 
 O modelo estável [Gemini 3.5 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite) foi confirmado novamente na documentação em 11/09/2026: o identificador é `gemini-3.5-flash-lite`, ele é voltado a baixa latência, baixo custo e extração simples, aceita `generateContent` e suporta saída estruturada. O modelo também consta nas [tabelas atuais de limites da API](https://ai.google.dev/gemini-api/docs/rate-limits). A [referência generateContent](https://ai.google.dev/api/generate-content) documenta `responseMimeType` e `responseJsonSchema`, enquanto o [guia de migração](https://ai.google.dev/gemini-api/docs/migrate-to-interactions#structured-output) mantém esses controles dentro de `generationConfig` para `generateContent`. Esta integração não envia junto `responseFormat` nem `responseSchema`. O modelo fica configurável por ambiente; o nome precisa começar com `gemini-`, sem barras, query string ou caracteres de controle.
 
-O schema externo usa somente recursos documentados: `object`, `array`, `string`, `number`, `integer`, `null`, união de tipos para nulabilidade, `required`, `enum`, `items` e `additionalProperties: false`. Ele omite deliberadamente `maxItems`: a chamada real retornou 400 quando `maxItems: 35` era combinado com o enum de 35 campos. A validação Zod rigorosa do backend continua limitando o array a 35 entradas e sendo a autoridade para evidências, duplicatas, normalização de lote, limites e campos aceitos.
+O schema externo usa somente recursos documentados: `object`, `array`, `string`, `number`, `integer`, `null`, união de tipos para nulabilidade, `required`, `enum`, `items` e `additionalProperties: false`. Ele omite deliberadamente `maxItems`: a chamada real retornou 400 quando `maxItems: 35` era combinado com o enum de 35 campos. A validação Zod rigorosa do backend limita o array a 100 entradas — permitindo componentes do mesmo campo sem deixar a resposta ilimitada — e continua sendo a autoridade para evidências, normalização, limites e campos aceitos.
 
 Esta funcionalidade agora depende exclusivamente de `GEMINI_API_KEY`. `OPENAI_API_KEY`, `AI_PROVIDER=openai` e o modelo anterior não são usados. Em um serviço Render existente, **troque também AI_PROVIDER e AI_MODEL**, pois variáveis antigas explícitas prevalecem sobre os novos padrões. Depois de migrar, a antiga chave OpenAI pode ser removida do ambiente deste projeto.
 
@@ -114,19 +114,23 @@ Não foi possível comprovar a ordem do 401 da captura sem o histórico das requ
 
 ## Fluxo e arquitetura
 
-1. `js/ui/ai-assistant.js` abre o modal e envia somente a mensagem, sem histórico, formulário completo ou dados da conta.
+1. `js/ui/ai-assistant.js` abre o modal e envia a mensagem e, quando presentes, somente os quatro percentuais que compartilham o denominador (`taxRate`, `paymentFeeRate`, `commissionRate` e `desiredNetMargin`). Não envia o formulário completo, histórico ou dados da conta.
 2. `lib/ai-pricing-route.js` exige a mesma autenticação do site e aplica limites por conta e IP.
 3. `lib/ai-form-assistant.js` seleciona o provedor e orquestra a validação. Novos provedores devem implementar `extract(message)`; o restante do fluxo pode ser reutilizado.
-4. `lib/gemini-form-provider.js` pede entradas estruturadas, cada uma com campo, valor e trecho literal que comprova a extração. Custos de lote incluem quantidade e evidência do lote.
-5. `lib/ai-pricing-schema.js` valida o retorno e gera os rótulos e valores da prévia de forma determinística. A extração bruta e o prompt não são enviados ao navegador.
+4. `lib/gemini-form-provider.js` recebe somente a mensagem e pede entradas estruturadas. Cada componente tem campo, valor, evidência literal, base (`unit`, `batch-total`, `monthly-total`, `not-applicable` ou `unknown`), certeza, quantidade/evidência do lote e evidência de correção. Os percentuais atuais nunca são enviados à Gemini.
+5. `lib/ai-pricing-schema.js` valida o retorno, normaliza cada componente antes da soma e gera rótulos, valores e pendências controladas de forma determinística. A extração bruta e o prompt não são enviados ao navegador.
 6. Somente **Aplicar ao simulador** chama `applyAssistantFields` e o controlador existente em `js/main.js`. Não há eventos sintéticos, simulação de digitação nem cálculo financeiro pelo modelo.
+7. Uma pendência pode ser respondida no próprio modal. O navegador mantém a descrição original apenas em memória, anexa um bloco marcado de esclarecimento e solicita uma nova extração completa. Esse conteúdo não é salvo no banco nem em histórico local.
 
 ### Contrato público
 
 `POST /ai/parse-pricing`, com cookie de sessão e `Content-Type: application/json`:
 
 ```json
-{ "message": "Coloque matéria-prima como R$ 20 e margem em 30%." }
+{
+  "message": "Coloque matéria-prima como R$ 20 e margem em 30%.",
+  "currentRates": { "taxRate": 6, "paymentFeeRate": 2.8, "commissionRate": 0 }
+}
 ```
 
 Resposta:
@@ -137,11 +141,14 @@ Resposta:
   "summary": [
     { "field": "materialCost", "label": "Matéria-prima por unidade", "value": "R$ 20,00" },
     { "field": "desiredNetMargin", "label": "Margem líquida desejada", "value": "30%" }
-  ]
+  ],
+  "pending": []
 }
 ```
 
-As porcentagens deste contrato são pontos percentuais (`30` significa `30%`). O formulário faz sua conversão habitual para frações ao calcular. Campos ausentes são omitidos; entradas `null` são descartadas. Zero é aplicado quando informado ou quando a retirada do desconto é explícita. Se houver um campo inválido na resposta, a análise inteira é rejeitada e nenhum valor é aplicado.
+`currentRates` é opcional, estrito e limitado aos quatro campos listados; ele serve apenas para impedir uma soma de percentuais igual ou superior a 100%. As porcentagens são pontos percentuais (`30` significa `30%`). O formulário faz sua conversão habitual para frações ao calcular. Campos ausentes são omitidos; entradas `null` são descartadas. Zero é aplicado quando informado ou quando a retirada do desconto é explícita.
+
+Uma resposta estruturalmente malformada, sem evidência literal ou com campos desconhecidos continua sendo rejeitada integralmente. Um valor reconhecido, mas semanticamente incompleto — base de custo desconhecida, lote sem quantidade, ambiguidade, negativo ou fora dos limites — não vira dado fictício nem 502 genérico: o campo afetado é omitido de `fields` e aparece em `pending` com código e pergunta controlados pelo backend. Campos independentes válidos continuam disponíveis para prévia e confirmação.
 
 ## Campos atendidos
 
@@ -159,7 +166,7 @@ As porcentagens deste contrato são pontos percentuais (`30` significa `30%`). O
 
 O formulário atual não tem campos de alíquotas individuais de ICMS, IPI, PIS/COFINS, DIFAL ou IBS/CBS. Esses dados não são convertidos em carga tributária total. O NCM é uma confirmação da integração Focus NFe, e continua sendo escolhido pelo fluxo fiscal existente. Não se inventam códigos, taxas, horas produtivas ou volume mensal. Não há campo separado de tipo/categoria de produto nesta tela para preencher.
 
-“R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens” resulta em matéria-prima `0,40` e embalagem `0,10` por unidade, com a divisão identificada na prévia. O backend faz apenas essa normalização de entrada; o lote não vira produção mensal. Se os dados não identificarem claramente um custo unitário ou de lote, os campos ambíguos devem ser omitidos.
+“R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens” resulta em matéria-prima `0,40` e embalagem `0,10` por unidade, com a divisão identificada na prévia. O backend faz apenas essa normalização de entrada; o lote não vira produção mensal. Vários componentes são normalizados separadamente e depois somados no campo correspondente. Se os dados não identificarem claramente um custo unitário ou de lote, o campo vira pendência visível e não é aplicado silenciosamente.
 
 “Adicione R$ 4 de frete” define frete como `4`; não soma a valores desconhecidos do formulário. “Retire o desconto” zera as duas modalidades. Campos obrigatórios ainda vazios continuam pendentes e o dashboard informa que é necessário completá-los.
 
@@ -167,8 +174,9 @@ O formulário atual não tem campos de alíquotas individuais de ICMS, IPI, PIS/
 
 ## Validação e proteção
 
-- Zod estrito bloqueia campos desconhecidos, duplicados, strings em campos numéricos, valores negativos, não finitos e saídas com preço final.
-- Percentuais são de zero até menos de 100%; a soma de tributos totais, taxas, comissão e margem extraídos deve ser menor que 100%. O validador financeiro existente verifica novamente o conjunto completo do formulário.
+- Zod estrito bloqueia campos desconhecidos, strings em campos numéricos, não finitos e saídas com preço final. Entradas repetidas de custos representam componentes; cada uma mantém sua própria base e evidência antes da soma.
+- Percentuais são de zero até menos de 100%; a soma de tributos totais, taxas, comissão e margem, combinando a extração com os percentuais atuais informados pelo navegador, deve ser menor que 100%. O validador financeiro existente verifica novamente o conjunto completo do formulário.
+- Valores negativos, limites impossíveis, divisor zero, base ausente e ambiguidades reconhecidas geram pendências por campo. Eles nunca são corrigidos, tornados positivos ou aplicados parcialmente como componente de um total.
 - Valores monetários são limitados a R$ 1 bilhão; quantidade mensal deve ser positiva; funcionários são inteiros até 1 milhão; horas por funcionário/mês até 744; prazos até 3650 dias. Textos, selects e UFs também têm limites e listas de opções.
 - Evidências devem ser trechos da mensagem original. Números, percentuais, significado do campo e quantidade do lote são conferidos antes da normalização. Essa checagem reduz invenções, mas a confirmação humana continua necessária para resolver erros semânticos de extração.
 - O modelo não recebe ferramentas, arquivos, variáveis de ambiente ou segredos no prompt. A chave é enviada somente no cabeçalho HTTP do backend. Instruções dentro da mensagem são tratadas como dados de extração.
@@ -179,19 +187,23 @@ O formulário atual não tem campos de alíquotas individuais de ICMS, IPI, PIS/
 
 ## Testes
 
-Execute `pnpm lint`, `pnpm test` e `pnpm build`. Os testes de provider e da rota usam respostas simuladas; não consomem créditos nem dependem de banco ou chave real. Cobrem os exemplos do usuário, decimal/R$/porcentagem, lote, ausência, zero, limites, JSON inválido, prompt injection, timeout, autenticação, rate limit, concorrência, confirmação e cancelamento.
+Execute `pnpm lint`, `pnpm test` e `pnpm build`. Os testes de provider e da rota usam respostas simuladas; não consomem créditos nem dependem de banco ou chave real. Cobrem componentes, linguagem informal, decimal/R$/números por extenso, bases unitária/lote/desconhecida, correções, ausência, zero, limites, ambiguidade, JSON inválido, prompt injection, timeout, autenticação, rate limit, concorrência, prévia, esclarecimento, confirmação e cancelamento.
+
+`pnpm gemini:evaluate` executa dez prompts fixos contra a conta configurada: caso mínimo, brigadeiros, múltiplos componentes, total sem quantidade, bases mistas, números por extenso, correção, ambiguidade, negativo e preço de venda sem custo. A saída contém somente status, campos já validados, códigos de pendência e aderência esperada; não imprime prompt, evidência, resposta bruta ou chave. IDs podem ser passados após `--` para limitar as chamadas.
 
 Na correção do HTTP 502 de 11/09/2026 passaram 252 testes, lint de 76 arquivos JavaScript e build. Os contratos cobrem endpoint nativo, cabeçalho da chave, JSON Schema externo compatível, limite posterior no backend, preflight de modelo/método, multipartes, bloqueio de conteúdo e distinção entre quota e limite temporário. Houve chamada autenticada real com `gemini-3.5-flash-lite`: os dois controles incompatíveis retornaram 400, o payload final retornou 200 e `pnpm gemini:check` validou os casos de bolo e brigadeiros de ponta a ponta. A chave permaneceu somente no `.env` ignorado pelo Git.
 
-- “Quero vender bolo, gastei R$ 15 para fazer e quero margem de 10%”: prévia de produto, matéria-prima `15` e margem `10`.
-- “Faço brigadeiro. Ingredientes custam R$ 20, embalagem R$ 5 e quero margem de 30%.”: prévia de produto, matéria-prima `20`, embalagem `5` e margem `30`.
+Na evolução da interpretação do mesmo dia, a suíte passou a cobrir 272 testes e o lint 77 arquivos JavaScript. `pnpm gemini:check` passou novamente, e `pnpm gemini:evaluate` validou os dez casos fixos contra a API real: todos os `generateContent` aceitos retornaram HTTP 200; campos inequívocos corresponderam ao esperado, totais sem quantidade e valores negativos viraram pendências, e preço de venda não virou custo. Essa chamada comprova o contrato e o acesso da conta local utilizada, não a configuração do serviço Render.
+
+- “Quero vender bolo, meu custo de ingredientes por unidade é R$ 15 e quero margem de 10%”: prévia de produto, matéria-prima `15` e margem `10`.
+- “Faço brigadeiro. Ingredientes por unidade custam R$ 20, embalagem por unidade R$ 5 e quero margem de 30%.”: prévia de produto, matéria-prima `20`, embalagem `5` e margem `30`.
 - “Quero mudar minha margem para 20%.”: apenas margem `20`; demais campos preservados.
 
 Após configurar a chave no Render, entre na aplicação e abra **Preencher com IA**. Teste:
 
-Primeiro reproduza a entrada do incidente: “quero vender brigadeiros. gasto R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens e quero margem de 30%”. Antes de confirmar, o formulário deve continuar intacto. A prévia deve conter produto brigadeiros, matéria-prima `0,40`, embalagem `0,10` (ambas normalizadas pelo lote de 100) e margem `30%`. Confirme em **Aplicar ao simulador**; frete já preenchido deve ser preservado e folha, volume mensal, tributos e demais obrigatórios não informados devem continuar pendentes. Os testes automatizados cobrem esse fluxo com retorno de modelo simulado; a chamada real depende da credencial no Render.
+Primeiro reproduza a entrada do incidente: “quero vender brigadeiros. gasto R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens e quero margem de 30%”. Antes de confirmar, o formulário deve continuar intacto. A prévia deve conter produto brigadeiros, matéria-prima `0,40`, embalagem `0,10` (ambas normalizadas pelo lote de 100) e margem `30%`. Confirme em **Aplicar ao simulador**; frete já preenchido deve ser preservado e folha, volume mensal, tributos e demais obrigatórios não informados devem continuar pendentes. Os testes automatizados e a avaliação real local cobrem esse fluxo; a validação do serviço publicado ainda depende da credencial e do commit efetivamente implantados no Render.
 
-1. “Vendo bolo de chocolate. Gasto 18 reais de ingredientes, 3 reais de embalagem e tenho perda de 10%. Quero margem de 25%.” Confira os cinco campos e aplique.
+1. “Vendo bolo de chocolate. Gasto 18 reais de ingredientes por unidade, 3 reais de embalagem por unidade e tenho perda de 10%. Quero margem de 25%.” Confira os cinco campos e aplique.
 2. Preencha frete `5` manualmente e peça “Mude minha margem para 20%.” Somente a margem deve mudar após confirmação.
 3. “Coloque frete de 7 reais.” e “Minha comissão é 5%.” devem modificar apenas o campo correspondente.
 4. “Tenho 4 funcionários e cada um produz 10 unidades por hora.” não deve inventar horas mensais nem quantidade mensal.

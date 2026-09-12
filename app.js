@@ -791,6 +791,7 @@ function clearMarketReference(storage) {
 const PERCENTAGE_FIELDS = new Set([
   "wasteRate", "taxRate", "paymentFeeRate", "commissionRate", "desiredNetMargin", "monthlyCapitalRate", "discountRate",
 ]);
+const ASSISTANT_COMBINED_RATE_FIELDS = Object.freeze(["taxRate", "paymentFeeRate", "commissionRate", "desiredNetMargin"]);
 
 const FIELD_RULES = Object.freeze({
   materialCost: { required: "Informe o custo da matéria-prima." },
@@ -890,6 +891,14 @@ function parseBrazilianNumber(rawValue) {
   if (commaCount > 1 || !/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return { status: "invalid", value: null };
   const numeric = Number(normalized);
   return Number.isFinite(numeric) ? { status: "valid", value: numeric } : { status: "invalid", value: null };
+}
+
+/** Only denominator rates are returned; this context is validated locally and never sent to Gemini. */
+function readAssistantRateContext(elements) {
+  return Object.fromEntries(ASSISTANT_COMBINED_RATE_FIELDS.flatMap((fieldId) => {
+    const parsed = parseBrazilianNumber(elements[fieldId]?.value);
+    return parsed.status === "valid" && parsed.value >= 0 && parsed.value < 100 ? [[fieldId, parsed.value]] : [];
+  }));
 }
 
 function readFiscalContext(elements) {
@@ -1054,10 +1063,15 @@ const AI_ASSISTANT_MESSAGES = Object.freeze({
   invalid: "Não foi possível validar a resposta do assistente. Nenhum campo foi alterado. Tente novamente.",
 });
 
+const AI_PENDING_CODES = new Set([
+  "AI_COST_BASIS_UNKNOWN", "AI_BATCH_UNITS_REQUIRED", "AI_BATCH_UNITS_INVALID",
+  "AI_NEGATIVE_VALUE", "AI_VALUE_OUT_OF_RANGE", "AI_AMBIGUOUS_VALUE",
+  "AI_CONFIRM_FIELD", "AI_MEANING_UNCERTAIN", "AI_RATE_SUM_INVALID",
+]);
+
 function validateAssistantResponse(response) {
   const fields = validateAssistantFields(response?.fields);
   const fieldIds = Object.keys(fields);
-  if (!fieldIds.length) throw Object.assign(new Error(AI_ASSISTANT_MESSAGES.insufficient), { code: "AI_INSUFFICIENT_INFORMATION" });
   if (!Array.isArray(response.summary) || response.summary.length !== fieldIds.length) throw new Error("AI_INVALID_RESPONSE");
   const seen = new Set();
   const summary = response.summary.map((item) => {
@@ -1067,7 +1081,23 @@ function validateAssistantResponse(response) {
     seen.add(item.field);
     return { field: item.field, label: item.label, value: item.value };
   });
-  return { fields, summary };
+  if (!Array.isArray(response.pending)) throw new Error("AI_INVALID_RESPONSE");
+  const pendingSeen = new Set();
+  const pending = response.pending.map((item) => {
+    if (!item || !AI_PENDING_CODES.has(item.code)
+      || typeof item.field !== "string" || !item.field
+      || typeof item.message !== "string" || !item.message || item.message.length > 300) throw new Error("AI_INVALID_RESPONSE");
+    // Reuse the form allowlist without treating a pending value as an update.
+    validateAssistantFields({ [item.field]: null });
+    const key = `${item.code}:${item.field}`;
+    if (pendingSeen.has(key)) throw new Error("AI_INVALID_RESPONSE");
+    pendingSeen.add(key);
+    return { code: item.code, field: item.field, message: item.message };
+  });
+  if (!fieldIds.length && !pending.length) {
+    throw Object.assign(new Error(AI_ASSISTANT_MESSAGES.insufficient), { code: "AI_INSUFFICIENT_INFORMATION" });
+  }
+  return { fields, summary, pending };
 }
 
 function assistantErrorMessage(error) {
@@ -1100,6 +1130,11 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
   const analyzeButton = select("[data-ai-analyze]");
   const preview = select("[data-ai-preview]");
   const fieldsList = select("[data-ai-fields]");
+  const pendingSection = select("[data-ai-pending]");
+  const pendingList = select("[data-ai-pending-list]");
+  const clarificationForm = select("[data-ai-clarification-form]");
+  const clarification = select("[data-ai-clarification]");
+  const clarifyButton = select("[data-ai-clarify]");
   const status = select("[data-ai-status]");
   const applyButton = select("[data-ai-apply]");
   const searchButton = select("[data-ai-search]");
@@ -1108,6 +1143,7 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
   let phase = "idle";
   let revision = 0;
   let abortController = null;
+  let analysisContext = "";
 
   function update() {
     const loading = phase === "loading";
@@ -1116,14 +1152,22 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
     analyzeButton.disabled = loading || !textarea.value.trim();
     analyzeButton.setAttribute("aria-busy", String(loading));
     analyzeButton.textContent = loading ? "Analisando informações..." : "Analisar informações";
-    preview.hidden = phase !== "preview";
-    applyButton.hidden = phase !== "preview";
-    applyButton.disabled = phase !== "preview";
+    const showingResult = ["preview", "partial-applied"].includes(phase);
+    const hasFields = Boolean(result && Object.keys(result.fields).length);
+    const hasPending = Boolean(result?.pending.length);
+    preview.hidden = !showingResult;
+    fieldsList.hidden = !hasFields;
+    pendingSection.hidden = !showingResult || !hasPending;
+    clarificationForm.hidden = !showingResult || !hasPending;
+    clarification.readOnly = loading;
+    clarifyButton.disabled = loading || !clarification.value.trim();
+    applyButton.hidden = phase !== "preview" || !hasFields;
+    applyButton.disabled = phase !== "preview" || !hasFields;
     searchButton.hidden = phase !== "applied" || !result?.fields.marketQuery;
-    cancelButton.textContent = phase === "applied" ? "Fechar" : "Cancelar";
+    cancelButton.textContent = ["applied", "partial-applied"].includes(phase) ? "Fechar" : "Cancelar";
   }
 
-  function clearAnalysis({ clearText = false } = {}) {
+  function clearAnalysis({ clearText = false, clearContext = true } = {}) {
     revision += 1;
     abortController?.abort();
     abortController = null;
@@ -1133,6 +1177,9 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
     status.hidden = true;
     status.classList.remove("is-error", "is-success");
     fieldsList.replaceChildren();
+    pendingList.replaceChildren();
+    clarification.value = "";
+    if (clearContext) analysisContext = "";
     if (clearText) textarea.value = "";
     update();
   }
@@ -1156,11 +1203,28 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
     status.classList.toggle("is-success", kind === "success");
   }
 
-  async function analyze(event) {
-    event?.preventDefault();
+  function renderResult() {
+    fieldsList.replaceChildren();
+    pendingList.replaceChildren();
+    for (const item of result.summary) {
+      const row = dialog.ownerDocument.createElement("div");
+      const label = dialog.ownerDocument.createElement("dt");
+      const value = dialog.ownerDocument.createElement("dd");
+      label.textContent = item.label;
+      value.textContent = item.value;
+      row.append(label, value);
+      fieldsList.append(row);
+    }
+    for (const item of result.pending) {
+      const row = dialog.ownerDocument.createElement("li");
+      row.textContent = item.message;
+      pendingList.append(row);
+    }
+  }
+
+  async function runAnalysis(message) {
     if (phase === "loading" || !dialog.open || !hasSession()) return;
-    const message = textarea.value.trim();
-    clearAnalysis();
+    clearAnalysis({ clearContext: false });
     if (!message || message.length > 4000) {
       showStatus(message ? "Use até 4.000 caracteres na descrição." : AI_ASSISTANT_MESSAGES.insufficient, "error");
       return;
@@ -1174,19 +1238,11 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
       const response = await parse(message, { signal: abortController.signal });
       if (revision !== requestRevision || !dialog.open || !hasSession()) return;
       result = validateAssistantResponse(response);
-      for (const item of result.summary) {
-        const row = dialog.ownerDocument.createElement("div");
-        const label = dialog.ownerDocument.createElement("dt");
-        const value = dialog.ownerDocument.createElement("dd");
-        label.textContent = item.label;
-        value.textContent = item.value;
-        row.append(label, value);
-        fieldsList.append(row);
-      }
+      renderResult();
       phase = "preview";
       status.hidden = true;
       update();
-      applyButton.focus();
+      (Object.keys(result.fields).length ? applyButton : clarification).focus();
     } catch (error) {
       if (revision !== requestRevision || !dialog.open) return;
       phase = "error";
@@ -1197,12 +1253,33 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
     }
   }
 
+  async function analyze(event) {
+    event?.preventDefault();
+    analysisContext = textarea.value.trim();
+    await runAnalysis(analysisContext);
+  }
+
+  async function clarify(event) {
+    event?.preventDefault();
+    if (!["preview", "partial-applied"].includes(phase) || !result?.pending.length) return;
+    const answer = clarification.value.trim();
+    if (!answer) return;
+    const combined = `${analysisContext}\n\nEsclarecimento do usuário: ${answer}`;
+    if (combined.length > 4000) {
+      showStatus("A descrição e os esclarecimentos juntos devem ter até 4.000 caracteres.", "error");
+      return;
+    }
+    analysisContext = combined;
+    await runAnalysis(analysisContext);
+  }
+
   function apply() {
     if (phase !== "preview" || !result || !dialog.open || !hasSession()) return;
     try {
       const message = onApply(result.fields);
-      phase = "applied";
-      showStatus(message || "Informações aplicadas. O simulador foi atualizado.", "success");
+      phase = result.pending.length ? "partial-applied" : "applied";
+      const suffix = result.pending.length ? " Responda às pendências para analisar os demais dados." : "";
+      showStatus(`${message || "Informações aplicadas. O simulador foi atualizado."}${suffix}`, "success");
       update();
       (result.fields.marketQuery ? searchButton : cancelButton).focus();
     } catch (error) {
@@ -1216,6 +1293,8 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
   openButtons.forEach((button) => button.addEventListener("click", open));
   form.addEventListener("submit", analyze);
   textarea.addEventListener("input", () => clearAnalysis());
+  clarificationForm.addEventListener("submit", clarify);
+  clarification.addEventListener("input", update);
   applyButton.addEventListener("click", apply);
   cancelButton.addEventListener("click", close);
   select("[data-ai-close]").addEventListener("click", close);
@@ -1949,7 +2028,7 @@ let ncmSearchState = emptyNcmSearchState();
 const aiAssistant = createAiAssistant({
   dialog: $("#aiAssistantDialog"),
   openButtons: document.querySelectorAll("[data-ai-open]"),
-  parse: (message, options) => api.post("/ai/parse-pricing", { message }, options),
+  parse: (message, options) => api.post("/ai/parse-pricing", { message, currentRates: readAssistantRateContext(elements) }, options),
   hasSession: () => Boolean(state.user),
   onApply: applyAiPricingFields,
   onSearchMarket: () => {

@@ -814,8 +814,17 @@
       </form>
       <p data-ai-status class="ai-assistant-status" role="status" aria-live="polite" hidden></p>
       <section data-ai-preview class="ai-assistant-preview" aria-labelledby="aiAssistantPreviewTitle" hidden>
-        <h3 id="aiAssistantPreviewTitle">Encontrei estas informações:</h3>
+        <h3 id="aiAssistantPreviewTitle">Resultado da análise</h3>
         <dl data-ai-fields class="ai-assistant-fields"></dl>
+        <section data-ai-pending class="ai-assistant-pending" aria-labelledby="aiAssistantPendingTitle" hidden>
+          <h4 id="aiAssistantPendingTitle">Preciso confirmar:</h4>
+          <ul data-ai-pending-list></ul>
+          <form data-ai-clarification-form class="ai-assistant-clarification">
+            <label for="aiAssistantClarification">Esclareça somente o que ficou pendente</label>
+            <textarea id="aiAssistantClarification" data-ai-clarification rows="2" maxlength="1000" placeholder="Ex.: Os R$ 350 são o total de um lote de 50 unidades."></textarea>
+            <button type="submit" data-ai-clarify disabled>Analisar esclarecimento</button>
+          </form>
+        </section>
         <p class="helper-text">Ao aplicar, o simulador usa suas fórmulas atuais para recalcular. Complete os demais campos obrigatórios caso estejam vazios.</p>
       </section>
       <div class="ai-assistant-actions">

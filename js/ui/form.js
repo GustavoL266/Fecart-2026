@@ -3,6 +3,7 @@ import { validatePricingInputs } from "../domain/pricing-calculator.js";
 export const PERCENTAGE_FIELDS = new Set([
   "wasteRate", "taxRate", "paymentFeeRate", "commissionRate", "desiredNetMargin", "monthlyCapitalRate", "discountRate",
 ]);
+export const ASSISTANT_COMBINED_RATE_FIELDS = Object.freeze(["taxRate", "paymentFeeRate", "commissionRate", "desiredNetMargin"]);
 
 const FIELD_RULES = Object.freeze({
   materialCost: { required: "Informe o custo da matéria-prima." },
@@ -102,6 +103,14 @@ export function parseBrazilianNumber(rawValue) {
   if (commaCount > 1 || !/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return { status: "invalid", value: null };
   const numeric = Number(normalized);
   return Number.isFinite(numeric) ? { status: "valid", value: numeric } : { status: "invalid", value: null };
+}
+
+/** Only denominator rates are returned; this context is validated locally and never sent to Gemini. */
+export function readAssistantRateContext(elements) {
+  return Object.fromEntries(ASSISTANT_COMBINED_RATE_FIELDS.flatMap((fieldId) => {
+    const parsed = parseBrazilianNumber(elements[fieldId]?.value);
+    return parsed.status === "valid" && parsed.value >= 0 && parsed.value < 100 ? [[fieldId, parsed.value]] : [];
+  }));
 }
 
 function readFiscalContext(elements) {

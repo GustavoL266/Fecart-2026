@@ -4,17 +4,21 @@ import { getAiAssistantConfig } from "../lib/config.js";
 import { createAiFormProvider, parsePricingMessage } from "../lib/ai-form-assistant.js";
 import { applyAssistantFields, PRICING_FIELD_IDS, CAPACITY_FIELD_IDS, validatePricingForm } from "../js/ui/form.js";
 
-const entry = (field, value, evidence) => ({ field, value, evidence, batchUnits: null, batchEvidence: null });
+const directCosts = new Set(["materialCost", "packagingCost", "deliveryCost", "insuranceCost", "otherDirectExpenses"]);
+const entry = (field, value, evidence) => ({
+  field, value, evidence, basis: directCosts.has(field) ? "unit" : "not-applicable",
+  certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null,
+});
 const cases = [
-  ["Quero vender bolo, gastei R$ 15 para fazer e quero margem de 10%", [
+  ["Quero vender bolo, meu custo de ingredientes por unidade é R$ 15 e quero margem de 10%", [
     entry("productName", "bolo", "Quero vender bolo"),
-    entry("materialCost", 15, "gastei R$ 15 para fazer"),
+    entry("materialCost", 15, "custo de ingredientes por unidade é R$ 15"),
     entry("desiredNetMargin", 10, "margem de 10%"),
   ], { productName: "bolo", materialCost: 15, desiredNetMargin: 10 }],
-  ["Faço brigadeiro. Ingredientes custam R$ 20, embalagem R$ 5 e quero margem de 30%.", [
+  ["Faço brigadeiro. Ingredientes por unidade custam R$ 20, embalagem por unidade R$ 5 e quero margem de 30%.", [
     entry("productName", "brigadeiro", "Faço brigadeiro"),
-    entry("materialCost", 20, "Ingredientes custam R$ 20"),
-    entry("packagingCost", 5, "embalagem R$ 5"),
+    entry("materialCost", 20, "Ingredientes por unidade custam R$ 20"),
+    entry("packagingCost", 5, "embalagem por unidade R$ 5"),
     entry("desiredNetMargin", 30, "margem de 30%"),
   ], { productName: "brigadeiro", materialCost: 20, packagingCost: 5, desiredNetMargin: 30 }],
   ["Quero mudar minha margem para 20%.", [entry("desiredNetMargin", 20, "margem para 20%")], { desiredNetMargin: 20 }],
@@ -33,6 +37,7 @@ for (const [message, entries, expected] of cases) {
     fields.deliveryCost.value = "7";
     const result = await parsePricingMessage({ provider, input: { message } });
     assert.deepEqual(result.fields, expected);
+    assert.deepEqual(result.pending, []);
     assert.equal(result.summary.length, Object.keys(expected).length);
     assert.equal(fields.materialCost.value, "");
     assert.equal(fields.desiredNetMargin.value, "");

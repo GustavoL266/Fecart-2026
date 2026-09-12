@@ -7,7 +7,7 @@ import { createAiFormProvider, parsePricingMessage } from "../lib/ai-form-assist
 import { createGeminiFormProvider, verifyGeminiModelAccess } from "../lib/gemini-form-provider.js";
 
 const config = { apiKey: "test-only-secret", model: "gemini-3.5-flash-lite", timeoutMs: 5000 };
-const extraction = { entries: [{ field: "deliveryCost", value: 7, evidence: "frete de 7 reais", batchUnits: null, batchEvidence: null }] };
+const extraction = { entries: [{ field: "deliveryCost", value: 7, evidence: "frete de 7 reais", basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null }] };
 const payload = (text = JSON.stringify(extraction)) => ({ candidates: [{ finishReason: "STOP", content: { role: "model", parts: [{ text }] } }] });
 const response = (body, status = 200, headers = {}) => new Response(typeof body === "string" ? body : JSON.stringify(body), { status, headers });
 
@@ -93,9 +93,12 @@ test("Gemini recebe mensagem e schema; chave somente no cabeçalho do backend", 
   assert.equal(request.options.redirect, "error");
   assert.equal(request.body.generationConfig.maxOutputTokens, 3000);
   assert.equal(request.body.generationConfig.candidateCount, 1);
+  assert.equal(request.body.generationConfig.temperature, 0);
   assert.deepEqual(request.body.contents, [{ role: "user", parts: [{ text: "Coloque frete de 7 reais." }] }]);
   assert.equal(request.body.generationConfig.responseMimeType, "application/json");
   assert.equal(request.body.generationConfig.responseJsonSchema.additionalProperties, false);
+  assert.deepEqual(request.body.generationConfig.responseJsonSchema.properties.entries.items.required,
+    ["field", "value", "evidence", "basis", "certainty", "batchUnits", "batchEvidence", "correctionEvidence"]);
   assert.equal("maxItems" in request.body.generationConfig.responseJsonSchema.properties.entries, false);
   assert.equal("responseFormat" in request.body.generationConfig, false);
   assert.equal("responseSchema" in request.body.generationConfig, false);

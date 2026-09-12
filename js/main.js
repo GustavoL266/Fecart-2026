@@ -6,7 +6,7 @@ import { TaxService, marketTaxError, marketTaxPrerequisiteError } from "./servic
 import { normalizeProductForFiscalSearch, isRelevantFiscalNcm, normalizeNcmDescription } from "./domain/fiscal-classification.js";
 import { normalizeFiscalState } from "./domain/fiscal-context.js";
 import { clearMarketReference, loadMarketReference, saveMarketReference } from "./services/market-reference-store.js";
-import { applyAssistantFields, applySavedInputs, CAPACITY_FIELD_IDS, clearPricingInputs, migrateLegacyV5Inputs, PRICING_FIELD_IDS, renderPricingErrors, validatePricingForm } from "./ui/form.js";
+import { applyAssistantFields, applySavedInputs, CAPACITY_FIELD_IDS, clearPricingInputs, migrateLegacyV5Inputs, PRICING_FIELD_IDS, readAssistantRateContext, renderPricingErrors, validatePricingForm } from "./ui/form.js";
 import { createAiAssistant } from "./ui/ai-assistant.js";
 import { financialValueSize } from "./utils/formatters.js";
 import { renderDashboard, renderIncompleteDashboard } from "./ui/dashboard.js";
@@ -61,7 +61,7 @@ let ncmSearchState = emptyNcmSearchState();
 const aiAssistant = createAiAssistant({
   dialog: $("#aiAssistantDialog"),
   openButtons: document.querySelectorAll("[data-ai-open]"),
-  parse: (message, options) => api.post("/ai/parse-pricing", { message }, options),
+  parse: (message, options) => api.post("/ai/parse-pricing", { message, currentRates: readAssistantRateContext(elements) }, options),
   hasSession: () => Boolean(state.user),
   onApply: applyAiPricingFields,
   onSearchMarket: () => {

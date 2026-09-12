@@ -97,7 +97,7 @@ A área de mercado apresenta média, mediana, menor e maior preço. O card **Mai
 
 O botão **Preencher com IA** abre um modal integrado ao tema do site. A pessoa descreve seu produto ou pede uma alteração curta, como “Mude minha margem para 20%”. O sistema mostra uma prévia e só altera o formulário após **Aplicar ao simulador**.
 
-Uma frase com custos de um lote explícito pode ser normalizada para custos unitários. Informações não mencionadas permanecem como estavam. Se a aplicação ainda precisar de folha, quantidade mensal ou outros dados obrigatórios, ela informa essa pendência após aplicar os campos encontrados.
+Uma frase com custos de um lote explícito pode ser normalizada para custos unitários. Componentes mistos são normalizados separadamente antes da soma. Base ausente, ambiguidade, valor impossível ou lote sem quantidade aparecem como pendências no modal; a pessoa pode esclarecer sem reescrever a descrição. Informações não mencionadas permanecem como estavam, e somente campos válidos confirmados são aplicados.
 
 ### Salvamento e Meus produtos
 
@@ -411,7 +411,7 @@ Para origem nacional, a alíquota federal vem de `nacionalfederal`; para importa
 
 ### Assistente de preenchimento por IA
 
-O botão **Preencher com IA** abre uma descrição livre e mostra os campos encontrados antes de **Aplicar ao simulador**. O provedor padrão é Gemini, modelo `gemini-3.5-flash-lite`, com saída estruturada por JSON Schema. A rota autenticada `POST /ai/parse-pricing` recebe somente `{ "message": "..." }`. Campos ausentes são preservados; apenas o controlador atual do formulário aplica o patch e chama o cálculo existente.
+O botão **Preencher com IA** abre uma descrição livre e mostra campos e pendências antes de **Aplicar ao simulador**. O provedor padrão é Gemini, modelo `gemini-3.5-flash-lite`, com saída estruturada por JSON Schema. A rota autenticada `POST /ai/parse-pricing` recebe `message` e, opcionalmente, apenas os quatro percentuais atuais usados para validar o denominador; somente `message` chega à Gemini. Campos ausentes são preservados; apenas o controlador atual do formulário aplica o patch e chama o cálculo existente. Esclarecimentos ficam em memória no modal e não são salvos no banco.
 
 Configure `GEMINI_API_KEY` exclusivamente no backend. Os padrões são `AI_PROVIDER=gemini`, `AI_MODEL=gemini-3.5-flash-lite` e `AI_TIMEOUT_MS=25000`. No Render, abra o **Web Service → Environment → Add Environment Variable**, adicione a chave e substitua também os valores antigos de `AI_PROVIDER` e `AI_MODEL`: variáveis explícitas prevalecem sobre os padrões novos. Depois use **Manual Deploy → Deploy latest commit**. A declaração `sync: false` no Blueprint não preenche o segredo de um serviço existente. `OPENAI_API_KEY` não é mais necessária em nenhuma funcionalidade deste projeto e pode ser removida do ambiente.
 
@@ -419,7 +419,7 @@ Sem configuração ou durante falhas externas, o simulador manual continua funci
 
 O diagnóstico `ai` em `/health` informa `provider`, `configured`, modelo, timeout, versão/método REST, contrato estruturado e `configurationErrors`; `deployment.commit` expõe somente o SHA validado fornecido pelo Render. Não há segredos nem chamada paga. Configuração aceita não comprova credencial válida ou créditos disponíveis. O backend diferencia ausência de configuração, autenticação/permissão do provedor, modelo indisponível, requisição/schema rejeitado, quota, rate limit, timeout e resposta inválida. No Shell do Render, `pnpm gemini:check` confirma a disponibilidade do modelo para a conta, o suporte a `generateContent` e uma geração estruturada com o caso de lote; a geração consome quota. O roteiro completo e a tabela de erros estão em [Diagnóstico no Render](docs/ai-assistant.md#diagnóstico-no-render).
 
-O payload validado usa `generationConfig.responseMimeType: "application/json"` e `generationConfig.responseJsonSchema`. `responseFormat` e `responseSchema` não são enviados juntos. O schema externo não contém `maxItems`, porque a combinação do limite 35 com o enum de 35 campos foi rejeitada por complexidade pela Gemini; o limite de 35 entradas permanece obrigatório na validação Zod do backend.
+O payload validado usa `temperature: 0`, `generationConfig.responseMimeType: "application/json"` e `generationConfig.responseJsonSchema`. `responseFormat` e `responseSchema` não são enviados juntos. O schema externo não contém `maxItems`, porque a combinação do limite 35 com o enum de 35 campos foi rejeitada por complexidade pela Gemini; o backend limita a 100 entries para comportar componentes repetidos sem permitir resposta ilimitada. Cada entry declara base, certeza e evidências; a validação posterior continua rigorosa.
 
 ## Variáveis de ambiente em um só lugar
 
@@ -719,6 +719,8 @@ Na investigação posterior do 503, também em 10/09/2026, passaram **239 testes
 Na migração para Gemini, em 10/09/2026, passaram **246 testes** com respostas externas simuladas, incluindo os exemplos de bolo, brigadeiro e alteração isolada de margem, preservação do frete e dos obrigatórios pendentes, chave inválida, quota, timeout e resposta estruturada inválida. A integração usa REST nativo e o modelo estável [Gemini 3.5 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite), confirmado na documentação nessa data. A interface, a autenticação e o cálculo financeiro foram preservados.
 
 Na correção do HTTP 502, em 11/09/2026, passaram **252 testes**, lint de 76 arquivos JavaScript e build. O teste autenticado real com `gemini-3.5-flash-lite` reproduziu 400 para `responseFormat.text` e para o schema com `maxItems: 35`. O payload final com `responseMimeType + responseJsonSchema`, sem `maxItems` externo, retornou 200 e passou pelos casos de bolo e brigadeiros, mantendo Structured Output e toda a validação posterior. A chave permaneceu somente no `.env` ignorado pelo Git.
+
+Na evolução da interpretação, também em 11/09/2026, passaram **272 testes**, lint de 77 arquivos JavaScript e build. A avaliação real `pnpm gemini:evaluate` cobriu dez casos fixos de componentes, bases, correções, números por extenso, ambiguidades, valores inválidos e preço de venda; as chamadas aceitas pela Gemini retornaram HTTP 200 e os campos ou pendências públicas corresponderam ao esperado. O backend manteve a validação estruturada e o motor financeiro permaneceu inalterado.
 
 Os testes automatizados de APIs usam respostas simuladas e não demonstram a disponibilidade das credenciais de produção. A chamada real descrita acima usou exclusivamente o `.env` local e comprova o contrato e o acesso nessa conta, não as variáveis do serviço Render. Após o deploy, execute uma vez `pnpm gemini:check` no Shell do serviço para validar a conta de produção. Um resultado com mocks precisa ser relatado como tal. Capturas, navegadores temporários e relatórios locais de uma sessão não devem ser presumidos disponíveis em outro clone.
 
