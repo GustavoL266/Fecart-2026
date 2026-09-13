@@ -102,6 +102,7 @@ export function createAiAssistant({ dialog, openButtons, parse, onApply, onSearc
   let revision = 0;
   let abortController = null;
   let analysisContext = "";
+  let loadingAction = "analysis";
 
   function update() {
     const loading = phase === "loading";
@@ -109,7 +110,7 @@ export function createAiAssistant({ dialog, openButtons, parse, onApply, onSearc
     textarea.readOnly = loading;
     analyzeButton.disabled = loading || !textarea.value.trim();
     analyzeButton.setAttribute("aria-busy", String(loading));
-    analyzeButton.textContent = loading ? "Analisando informações..." : "Analisar informações";
+    analyzeButton.textContent = loading && loadingAction === "analysis" ? "Analisando informações..." : "Analisar informações";
     const showingResult = Boolean(result) && (["preview", "partial-applied"].includes(phase) || loading);
     const hasFields = Boolean(result && Object.keys(result.fields).length);
     const hasPending = Boolean(result?.pending.length);
@@ -120,6 +121,8 @@ export function createAiAssistant({ dialog, openButtons, parse, onApply, onSearc
     clarificationForm.hidden = !showingResult || !hasPending;
     clarification.readOnly = loading;
     clarifyButton.disabled = loading || !clarification.value.trim();
+    clarifyButton.setAttribute("aria-busy", String(loading && loadingAction === "clarification"));
+    clarifyButton.textContent = loading && loadingAction === "clarification" ? "Analisando esclarecimento..." : "Analisar esclarecimento";
     const unresolvedCompleteResult = hasPending && result?.calculationReady === false;
     applyButton.hidden = phase !== "preview" || !hasFields || unresolvedCompleteResult;
     applyButton.disabled = phase !== "preview" || !hasFields || unresolvedCompleteResult;
@@ -215,9 +218,10 @@ export function createAiAssistant({ dialog, openButtons, parse, onApply, onSearc
       return false;
     }
     phase = "loading";
+    loadingAction = clarificationContext ? "clarification" : "analysis";
     const requestRevision = revision;
     abortController = new AbortController();
-    showStatus("Analisando informações...");
+    showStatus(loadingAction === "clarification" ? "Analisando esclarecimento..." : "Analisando informações...");
     update();
     try {
       const response = await parse(message, {

@@ -460,6 +460,36 @@ test("falha no esclarecimento preserva prévia anterior e texto digitado", async
   assert.equal(ui.elements.message.value, original);
   assert.match(ui.elements.status.textContent, /validar a resposta/);
   assert.equal(ui.elements.apply.hidden, false);
+  assert.equal(ui.elements.clarify.disabled, false);
+  assert.equal(ui.elements.clarify.textContent, "Analisar esclarecimento");
+});
+
+test("clique duplo no esclarecimento cria uma requisição e mostra loading específico", async () => {
+  const issue = { code: "AI_COST_BASIS_UNKNOWN", field: "materialCost", message: "O custo é por unidade ou pelo lote?" };
+  const followUp = pending();
+  let calls = 0;
+  const ui = fixture({ parse: async () => {
+    calls += 1;
+    if (calls === 1) return response({ productName: "bolo", desiredNetMargin: 10 }, [issue]);
+    return followUp.promise;
+  } });
+  await ui.enter("Quero vender um bolo, usei 15 reais para fazer e quero lucro de 10%");
+  await ui.elements.form.emit("submit");
+  ui.elements.clarification.value = "15 reais de um lote de 3";
+  await ui.elements.clarification.emit("input");
+  const firstSubmit = ui.elements["clarification-form"].emit("submit");
+  await Promise.resolve();
+  const duplicateSubmit = ui.elements["clarification-form"].emit("submit");
+  await Promise.resolve();
+  assert.equal(calls, 2);
+  assert.equal(ui.elements.clarify.disabled, true);
+  assert.equal(ui.elements.clarify.textContent, "Analisando esclarecimento...");
+  assert.equal(ui.elements.status.textContent, "Analisando esclarecimento...");
+  followUp.resolve(response({ productName: "bolo", desiredNetMargin: 10, materialCost: 5 }));
+  await Promise.all([firstSubmit, duplicateSubmit]);
+  assert.equal(calls, 2);
+  assert.equal(ui.elements.clarify.disabled, true);
+  assert.equal(ui.elements.clarification.value, "");
 });
 
 test("esclarecimento vazio não apaga prévia nem cria nova chamada", async () => {

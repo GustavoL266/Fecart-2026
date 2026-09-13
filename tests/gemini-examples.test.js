@@ -156,6 +156,52 @@ test("modo complete resolve o bolo após 'por unidade', aplica tudo e produz pre
   assert.equal(calculatePricing(validation.inputs).technicalPrice > 0, true);
 });
 
+test("modo complete resolve '15 reais de um lote de 3' usando o contexto e preserva estimativas", async () => {
+  const message = "Quero vender um bolo, usei 15 reais para fazer e quero lucro de 10%";
+  let calls = 0;
+  const provider = {
+    fillMode: "complete",
+    extract: async (_message, clarification) => {
+      calls += 1;
+      if (!clarification) return { entries: [
+        entry("productName", "bolo", "vender um bolo"),
+        { ...entry("materialCost", 15, "usei 15 reais para fazer"), basis: "unknown" },
+        entry("desiredNetMargin", 10, "lucro de 10%"),
+        ...completeEstimates({ wasteRate: 5, packagingCost: 1 }),
+      ] };
+      assert.equal(_message, "15 reais de um lote de 3");
+      assert.equal(clarification.context, message);
+      return { entries: [{
+        ...entry("materialCost", 15, "15 reais"),
+        basis: "batch-total", batchUnits: 3, batchEvidence: "3",
+      }] };
+    },
+  };
+  const first = await parsePricingMessage({ provider, input: { message } });
+  const result = await parsePricingMessage({ provider, input: {
+    message: "15 reais de um lote de 3",
+    clarification: {
+      context: message,
+      previousAnalysis: {
+        fields: first.fields,
+        sources: first.sources,
+        pending: first.pending.map(({ code, field }) => ({ code, field })),
+        needsClarification: first.needsClarification,
+      },
+    },
+  } });
+  assert.equal(calls, 2);
+  assert.equal(result.fields.productName, "bolo");
+  assert.equal(result.fields.desiredNetMargin, 10);
+  assert.equal(result.fields.materialCost, 5);
+  assert.equal(result.fields.packagingCost, 1);
+  assert.equal(result.sources.packagingCost, "estimated");
+  assert.equal(result.sources.materialCost, "user_provided");
+  assert.deepEqual(result.pending, []);
+  assert.equal(result.needsClarification, false);
+  assert.equal(result.calculationReady, true);
+});
+
 for (const scenario of [
   {
     name: "brigadeiros",

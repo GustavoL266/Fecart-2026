@@ -463,6 +463,25 @@ test("esclarecimento de lote sem quantidade mantém pendência e com rendimento 
   assert.equal(withQuantity.needsClarification, false);
 });
 
+test("esclarecimento contextual não permite trocar o custo original sem correção explícita", async () => {
+  const context = "Quero vender um bolo, usei 15 reais para fazer e quero lucro de 10%";
+  const previousAnalysis = {
+    fields: { productName: "bolo", desiredNetMargin: 10 },
+    sources: { productName: "user_provided", desiredNetMargin: "user_provided" },
+    pending: [{ code: "AI_COST_BASIS_UNKNOWN", field: "materialCost" }],
+    needsClarification: true,
+  };
+  await assert.rejects(() => parsePricingMessage({
+    provider: { extract: async () => ({ entries: [entry(
+      "materialCost", 20, "20 reais", 3, "3", { basis: "batch-total" },
+    )] }) },
+    input: {
+      message: "20 reais de um lote de 3",
+      clarification: { context, previousAnalysis },
+    },
+  }), { code: "GEMINI_INVALID_RESPONSE", status: 502 });
+});
+
 test("esclarecimento vazio, campo não pendente e validação final têm códigos distintos", async () => {
   const context = "Ingredientes R$ 15; frete por unidade R$ 7.";
   const previousAnalysis = {

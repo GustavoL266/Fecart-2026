@@ -31,6 +31,14 @@ const cases = [
     fields: { productName: "bolo", desiredNetMargin: 10, materialCost: 15 },
     pending: [], ready: true,
   },
+  {
+    id: "clarification-batch",
+    message: "Quero vender um bolo, usei 15 reais para fazer e quero lucro de 10%",
+    clarification: "15 reais de um lote de 3",
+    initialPending: ["AI_COST_BASIS_UNKNOWN"],
+    fields: { productName: "bolo", desiredNetMargin: 10, materialCost: 5 },
+    pending: [], ready: true,
+  },
 ];
 const selectedIds = new Set(process.argv.slice(2).filter((argument) => argument !== "--"));
 const selectedCases = selectedIds.size ? cases.filter(({ id }) => selectedIds.has(id)) : cases;

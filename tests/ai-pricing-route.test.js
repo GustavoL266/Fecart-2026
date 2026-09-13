@@ -111,8 +111,9 @@ test("rota conclui esclarecimento parcial, preserva análise anterior e registra
   const diagnosticLines = records.map(([message]) => message).filter((message) => typeof message === "string");
   for (const expected of [
     "[AI] clarification=true", "[AI] previousAnalysisPresent=true", "[AI] upstreamStatus=200",
-    "[AI] responseParsed=true", "[AI] mergeSucceeded=true", "[AI] validationSucceeded=true",
+    "[AI] parseSuccess=true", "[AI] mergeSuccess=true", "[AI] validationSuccess=true",
   ]) assert.ok(diagnosticLines.includes(expected), expected);
+  assert.ok(diagnosticLines.some((line) => /^\[AI\] requestId=[0-9a-f-]{36}$/.test(line)));
   assert.doesNotMatch(JSON.stringify(records), /usei 15|por unidade|GEMINI_API_KEY|cookie|headers/i);
 });
 

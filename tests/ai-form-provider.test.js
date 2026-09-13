@@ -151,6 +151,7 @@ test("follow-up recebe contexto anterior e usa schema parcial limitado ao campo 
   assert.match(prompt, /Quero vender um bolo/);
   assert.match(prompt, /por unidade/);
   assert.match(prompt, /AI_COST_BASIS_UNKNOWN/);
+  assert.match(prompt, /O custo de matéria-prima é por unidade ou pelo lote/);
   assert.doesNotMatch(request.options.body + request.url, /test-only-secret|DATABASE_URL|SESSION_SECRET/);
 });
 
