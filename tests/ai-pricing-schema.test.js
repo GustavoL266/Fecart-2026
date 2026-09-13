@@ -64,6 +64,15 @@ test("quantidade mensal só é aceita com contexto mensal explícito", () => {
   ]), invalid);
 });
 
+test("quantidade do lote e quantidade mensal permanecem semanticamente separadas", () => {
+  const message = "Faço lotes de 20 bolos, gasto R$ 200 por lote e pretendo vender 80 por mês.";
+  const result = extract(message, [
+    entry("materialCost", 200, "gasto R$ 200 por lote", 20, "lotes de 20 bolos"),
+    entry("expectedMonthlyUnits", 80, "pretendo vender 80 por mês"),
+  ]);
+  assert.deepEqual(result.fields, { materialCost: 10, expectedMonthlyUnits: 80 });
+});
+
 test("origem inferred exige evidência literal para uma consequência direta", () => {
   const message = "Venda com retirada no local e sem frete.";
   const result = extract(message, [entry("deliveryCost", 0, "sem frete", null, null, { source: "inferred" })]);
@@ -557,6 +566,63 @@ test("esclarecimento de lote sem quantidade mantém pendência e com rendimento 
   assert.deepEqual(withQuantity.fields, { productName: "brigadeiros", desiredNetMargin: 20, materialCost: 0.4 });
   assert.match(withQuantity.summary.find(({ field }) => field === "materialCost").value, /40,00.*100 unidades/);
   assert.equal(withQuantity.needsClarification, false);
+});
+
+test("resposta numérica à pergunta de rendimento resolve o lote sem preencher quantidade mensal", async () => {
+  const context = "Faço brigadeiros e gasto R$ 40 por lote.";
+  const previousAnalysis = {
+    fields: { productName: "brigadeiros", desiredNetMargin: 20 },
+    sources: { productName: "user_provided", desiredNetMargin: "user_provided" },
+    pending: [{ code: "AI_BATCH_UNITS_REQUIRED", field: "materialCost" }],
+    needsClarification: true,
+  };
+  const result = await parsePricingMessage({
+    provider: { extract: async () => ({ entries: [entry(
+      "materialCost", 40, "gasto R$ 40 por lote", 10, "10", { basis: "batch-total" },
+    )] }) },
+    input: { message: "10", clarification: { context, previousAnalysis } },
+  });
+  assert.equal(result.fields.materialCost, 4);
+  assert.equal("expectedMonthlyUnits" in result.fields, false);
+  assert.deepEqual(result.pending, []);
+});
+
+test("resposta numérica não escolhe quantidade mensal quando há várias perguntas obrigatórias", async () => {
+  const previousAnalysis = {
+    fields: { productName: "bolo", materialCost: 15, desiredNetMargin: 10 },
+    sources: { productName: "user_provided", materialCost: "user_provided", desiredNetMargin: "user_provided" },
+    pending: [
+      { code: "AI_REQUIRED_FIELD_MISSING", field: "monthlyPayroll" },
+      { code: "AI_REQUIRED_FIELD_MISSING", field: "expectedMonthlyUnits" },
+    ],
+    needsClarification: true,
+  };
+  await assert.rejects(() => parsePricingMessage({
+    provider: { extract: async () => ({ entries: [entry("expectedMonthlyUnits", 10, "10")] }) },
+    input: {
+      message: "10",
+      clarification: { context: "Quero vender bolo por R$ 15 e quero margem de 10%.", previousAnalysis },
+    },
+  }), { code: "GEMINI_INVALID_RESPONSE", status: 502 });
+});
+
+test("pergunta mensal exige que a resposta contenha literalmente o valor", async () => {
+  const previousAnalysis = {
+    fields: { productName: "bolo", materialCost: 15, desiredNetMargin: 10 },
+    sources: { productName: "user_provided", materialCost: "user_provided", desiredNetMargin: "user_provided" },
+    pending: [{ code: "AI_REQUIRED_FIELD_MISSING", field: "expectedMonthlyUnits" }],
+    needsClarification: true,
+  };
+  await assert.rejects(() => parsePricingMessage({
+    provider: { extract: async () => ({ entries: [entry("expectedMonthlyUnits", 10, "sim")] }) },
+    input: {
+      message: "sim",
+      clarification: {
+        context: "Quero vender bolo, meu custo por unidade é R$ 15 e quero margem de 10%.",
+        previousAnalysis,
+      },
+    },
+  }), { code: "GEMINI_INVALID_RESPONSE", status: 502 });
 });
 
 test("esclarecimento contextual não permite trocar o custo original sem correção explícita", async () => {

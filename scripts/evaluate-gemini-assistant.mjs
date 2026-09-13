@@ -68,6 +68,14 @@ const cases = [
     fields: { productName: "bolo", desiredNetMargin: 10, materialCost: 5 },
     pending: ["AI_REQUIRED_FIELD_MISSING"], ready: false,
   },
+  {
+    id: "clarification-monthly",
+    message: "Quero vender bolo, meu custo de ingredientes por unidade é R$ 15 e quero margem de 10%",
+    clarification: "É DE 10",
+    initialPending: ["AI_REQUIRED_FIELD_MISSING"],
+    fields: { productName: "bolo", materialCost: 15, desiredNetMargin: 10, expectedMonthlyUnits: 10 },
+    pending: [], ready: true,
+  },
 ];
 const selectedIds = new Set(process.argv.slice(2).filter((argument) => argument !== "--"));
 const selectedCases = selectedIds.size ? cases.filter(({ id }) => selectedIds.has(id)) : cases;

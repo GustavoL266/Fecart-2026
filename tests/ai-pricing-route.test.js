@@ -117,6 +117,51 @@ test("rota conclui esclarecimento parcial, preserva análise anterior e registra
   assert.doesNotMatch(JSON.stringify(records), /usei 15|por unidade|GEMINI_API_KEY|cookie|headers/i);
 });
 
+test("rota conclui quantidade mensal com resposta curta e mantém os campos anteriores", async (t) => {
+  const fields = {
+    productName: "bolo", materialCost: 15, wasteRate: 5, packagingCost: 2, deliveryCost: 0,
+    monthlyPayroll: 0, monthlyFixedCosts: 0, taxRate: 0, paymentFeeRate: 0, commissionRate: 0,
+    desiredNetMargin: 10, inventoryDays: 0, receivingDays: 0, paymentDays: 0, monthlyCapitalRate: 0,
+  };
+  const sources = Object.fromEntries(Object.keys(fields).map((field) => [
+    field, ["productName", "materialCost", "desiredNetMargin"].includes(field) ? "user_provided" : "estimated",
+  ]));
+  const provider = {
+    fillMode: "complete",
+    extract: async (message, clarification) => {
+      assert.equal(message, "É DE 10");
+      assert.deepEqual(clarification.previousAnalysis.pending, [
+        { code: "AI_REQUIRED_FIELD_MISSING", field: "expectedMonthlyUnits" },
+      ]);
+      return { entries: [{
+        field: "expectedMonthlyUnits", value: 10, source: "user_provided", evidence: "É DE 10",
+        basis: "not-applicable", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null,
+      }] };
+    },
+  };
+  const request = await serverFor(t, provider);
+  const result = await request({
+    message: "É DE 10",
+    clarification: {
+      context: "Quero vender bolo, meu custo por unidade é R$ 15 e quero margem de 10%",
+      previousAnalysis: {
+        fields, sources,
+        pending: [{ code: "AI_REQUIRED_FIELD_MISSING", field: "expectedMonthlyUnits" }],
+        needsClarification: true,
+      },
+    },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.fields.expectedMonthlyUnits, 10);
+  assert.equal(result.body.fields.productName, "bolo");
+  assert.equal(result.body.fields.materialCost, 15);
+  assert.equal(result.body.fields.desiredNetMargin, 10);
+  assert.equal(result.body.sources.expectedMonthlyUnits, "user_provided");
+  assert.deepEqual(result.body.pending, []);
+  assert.equal(result.body.needsClarification, false);
+  assert.equal(result.body.calculationReady, true);
+});
+
 test("falha Zod registra somente campo, tipos e regra seguros", async (t) => {
   const records = [];
   const logger = { info: (...args) => records.push(args), warn: (...args) => records.push(args) };

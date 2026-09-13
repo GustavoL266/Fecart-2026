@@ -202,6 +202,59 @@ test("modo complete resolve '15 reais de um lote de 3' usando o contexto e prese
   assert.equal(result.calculationReady, false);
 });
 
+for (const answer of ["10", "é 10", "é de 10", "10 por mês", "produzo 10 mensalmente", "É DE 10"]) {
+  test(`quantidade mensal pendente usa a pergunta controlada para interpretar '${answer}'`, async () => {
+    const message = "Quero vender bolo, meu custo de ingredientes por unidade é R$ 15 e quero margem de 10%";
+    let calls = 0;
+    const provider = {
+      fillMode: "complete",
+      extract: async (_message, clarification) => {
+        calls += 1;
+        if (!clarification) return { entries: [
+          entry("productName", "bolo", "vender bolo"),
+          entry("materialCost", 15, "custo de ingredientes por unidade é R$ 15"),
+          entry("desiredNetMargin", 10, "margem de 10%"),
+          ...completeEstimates(),
+        ] };
+        assert.equal(_message, answer);
+        assert.deepEqual(clarification.previousAnalysis.pending, [
+          { code: "AI_REQUIRED_FIELD_MISSING", field: "expectedMonthlyUnits" },
+        ]);
+        return { entries: [entry("expectedMonthlyUnits", 10, answer)] };
+      },
+    };
+    const first = await parsePricingMessage({ provider, input: { message } });
+    assert.deepEqual(first.pending.map(({ code, field }) => ({ code, field })), [
+      { code: "AI_REQUIRED_FIELD_MISSING", field: "expectedMonthlyUnits" },
+    ]);
+
+    const result = await parsePricingMessage({ provider, input: {
+      message: answer,
+      clarification: {
+        context: message,
+        previousAnalysis: {
+          fields: first.fields,
+          sources: first.sources,
+          pending: first.pending.map(({ code, field }) => ({ code, field })),
+          needsClarification: true,
+        },
+      },
+    } });
+    assert.equal(calls, 2);
+    assert.equal(result.fields.expectedMonthlyUnits, 10);
+    assert.equal(result.fields.productName, "bolo");
+    assert.equal(result.fields.materialCost, 15);
+    assert.equal(result.fields.desiredNetMargin, 10);
+    assert.equal(result.sources.expectedMonthlyUnits, "user_provided");
+    assert.deepEqual(result.pending, []);
+    assert.equal(result.needsClarification, false);
+    assert.equal(result.calculationReady, true);
+    const fields = controls();
+    applyAssistantFields(result.fields, fields);
+    assert.equal(validatePricingForm(fields).isValid, true);
+  });
+}
+
 for (const scenario of [
   {
     name: "brigadeiros",

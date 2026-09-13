@@ -452,6 +452,45 @@ test("pendência aparece sem aplicação e esclarecimento reanalisa o contexto o
   assert.deepEqual(ui.applied, [{ materialCost: 7, desiredNetMargin: 30 }]);
 });
 
+test("esclarecimento mensal atualiza prévia, remove a pergunta e habilita aplicação sem chamada duplicada", async () => {
+  const issue = {
+    code: "AI_REQUIRED_FIELD_MISSING",
+    field: "expectedMonthlyUnits",
+    message: "Não foi possível estimar quantidade mensal prevista com segurança. Informe esse valor.",
+  };
+  const previousFields = { productName: "bolo", materialCost: 15, desiredNetMargin: 10 };
+  const calls = [];
+  const initial = { ...response(previousFields, [issue]), calculationReady: false };
+  const completed = { ...response({ ...previousFields, expectedMonthlyUnits: 10 }), calculationReady: true };
+  const ui = fixture({ parse: async (message, options) => {
+    calls.push({ message, options });
+    return calls.length === 1 ? initial : completed;
+  } });
+  const original = "Quero vender bolo, meu custo por unidade é R$ 15 e quero margem de 10%";
+  await ui.enter(original);
+  await ui.elements.form.emit("submit");
+  assert.equal(ui.elements["pending-list"].children[0].textContent, issue.message);
+  assert.equal(ui.elements.apply.hidden, true);
+
+  ui.elements.clarification.value = "É DE 10";
+  await ui.elements.clarification.emit("input");
+  await ui.elements["clarification-form"].emit("submit");
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].message, "É DE 10");
+  assert.equal(calls[1].options.clarification.context, original);
+  assert.equal(ui.elements.pending.hidden, true);
+  assert.equal(ui.elements["clarification-form"].hidden, true);
+  assert.equal(ui.elements.apply.hidden, false);
+  assert.equal(ui.elements.apply.disabled, false);
+  assert.equal(ui.elements.clarify.textContent, "Analisar esclarecimento");
+  assert.equal(ui.elements.form.attributes.get("aria-busy"), "false");
+  assert.equal(ui.elements.status.hidden, true);
+  assert.deepEqual(ui.applied, []);
+
+  await ui.elements.apply.emit("click");
+  assert.deepEqual(ui.applied, [{ ...previousFields, expectedMonthlyUnits: 10 }]);
+});
+
 test("resultado parcial aplica apenas campos válidos e mantém pendência visível", async () => {
   const issue = { code: "AI_BATCH_UNITS_REQUIRED", field: "packagingCost", message: "Quantas unidades o lote produz?" };
   const ui = fixture({ parse: async () => response({ desiredNetMargin: 20 }, [issue]) });

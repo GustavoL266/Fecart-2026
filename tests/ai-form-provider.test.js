@@ -157,6 +157,29 @@ test("follow-up recebe contexto anterior e usa schema parcial limitado ao campo 
   assert.doesNotMatch(request.options.body + request.url, /test-only-secret|DATABASE_URL|SESSION_SECRET/);
 });
 
+test("follow-up mensal mantém Structured Output e dá significado a resposta numérica curta", () => {
+  const clarification = {
+    context: "Quero vender bolo, meu custo por unidade é R$ 15 e quero margem de 10%",
+    previousAnalysis: {
+      fields: { productName: "bolo", materialCost: 15, desiredNetMargin: 10 },
+      sources: { productName: "user_provided", materialCost: "user_provided", desiredNetMargin: "user_provided" },
+      pending: [{ code: "AI_REQUIRED_FIELD_MISSING", field: "expectedMonthlyUnits" }],
+      needsClarification: true,
+    },
+  };
+  const request = buildGeminiGenerateContentRequest("É DE 10", clarification, "complete");
+  const instruction = request.systemInstruction.parts[0].text;
+  const prompt = request.contents[0].parts[0].text;
+  assert.deepEqual(request.generationConfig.responseJsonSchema.properties.entries.items.properties.field.enum, ["expectedMonthlyUnits"]);
+  assert.equal(request.generationConfig.responseMimeType, "application/json");
+  assert.match(instruction, /pergunta controlada.*significado mensal/i);
+  assert.match(instruction, /source="user_provided"/);
+  assert.match(instruction, /não autoriza copiar uma quantidade de lote/i);
+  assert.match(prompt, /AI_REQUIRED_FIELD_MISSING/);
+  assert.match(prompt, /Não foi possível estimar quantidade mensal prevista com segurança/);
+  assert.match(prompt, /É DE 10/);
+});
+
 test("preflight confirma modelo da conta e suporte a generateContent sem enviar prompt", async () => {
   let request;
   const result = await verifyGeminiModelAccess(config, { fetchImpl: async (url, options) => {
