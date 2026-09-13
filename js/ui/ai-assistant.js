@@ -12,6 +12,7 @@ const AI_PENDING_CODES = new Set([
   "AI_CONFIRM_FIELD", "AI_MEANING_UNCERTAIN", "AI_RATE_SUM_INVALID", "AI_REQUIRED_FIELD_MISSING",
 ]);
 const AI_VALUE_SOURCES = new Set(["user_provided", "inferred", "estimated"]);
+const CLARIFICATION_IN_FLIGHT = Symbol.for("fecart.ai.clarificationInFlight");
 
 export function validateAssistantResponse(response) {
   const fields = validateAssistantFields(response?.fields);
@@ -261,6 +262,8 @@ export function createAiAssistant({ dialog, openButtons, parse, onApply, onSearc
 
   async function clarify(event) {
     event?.preventDefault();
+    event?.stopPropagation?.();
+    if (clarificationForm[CLARIFICATION_IN_FLIGHT]) return false;
     if (!["preview", "partial-applied"].includes(phase) || !result?.pending.length) return;
     const answer = clarification.value.trim();
     if (!answer) return;
@@ -276,13 +279,19 @@ export function createAiAssistant({ dialog, openButtons, parse, onApply, onSearc
       pending: result.pending.map(({ code, field }) => ({ code, field })),
       needsClarification: true,
     };
-    const succeeded = await runAnalysis(answer, {
-      clarificationContext: { context: previousContext, previousAnalysis },
-      preserveResult: true,
-    });
-    if (succeeded) {
-      analysisContext = combined;
-      clarification.value = "";
+    clarificationForm[CLARIFICATION_IN_FLIGHT] = true;
+    try {
+      const succeeded = await runAnalysis(answer, {
+        clarificationContext: { context: previousContext, previousAnalysis },
+        preserveResult: true,
+      });
+      if (succeeded) {
+        analysisContext = combined;
+        clarification.value = "";
+      }
+      return succeeded;
+    } finally {
+      clarificationForm[CLARIFICATION_IN_FLIGHT] = false;
       update();
     }
   }

@@ -477,11 +477,14 @@ test("clique duplo no esclarecimento cria uma requisição e mostra loading espe
   await ui.elements.form.emit("submit");
   ui.elements.clarification.value = "15 reais de um lote de 3";
   await ui.elements.clarification.emit("input");
-  const firstSubmit = ui.elements["clarification-form"].emit("submit");
+  let stopped = 0;
+  const submitEvent = { preventDefault() {}, stopPropagation() { stopped += 1; } };
+  const firstSubmit = ui.elements["clarification-form"].emit("submit", submitEvent);
   await Promise.resolve();
-  const duplicateSubmit = ui.elements["clarification-form"].emit("submit");
+  const duplicateSubmit = ui.elements["clarification-form"].emit("submit", submitEvent);
   await Promise.resolve();
   assert.equal(calls, 2);
+  assert.equal(stopped, 2);
   assert.equal(ui.elements.clarify.disabled, true);
   assert.equal(ui.elements.clarify.textContent, "Analisando esclarecimento...");
   assert.equal(ui.elements.status.textContent, "Analisando esclarecimento...");

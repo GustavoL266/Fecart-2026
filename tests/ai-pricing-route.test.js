@@ -117,7 +117,7 @@ test("rota conclui esclarecimento parcial, preserva análise anterior e registra
   assert.doesNotMatch(JSON.stringify(records), /usei 15|por unidade|GEMINI_API_KEY|cookie|headers/i);
 });
 
-test("falha de validação registra somente caminho, tipo e código interno", async (t) => {
+test("falha Zod registra somente campo, tipos e regra seguros", async (t) => {
   const records = [];
   const logger = { info: (...args) => records.push(args), warn: (...args) => records.push(args) };
   const request = await serverFor(t, { extract: async () => ({ entries: [{
@@ -127,11 +127,36 @@ test("falha de validação registra somente caminho, tipo e código interno", as
   const result = await request();
   assert.equal(result.status, 502);
   assert.equal(result.body.code, "GEMINI_INVALID_RESPONSE");
-  assert.ok(records.some(([message, details]) => message === "[AI] validationFailure"
-    && details.path === "entries.0.field"
-    && details.type === "invalid_enum_value"
-    && details.code === "GEMINI_INVALID_RESPONSE"));
+  const lines = records.map(([message]) => message);
+  for (const expected of [
+    "[AI] validationFailed=true",
+    "[AI] invalidField=field",
+    "[AI] expectedType=allowed_enum_value",
+    "[AI] receivedType=string",
+    "[AI] validationRule=zod.invalid_enum_value",
+  ]) assert.ok(lines.includes(expected), expected);
   assert.doesNotMatch(JSON.stringify(records), /PRIVATE_INVALID_FIELD|PRIVATE_USER_CONTENT|test-only-secret/);
+});
+
+test("falha semântica identifica evidence e regra sem registrar seu conteúdo", async (t) => {
+  const records = [];
+  const logger = { info: (...args) => records.push(args), warn: (...args) => records.push(args) };
+  const request = await serverFor(t, { extract: async () => ({ entries: [{
+    field: "materialCost", value: 15, source: "user_provided", evidence: "PRIVATE_USER_CONTENT",
+    basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null,
+  }] }) }, {}, { logger });
+  const result = await request({ message: "Quero vender bolo e tenho um custo." });
+  assert.equal(result.status, 502);
+  assert.equal(result.body.code, "GEMINI_INVALID_RESPONSE");
+  const lines = records.map(([message]) => message);
+  for (const expected of [
+    "[AI] validationFailed=true",
+    "[AI] invalidField=materialCost.evidence",
+    "[AI] expectedType=grounded_literal_string",
+    "[AI] receivedType=string",
+    "[AI] validationRule=invalid_user_provided_grounding",
+  ]) assert.ok(lines.includes(expected), expected);
+  assert.doesNotMatch(JSON.stringify(records), /PRIVATE_USER_CONTENT|Quero vender bolo|test-only-secret/);
 });
 
 test("brigadeiros: provider simulado passa pelo HTTP e valida lote sem inventar dados pendentes", async (t) => {

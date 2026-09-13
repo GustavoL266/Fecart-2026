@@ -105,7 +105,7 @@ test("configuração antiga não habilita Gemini nem é usada como fallback", ()
   assert.deepEqual(wrongProvider.configurationErrors, ["AI_PROVIDER_UNSUPPORTED"]);
 });
 
-test("modo complete resolve o bolo após 'por unidade', aplica tudo e produz preço sustentável", async () => {
+test("modo complete resolve o bolo após 'são por unidade' sem exigir que a resposta repita o valor", async () => {
   const message = "Quero vender um bolo, usei 15 reais para fazer e quero lucro de 10%";
   let calls = 0;
   const provider = {
@@ -118,8 +118,8 @@ test("modo complete resolve o bolo após 'por unidade', aplica tudo e produz pre
         entry("desiredNetMargin", 10, "lucro de 10%"),
         ...completeEstimates(),
       ] };
-      assert.equal(_message, "por unidade");
-      return { entries: [{ ...entry("materialCost", 15, "usei 15 reais para fazer"), basis: "unit" }] };
+      assert.equal(_message, "são por unidade");
+      return { entries: [{ ...entry("materialCost", 15, "são por unidade"), basis: "unit" }] };
     },
   };
   const first = await parsePricingMessage({ provider, input: { message } });
@@ -130,7 +130,7 @@ test("modo complete resolve o bolo após 'por unidade', aplica tudo e produz pre
   assert.equal(first.sources.packagingCost, "estimated");
 
   const result = await parsePricingMessage({ provider, input: {
-    message: "por unidade",
+    message: "são por unidade",
     clarification: {
       context: message,
       previousAnalysis: {

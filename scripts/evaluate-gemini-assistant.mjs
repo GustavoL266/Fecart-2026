@@ -32,6 +32,14 @@ const cases = [
     pending: [], ready: true,
   },
   {
+    id: "clarification-unit-natural",
+    message: "Quero vender um bolo, usei 15 reais para fazer e quero lucro de 10%",
+    clarification: "são por unidade",
+    initialPending: ["AI_COST_BASIS_UNKNOWN"],
+    fields: { productName: "bolo", desiredNetMargin: 10, materialCost: 15 },
+    pending: [], ready: true,
+  },
+  {
     id: "clarification-batch",
     message: "Quero vender um bolo, usei 15 reais para fazer e quero lucro de 10%",
     clarification: "15 reais de um lote de 3",
@@ -103,6 +111,10 @@ try {
           status: Number.isInteger(error?.status) ? error.status : 500,
           validationPath: typeof error?.validationPath === "string" ? error.validationPath : null,
           validationIssueType: typeof error?.validationIssueType === "string" ? error.validationIssueType : null,
+          invalidField: typeof error?.invalidField === "string" ? error.invalidField : null,
+          expectedType: typeof error?.expectedType === "string" ? error.expectedType : null,
+          receivedType: typeof error?.receivedType === "string" ? error.receivedType : null,
+          validationRule: typeof error?.validationRule === "string" ? error.validationRule : null,
           matchesExpected: false,
         })}\n`);
       }
@@ -152,6 +164,10 @@ try {
         upstreamErrorStatus: typeof error?.upstreamErrorStatus === "string" ? error.upstreamErrorStatus : null,
         validationPath: typeof error?.validationPath === "string" ? error.validationPath : null,
         validationIssueType: typeof error?.validationIssueType === "string" ? error.validationIssueType : null,
+        invalidField: typeof error?.invalidField === "string" ? error.invalidField : null,
+        expectedType: typeof error?.expectedType === "string" ? error.expectedType : null,
+        receivedType: typeof error?.receivedType === "string" ? error.receivedType : null,
+        validationRule: typeof error?.validationRule === "string" ? error.validationRule : null,
         matchesExpected,
         ...(!matchesExpected && safeEntries ? { safeEntries } : {}),
       })}\n`);
