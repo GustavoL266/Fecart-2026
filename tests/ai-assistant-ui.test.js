@@ -183,6 +183,31 @@ test("análise só exibe a prévia; confirmação aplica uma única vez", async 
   assert.match(ui.elements.status.textContent, /aplicadas/);
 });
 
+test("envio imediato lê o último caractere já presente no textarea", async () => {
+  const calls = [];
+  const ui = fixture({ parse: async (message) => { calls.push(message); return response({ desiredNetMargin: 10 }); } });
+  ui.controller.open();
+  ui.elements.message.value = "Quero vender bolo e quero margem de 10";
+  await ui.elements.message.emit("input");
+  ui.elements.message.value += "%";
+  const finalInput = ui.elements.message.emit("input", { isComposing: false });
+  const immediateSubmit = ui.elements.form.emit("submit");
+  await Promise.all([finalInput, immediateSubmit]);
+  assert.deepEqual(calls, ["Quero vender bolo e quero margem de 10%"]);
+  assert.deepEqual(ui.applied, []);
+});
+
+test("submit durante composição usa o valor atual completo sem atraso artificial", async () => {
+  const calls = [];
+  const ui = fixture({ parse: async (message) => { calls.push(message); return response({ desiredNetMargin: 10 }); } });
+  ui.controller.open();
+  ui.elements.message.value = "Quero vender bolo e quero margem de 10%";
+  const composingInput = ui.elements.message.emit("input", { isComposing: true });
+  const immediateSubmit = ui.elements.form.emit("submit");
+  await Promise.all([composingInput, immediateSubmit]);
+  assert.deepEqual(calls, ["Quero vender bolo e quero margem de 10%"]);
+});
+
 test("loading desabilita envio e impede chamadas simultâneas", async () => {
   const work = pending();
   let calls = 0;
