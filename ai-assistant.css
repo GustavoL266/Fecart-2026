@@ -28,7 +28,14 @@
 .ai-assistant-estimate-warning { margin: 0 0 16px; padding: 12px; border: 1px solid color-mix(in srgb, var(--green) 32%, var(--line)); border-radius: 10px; background: var(--green-soft); color: var(--ink); font-size: .82rem; line-height: 1.5; }
 .ai-assistant-pending { margin: 4px 0 16px; padding: 14px; border: 1px solid color-mix(in srgb, var(--red) 30%, var(--line)); border-radius: 10px; background: var(--risk-surface); }
 .ai-assistant-pending h4 { margin: 0 0 8px; font-size: .9rem; }
-.ai-assistant-pending ul { display: grid; gap: 7px; margin: 0 0 14px; padding-left: 20px; color: var(--ink); font-size: .84rem; line-height: 1.5; }
+.ai-assistant-pending ul { display: grid; gap: 10px; margin: 0 0 14px; padding: 0; color: var(--ink); font-size: .84rem; line-height: 1.5; list-style: none; }
+.ai-assistant-choice { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
+.ai-assistant-choice strong { display: block; margin-bottom: 4px; }
+.ai-assistant-choice p { margin: 0; }
+.ai-assistant-choice p + p { margin-top: 4px; color: var(--muted); }
+.ai-assistant-required-warning { grid-column: 1 / -1; margin-top: 7px !important; color: var(--red) !important; font-size: .78rem; }
+.ai-assistant-choice-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ai-assistant-choice-actions button { flex: 1 1 130px; min-height: 40px; padding: 8px 10px; }
 .ai-assistant-dialog .ai-assistant-clarification { padding-top: 12px; border-top: 1px solid var(--line); }
 .ai-assistant-dialog .ai-assistant-clarification textarea { min-height: 82px; max-height: 22dvh; }
 .ai-assistant-status { padding: 14px; margin: 18px 0 0; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); background: var(--subtle-surface); line-height: 1.6; font-size: .88rem; }
@@ -43,6 +50,8 @@
   .ai-assistant-preview { padding: 14px; }
   .ai-assistant-source-fields > div { grid-template-columns: minmax(0, 1fr); gap: 3px; }
   .ai-assistant-source-fields dd { text-align: left; }
+  .ai-assistant-choice-actions { flex-direction: column; }
+  .ai-assistant-choice-actions button { width: 100%; }
   .ai-assistant-actions { flex-direction: column; }
   .ai-assistant-actions button { width: 100%; }
 }

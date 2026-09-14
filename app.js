@@ -817,6 +817,9 @@ const FIELD_RULES = Object.freeze({
 });
 
 const PRICING_FIELD_IDS = Object.freeze(Object.keys(FIELD_RULES));
+const REQUIRED_PRICING_FIELD_IDS = Object.freeze(Object.entries(FIELD_RULES)
+  .filter(([, rule]) => !rule.optional)
+  .map(([fieldId]) => fieldId));
 const CAPACITY_FIELD_IDS = Object.freeze(["workerCount", "productiveHoursPerWorkerMonth", "unitsPerWorkerHour"]);
 
 const ASSISTANT_TEXT_FIELDS = Object.freeze({
@@ -1088,8 +1091,10 @@ const AI_PENDING_CODES = new Set([
   "AI_COST_BASIS_UNKNOWN", "AI_BATCH_UNITS_REQUIRED", "AI_BATCH_UNITS_INVALID",
   "AI_NEGATIVE_VALUE", "AI_VALUE_OUT_OF_RANGE", "AI_AMBIGUOUS_VALUE",
   "AI_CONFIRM_FIELD", "AI_MEANING_UNCERTAIN", "AI_RATE_SUM_INVALID", "AI_REQUIRED_FIELD_MISSING",
+  "AI_USER_VALUE_REQUIRED",
 ]);
 const AI_VALUE_SOURCES = new Set(["user_provided", "inferred", "estimated"]);
+const REQUIRED_FIELDS = new Set(REQUIRED_PRICING_FIELD_IDS);
 const CLARIFICATION_IN_FLIGHT = Symbol.for("fecart.ai.clarificationInFlight");
 
 function validateAssistantResponse(response) {
@@ -1100,13 +1105,25 @@ function validateAssistantResponse(response) {
   if (sourceIds.length !== fieldIds.length || sourceIds.some((field) => !Object.hasOwn(fields, field)
     || !AI_VALUE_SOURCES.has(response.sources[field]))) throw new Error("AI_INVALID_RESPONSE");
   const sources = Object.fromEntries(fieldIds.map((field) => [field, response.sources[field]]));
-  if (!Array.isArray(response.summary) || response.summary.length !== fieldIds.length) throw new Error("AI_INVALID_RESPONSE");
+  const skippedInput = response?.skipped ?? {};
+  if (!skippedInput || typeof skippedInput !== "object" || Array.isArray(skippedInput)) throw new Error("AI_INVALID_RESPONSE");
+  const skipped = {};
+  for (const [field, decision] of Object.entries(skippedInput)) {
+    validateAssistantFields({ [field]: null });
+    if (!decision || typeof decision !== "object" || Array.isArray(decision)
+      || Object.keys(decision).length !== 2 || decision.value !== null || decision.source !== "skipped"
+      || Object.hasOwn(fields, field)) throw new Error("AI_INVALID_RESPONSE");
+    skipped[field] = { value: null, source: "skipped" };
+  }
+  const skippedIds = Object.keys(skipped);
+  if (!Array.isArray(response.summary) || response.summary.length !== fieldIds.length + skippedIds.length) throw new Error("AI_INVALID_RESPONSE");
   const seen = new Set();
   const summary = response.summary.map((item) => {
-    if (!item || !Object.hasOwn(fields, item.field) || seen.has(item.field)
+    const skippedField = Object.hasOwn(skipped, item?.field);
+    if (!item || (!Object.hasOwn(fields, item.field) && !Object.hasOwn(skipped, item.field)) || seen.has(item.field)
       || typeof item.label !== "string" || !item.label || item.label.length > 120
       || typeof item.value !== "string" || !item.value || item.value.length > 2300
-      || item.source !== sources[item.field]) throw new Error("AI_INVALID_RESPONSE");
+      || (skippedField ? item.source !== "skipped" : item.source !== sources[item.field])) throw new Error("AI_INVALID_RESPONSE");
     seen.add(item.field);
     return { field: item.field, label: item.label, value: item.value, source: item.source };
   });
@@ -1115,22 +1132,25 @@ function validateAssistantResponse(response) {
   const pending = response.pending.map((item) => {
     if (!item || !AI_PENDING_CODES.has(item.code)
       || typeof item.field !== "string" || !item.field
-      || typeof item.message !== "string" || !item.message || item.message.length > 300) throw new Error("AI_INVALID_RESPONSE");
+      || typeof item.message !== "string" || !item.message || item.message.length > 300
+      || (item.label !== undefined && (typeof item.label !== "string" || !item.label || item.label.length > 120))
+      || (item.required !== undefined && typeof item.required !== "boolean")) throw new Error("AI_INVALID_RESPONSE");
     // Reuse the form allowlist without treating a pending value as an update.
     validateAssistantFields({ [item.field]: null });
     const key = `${item.code}:${item.field}`;
     if (pendingSeen.has(key)) throw new Error("AI_INVALID_RESPONSE");
     pendingSeen.add(key);
-    return { code: item.code, field: item.field, message: item.message };
+    if (Object.hasOwn(skipped, item.field) || Object.hasOwn(fields, item.field)) throw new Error("AI_INVALID_RESPONSE");
+    return { code: item.code, field: item.field, message: item.message, label: item.label || item.field, required: item.required ?? REQUIRED_FIELDS.has(item.field) };
   });
   const needsClarification = pending.length > 0;
   if (response.needsClarification !== needsClarification) throw new Error("AI_INVALID_RESPONSE");
-  if (!fieldIds.length && !pending.length) {
+  if (!fieldIds.length && !pending.length && !skippedIds.length) {
     throw Object.assign(new Error(AI_ASSISTANT_MESSAGES.insufficient), { code: "AI_INSUFFICIENT_INFORMATION" });
   }
   if (Object.hasOwn(response, "calculationReady") && typeof response.calculationReady !== "boolean") throw new Error("AI_INVALID_RESPONSE");
   const calculationReady = typeof response.calculationReady === "boolean" ? response.calculationReady : null;
-  return { fields, sources, summary, pending, needsClarification, calculationReady };
+  return { fields, sources, skipped, summary, pending, needsClarification, calculationReady };
 }
 
 function assistantErrorMessage(error) {
@@ -1169,6 +1189,7 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
   const pendingSection = select("[data-ai-pending]");
   const pendingList = select("[data-ai-pending-list]");
   const clarificationForm = select("[data-ai-clarification-form]");
+  const clarificationLabel = select("[data-ai-clarification-label]");
   const clarification = select("[data-ai-clarification]");
   const clarifyButton = select("[data-ai-clarify]");
   const status = select("[data-ai-status]");
@@ -1182,6 +1203,8 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
   let abortController = null;
   let analysisContext = "";
   let loadingAction = "analysis";
+  let activeField = null;
+  const acceptedEstimates = new Set();
 
   function update() {
     const loading = phase === "loading";
@@ -1192,19 +1215,22 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
     analyzeButton.textContent = loading && loadingAction === "analysis" ? "Analisando informações..." : "Analisar informações";
     const showingResult = Boolean(result) && (["preview", "partial-applied"].includes(phase) || loading);
     const hasFields = Boolean(result && Object.keys(result.fields).length);
+    const hasSkipped = Boolean(result && Object.keys(result.skipped).length);
     const hasPending = Boolean(result?.pending.length);
+    const unresolvedEstimates = result?.summary.filter((item) => item.source === "estimated" && !acceptedEstimates.has(item.field)) || [];
+    const hasChoices = hasPending || unresolvedEstimates.length > 0;
     preview.hidden = !showingResult;
-    fieldsList.hidden = !hasFields;
+    fieldsList.hidden = !hasFields && !hasSkipped;
     estimateWarning.hidden = !showingResult || !result?.summary.some((item) => item.source === "estimated");
-    pendingSection.hidden = !showingResult || !hasPending;
-    clarificationForm.hidden = !showingResult || !hasPending;
+    pendingSection.hidden = !showingResult || !hasChoices;
+    clarificationForm.hidden = !showingResult || !activeField;
     clarification.readOnly = loading;
     clarifyButton.disabled = loading || !clarification.value.trim();
     clarifyButton.setAttribute("aria-busy", String(loading && loadingAction === "clarification"));
-    clarifyButton.textContent = loading && loadingAction === "clarification" ? "Analisando esclarecimento..." : "Analisar esclarecimento";
-    const unresolvedCompleteResult = hasPending && result?.calculationReady === false;
-    applyButton.hidden = phase !== "preview" || !hasFields || unresolvedCompleteResult;
-    applyButton.disabled = phase !== "preview" || !hasFields || unresolvedCompleteResult;
+    clarifyButton.textContent = loading && loadingAction === "clarification" ? "Confirmando..." : "Confirmar";
+    const unresolvedChoices = hasPending || unresolvedEstimates.length > 0;
+    applyButton.hidden = phase !== "preview" || (!hasFields && !hasSkipped) || unresolvedChoices;
+    applyButton.disabled = phase !== "preview" || (!hasFields && !hasSkipped) || unresolvedChoices;
     adjustButton.hidden = !showingResult || loading;
     searchButton.hidden = phase !== "applied" || !result?.fields.marketQuery;
     cancelButton.textContent = ["applied", "partial-applied"].includes(phase) ? "Fechar" : "Cancelar";
@@ -1222,6 +1248,8 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
     fieldsList.replaceChildren();
     pendingList.replaceChildren();
     clarification.value = "";
+    activeField = null;
+    acceptedEstimates.clear();
     if (clearContext) analysisContext = "";
     if (clearText) textarea.value = "";
     update();
@@ -1246,6 +1274,87 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
     status.classList.toggle("is-success", kind === "success");
   }
 
+  function summaryLabel(field) {
+    return result.summary.find((item) => item.field === field)?.label
+      || result.pending.find((item) => item.field === field)?.label
+      || field;
+  }
+
+  function requiredWarning(document) {
+    const warning = document.createElement("p");
+    warning.className = "ai-assistant-required-warning";
+    warning.textContent = "Sem esse valor, o simulador pode não conseguir calcular o preço final.";
+    return warning;
+  }
+
+  function chooseManualValue(field) {
+    if (phase === "loading") return;
+    activeField = { field, label: summaryLabel(field) };
+    clarification.value = "";
+    clarificationLabel.textContent = `${activeField.label}:`;
+    clarification.setAttribute("placeholder", "Digite o valor");
+    update();
+    clarification.focus();
+  }
+
+  function skipField(field) {
+    if (phase === "loading") return;
+    const label = summaryLabel(field);
+    delete result.fields[field];
+    delete result.sources[field];
+    result.pending = result.pending.filter((item) => item.field !== field);
+    result.skipped[field] = { value: null, source: "skipped" };
+    result.summary = result.summary.filter((item) => item.field !== field);
+    result.summary.push({ field, label, value: "Não informado", source: "skipped" });
+    result.needsClarification = result.pending.length > 0;
+    if (REQUIRED_FIELDS.has(field)) result.calculationReady = false;
+    acceptedEstimates.delete(field);
+    if (activeField?.field === field) {
+      activeField = null;
+      clarification.value = "";
+    }
+    renderResult();
+    update();
+  }
+
+  function choiceButton(label, action, className = "secondary-button") {
+    const button = dialog.ownerDocument.createElement("button");
+    button.type = "button";
+    button.className = className;
+    button.textContent = label;
+    button.addEventListener("click", action);
+    return button;
+  }
+
+  function renderChoice({ field, message, estimate }) {
+    const row = dialog.ownerDocument.createElement("li");
+    row.className = "ai-assistant-choice";
+    const copy = dialog.ownerDocument.createElement("div");
+    const title = dialog.ownerDocument.createElement("strong");
+    title.textContent = summaryLabel(field);
+    const detail = dialog.ownerDocument.createElement("p");
+    detail.textContent = estimate ? `Estimativa sugerida: ${estimate}` : message;
+    const question = dialog.ownerDocument.createElement("p");
+    question.textContent = "Você deseja informar esse valor ou deixar em branco?";
+    copy.append(title, detail, question);
+    if (REQUIRED_FIELDS.has(field)) copy.append(requiredWarning(dialog.ownerDocument));
+    const actions = dialog.ownerDocument.createElement("div");
+    actions.className = "ai-assistant-choice-actions";
+    if (estimate) {
+      actions.append(choiceButton("Usar estimativa", () => {
+        acceptedEstimates.add(field);
+        renderResult();
+        update();
+      }, ""));
+    }
+    actions.append(
+      choiceButton(estimate ? "Informar outro valor" : "Informar valor", () => chooseManualValue(field)),
+      choiceButton("Deixar em branco", () => skipField(field), "secondary-button"),
+    );
+    row.append(copy, actions);
+    pendingList.append(row);
+  }
+
   function renderResult() {
     fieldsList.replaceChildren();
     pendingList.replaceChildren();
@@ -1253,6 +1362,7 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
       ["user_provided", "Informado pelo usuário"],
       ["inferred", "Inferido com segurança"],
       ["estimated", "Estimado pela IA"],
+      ["skipped", "Deixado em branco"],
     ];
     for (const [source, title] of groups) {
       const items = result.summary.filter((item) => item.source === source);
@@ -1270,19 +1380,27 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
         label.textContent = item.label;
         value.textContent = item.value;
         row.append(label, value);
+        if (source === "skipped" && REQUIRED_FIELDS.has(item.field)) row.append(requiredWarning(dialog.ownerDocument));
         list.append(row);
       }
       section.append(heading, list);
       fieldsList.append(section);
     }
+    const pendingByField = new Map();
     for (const item of result.pending) {
-      const row = dialog.ownerDocument.createElement("li");
-      row.textContent = item.message;
-      pendingList.append(row);
+      const existing = pendingByField.get(item.field);
+      if (!existing) pendingByField.set(item.field, { ...item });
+      else if (!existing.message.includes(item.message)) existing.message = `${existing.message} ${item.message}`;
+    }
+    for (const item of pendingByField.values()) renderChoice(item);
+    for (const item of result.summary) {
+      if (item.source === "estimated" && !acceptedEstimates.has(item.field)) {
+        renderChoice({ field: item.field, estimate: item.value });
+      }
     }
   }
 
-  async function runAnalysis(message, { clarificationContext = null, preserveResult = false } = {}) {
+  async function runAnalysis(message, { clarificationContext = null, preserveResult = false, retainedPending = [] } = {}) {
     if (phase === "loading" || !dialog.open || !hasSession()) return;
     const preserved = preserveResult ? { result, phase } : null;
     if (preserveResult) {
@@ -1309,11 +1427,25 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
       });
       if (revision !== requestRevision || !dialog.open || !hasSession()) return;
       result = validateAssistantResponse(response);
+      if (retainedPending.length) {
+        const resolved = new Set([...Object.keys(result.fields), ...Object.keys(result.skipped)]);
+        const pendingKeys = new Set(result.pending.map((item) => `${item.code}:${item.field}`));
+        for (const item of retainedPending) {
+          const key = `${item.code}:${item.field}`;
+          if (!resolved.has(item.field) && !pendingKeys.has(key)) {
+            result.pending.push(item);
+            pendingKeys.add(key);
+          }
+        }
+        result.needsClarification = result.pending.length > 0;
+      }
+      activeField = null;
+      clarification.value = "";
       renderResult();
       phase = "preview";
       status.hidden = true;
       update();
-      (Object.keys(result.fields).length ? applyButton : clarification).focus();
+      (Object.keys(result.fields).length || Object.keys(result.skipped).length ? applyButton : pendingList).focus?.();
       return true;
     } catch (error) {
       if (revision !== requestRevision || !dialog.open) return;
@@ -1342,7 +1474,7 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
     event?.preventDefault();
     event?.stopPropagation?.();
     if (clarificationForm[CLARIFICATION_IN_FLIGHT]) return false;
-    if (!["preview", "partial-applied"].includes(phase) || !result?.pending.length) return;
+    if (!["preview", "partial-applied"].includes(phase) || !result || !activeField) return;
     const answer = clarification.value.trim();
     if (!answer) return;
     const previousContext = analysisContext;
@@ -1351,10 +1483,17 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
       showStatus("A descrição e os esclarecimentos juntos devem ter até 4.000 caracteres.", "error");
       return;
     }
+    const targetField = activeField.field;
+    const retainedPending = result.pending.filter((item) => item.field !== targetField);
+    const previousFields = { ...result.fields };
+    const previousSources = { ...result.sources };
+    delete previousFields[targetField];
+    delete previousSources[targetField];
     const previousAnalysis = {
-      fields: { ...result.fields },
-      sources: { ...result.sources },
-      pending: result.pending.map(({ code, field }) => ({ code, field })),
+      fields: previousFields,
+      sources: previousSources,
+      skipped: { ...result.skipped },
+      pending: [{ code: "AI_USER_VALUE_REQUIRED", field: targetField }],
       needsClarification: true,
     };
     clarificationForm[CLARIFICATION_IN_FLIGHT] = true;
@@ -1362,10 +1501,10 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
       const succeeded = await runAnalysis(answer, {
         clarificationContext: { context: previousContext, previousAnalysis },
         preserveResult: true,
+        retainedPending,
       });
       if (succeeded) {
         analysisContext = combined;
-        clarification.value = "";
       }
       return succeeded;
     } finally {

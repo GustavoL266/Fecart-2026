@@ -11,13 +11,17 @@ function controls(values = {}) {
   return Object.fromEntries(ids.map((id) => [id, { value: values[id] ?? "" }]));
 }
 
-function response(fields, pending = [], sourceOverrides = {}) {
+function response(fields, pending = [], sourceOverrides = {}, skipped = {}) {
   const resolvedFields = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== null));
   const sources = Object.fromEntries(Object.keys(resolvedFields).map((field) => [field, sourceOverrides[field] || "user_provided"]));
   return {
     fields,
     sources,
-    summary: Object.entries(resolvedFields).map(([field, value]) => ({ field, label: field, value: String(value), source: sources[field] })),
+    skipped,
+    summary: [
+      ...Object.entries(resolvedFields).map(([field, value]) => ({ field, label: field, value: String(value), source: sources[field] })),
+      ...Object.keys(skipped).map((field) => ({ field, label: field, value: "Não informado", source: "skipped" })),
+    ],
     pending,
     needsClarification: pending.length > 0,
   };
@@ -56,7 +60,7 @@ class Element {
 }
 
 function fixture({ parse = async () => response({ desiredNetMargin: 20 }), apply } = {}) {
-  const names = ["form", "message", "analyze", "preview", "fields", "estimate-warning", "pending", "pending-list", "clarification-form", "clarification", "clarify", "status", "apply", "adjust", "search", "cancel", "close"];
+  const names = ["form", "message", "analyze", "preview", "fields", "estimate-warning", "pending", "pending-list", "clarification-form", "clarification-label", "clarification", "clarify", "status", "apply", "adjust", "search", "cancel", "close"];
   const elements = Object.fromEntries(names.map((name) => [name, new Element()]));
   const dialog = new Element();
   const openButton = new Element();
@@ -81,6 +85,17 @@ function fixture({ parse = async () => response({ desiredNetMargin: 20 }), apply
       await elements.message.emit("input");
     },
   };
+}
+
+function descendants(element) {
+  return [element, ...element.children.flatMap(descendants)];
+}
+
+async function clickButton(element, label) {
+  const button = descendants(element).find((candidate) => candidate.textContent === label);
+  assert.ok(button, `Botão não encontrado: ${label}`);
+  await button.emit("click");
+  return button;
 }
 
 function pending() {
@@ -165,6 +180,7 @@ test("resposta exige prévia de cada campo válido e não aceita saída vazia ou
   assert.deepEqual(validateAssistantFields({ materialCost: null }), {});
   for (const raw of [null, [], { fields: [] }, { fields: {} }, { fields: { materialCost: 20 }, summary: [] },
     { fields: { materialCost: 20 }, sources: { materialCost: "user_provided" }, summary: [{ field: "desiredNetMargin", label: "Margem", value: "20%", source: "user_provided" }] },
+    { ...response({}, [], {}, { deliveryCost: { value: null, source: "skipped" } }), summary: [{ field: "deliveryCost", label: "Frete", value: "Não informado", source: undefined }] },
     { fields: { materialCost: 20, packagingCost: 1 }, summary: [response({ materialCost: 20 }).summary[0], response({ materialCost: 20 }).summary[0]] }]) {
     assert.throws(() => validateAssistantResponse(raw));
   }
@@ -420,7 +436,7 @@ test("prévia separa origens, mostra aviso e Ajustar dados não aplica valores",
   assert.deepEqual(ui.applied, []);
 });
 
-test("pendência aparece sem aplicação e esclarecimento reanalisa o contexto original", async () => {
+test("campo faltando permite informar valor e reanalisa somente o campo escolhido", async () => {
   const calls = [];
   const issue = { code: "AI_COST_BASIS_UNKNOWN", field: "materialCost", message: "O custo é por unidade ou pelo lote?" };
   const ui = fixture({ parse: async (message, options) => {
@@ -434,15 +450,19 @@ test("pendência aparece sem aplicação e esclarecimento reanalisa o contexto o
   assert.equal(ui.elements["pending-list"].children.length, 1);
   assert.deepEqual(ui.applied, []);
   assert.equal(ui.elements.message.value, original);
-  ui.elements.clarification.value = "É o total de um lote de 50 unidades.";
+  assert.equal(ui.elements["clarification-form"].hidden, true);
+  await clickButton(ui.elements["pending-list"], "Informar valor");
+  assert.equal(ui.elements["clarification-form"].hidden, false);
+  ui.elements.clarification.value = "7";
   await ui.elements.clarification.emit("input");
   await ui.elements["clarification-form"].emit("submit");
-  assert.equal(calls[1].message, "É o total de um lote de 50 unidades.");
+  assert.equal(calls[1].message, "7");
   assert.equal(calls[1].options.clarification.context, original);
   assert.deepEqual(calls[1].options.clarification.previousAnalysis, {
     fields: { desiredNetMargin: 30 },
     sources: { desiredNetMargin: "user_provided" },
-    pending: [{ code: "AI_COST_BASIS_UNKNOWN", field: "materialCost" }],
+    skipped: {},
+    pending: [{ code: "AI_USER_VALUE_REQUIRED", field: "materialCost" }],
     needsClarification: true,
   });
   assert.equal(ui.elements.message.value, original);
@@ -452,7 +472,7 @@ test("pendência aparece sem aplicação e esclarecimento reanalisa o contexto o
   assert.deepEqual(ui.applied, [{ materialCost: 7, desiredNetMargin: 30 }]);
 });
 
-test("esclarecimento mensal atualiza prévia, remove a pergunta e habilita aplicação sem chamada duplicada", async () => {
+test("quantidade mensal faltando aceita resposta curta no contexto da escolha", async () => {
   const issue = {
     code: "AI_REQUIRED_FIELD_MISSING",
     field: "expectedMonthlyUnits",
@@ -469,20 +489,24 @@ test("esclarecimento mensal atualiza prévia, remove a pergunta e habilita aplic
   const original = "Quero vender bolo, meu custo por unidade é R$ 15 e quero margem de 10%";
   await ui.enter(original);
   await ui.elements.form.emit("submit");
-  assert.equal(ui.elements["pending-list"].children[0].textContent, issue.message);
+  assert.ok(descendants(ui.elements["pending-list"].children[0]).some((item) => item.textContent === issue.message));
   assert.equal(ui.elements.apply.hidden, true);
 
+  await clickButton(ui.elements["pending-list"], "Informar valor");
   ui.elements.clarification.value = "É DE 10";
   await ui.elements.clarification.emit("input");
   await ui.elements["clarification-form"].emit("submit");
   assert.equal(calls.length, 2);
   assert.equal(calls[1].message, "É DE 10");
   assert.equal(calls[1].options.clarification.context, original);
+  assert.deepEqual(calls[1].options.clarification.previousAnalysis.pending, [
+    { code: "AI_USER_VALUE_REQUIRED", field: "expectedMonthlyUnits" },
+  ]);
   assert.equal(ui.elements.pending.hidden, true);
   assert.equal(ui.elements["clarification-form"].hidden, true);
   assert.equal(ui.elements.apply.hidden, false);
   assert.equal(ui.elements.apply.disabled, false);
-  assert.equal(ui.elements.clarify.textContent, "Analisar esclarecimento");
+  assert.equal(ui.elements.clarify.textContent, "Confirmar");
   assert.equal(ui.elements.form.attributes.get("aria-busy"), "false");
   assert.equal(ui.elements.status.hidden, true);
   assert.deepEqual(ui.applied, []);
@@ -491,16 +515,20 @@ test("esclarecimento mensal atualiza prévia, remove a pergunta e habilita aplic
   assert.deepEqual(ui.applied, [{ ...previousFields, expectedMonthlyUnits: 10 }]);
 });
 
-test("resultado parcial aplica apenas campos válidos e mantém pendência visível", async () => {
+test("campo obrigatório pode ficar em branco com aviso e aplicação parcial", async () => {
   const issue = { code: "AI_BATCH_UNITS_REQUIRED", field: "packagingCost", message: "Quantas unidades o lote produz?" };
   const ui = fixture({ parse: async () => response({ desiredNetMargin: 20 }, [issue]) });
   await ui.enter("Margem 20%; embalagem R$ 80 por lote.");
   await ui.elements.form.emit("submit");
+  assert.equal(ui.elements.apply.hidden, true);
+  assert.ok(descendants(ui.elements["pending-list"]).some((item) => /Sem esse valor/.test(item.textContent)));
+  await clickButton(ui.elements["pending-list"], "Deixar em branco");
   await ui.elements.apply.emit("click");
   assert.deepEqual(ui.applied, [{ desiredNetMargin: 20 }]);
-  assert.equal(ui.elements.pending.hidden, false);
-  assert.equal(ui.elements["clarification-form"].hidden, false);
+  assert.equal(ui.elements.pending.hidden, true);
+  assert.equal(ui.elements["clarification-form"].hidden, true);
   assert.equal(ui.elements.apply.hidden, true);
+  assert.ok(descendants(ui.elements.fields).some((item) => item.textContent === "Não informado"));
 });
 
 test("falha no esclarecimento preserva prévia anterior e texto digitado", async () => {
@@ -514,6 +542,7 @@ test("falha no esclarecimento preserva prévia anterior e texto digitado", async
   const original = "Quero vender um bolo, usei 15 reais para fazer, e quero lucro de 10%";
   await ui.enter(original);
   await ui.elements.form.emit("submit");
+  await clickButton(ui.elements["pending-list"], "Informar valor");
   ui.elements.clarification.value = "por unidade";
   await ui.elements.clarification.emit("input");
   await ui.elements["clarification-form"].emit("submit");
@@ -523,9 +552,9 @@ test("falha no esclarecimento preserva prévia anterior e texto digitado", async
   assert.equal(ui.elements.clarification.value, "por unidade");
   assert.equal(ui.elements.message.value, original);
   assert.match(ui.elements.status.textContent, /validar a resposta/);
-  assert.equal(ui.elements.apply.hidden, false);
+  assert.equal(ui.elements.apply.hidden, true);
   assert.equal(ui.elements.clarify.disabled, false);
-  assert.equal(ui.elements.clarify.textContent, "Analisar esclarecimento");
+  assert.equal(ui.elements.clarify.textContent, "Confirmar");
 });
 
 test("clique duplo no esclarecimento cria uma requisição e mostra loading específico", async () => {
@@ -539,6 +568,7 @@ test("clique duplo no esclarecimento cria uma requisição e mostra loading espe
   } });
   await ui.enter("Quero vender um bolo, usei 15 reais para fazer e quero lucro de 10%");
   await ui.elements.form.emit("submit");
+  await clickButton(ui.elements["pending-list"], "Informar valor");
   ui.elements.clarification.value = "15 reais de um lote de 3";
   await ui.elements.clarification.emit("input");
   let stopped = 0;
@@ -550,7 +580,7 @@ test("clique duplo no esclarecimento cria uma requisição e mostra loading espe
   assert.equal(calls, 2);
   assert.equal(stopped, 2);
   assert.equal(ui.elements.clarify.disabled, true);
-  assert.equal(ui.elements.clarify.textContent, "Analisando esclarecimento...");
+  assert.equal(ui.elements.clarify.textContent, "Confirmando...");
   assert.equal(ui.elements.status.textContent, "Analisando esclarecimento...");
   followUp.resolve(response({ productName: "bolo", desiredNetMargin: 10, materialCost: 5 }));
   await Promise.all([firstSubmit, duplicateSubmit]);
@@ -565,6 +595,7 @@ test("esclarecimento vazio não apaga prévia nem cria nova chamada", async () =
   const ui = fixture({ parse: async () => { calls += 1; return response({ productName: "bolo" }, [issue]); } });
   await ui.enter("Quero vender bolo e gastei R$ 15 em ingredientes.");
   await ui.elements.form.emit("submit");
+  await clickButton(ui.elements["pending-list"], "Informar valor");
   ui.elements.clarification.value = "   ";
   await ui.elements.clarification.emit("input");
   await ui.elements["clarification-form"].emit("submit");
@@ -572,6 +603,107 @@ test("esclarecimento vazio não apaga prévia nem cria nova chamada", async () =
   assert.equal(ui.elements.preview.hidden, false);
   assert.equal(ui.elements.pending.hidden, false);
   assert.equal(ui.elements.clarify.disabled, true);
+});
+
+test("campo ignorado permanece skipped e não volta após informar outra pendência", async () => {
+  const expectedUnits = { code: "AI_REQUIRED_FIELD_MISSING", field: "expectedMonthlyUnits", message: "Não consegui determinar a quantidade mensal prevista." };
+  const receivingDays = { code: "AI_REQUIRED_FIELD_MISSING", field: "receivingDays", message: "Não consegui determinar o prazo de recebimento." };
+  const skipped = { expectedMonthlyUnits: { value: null, source: "skipped" } };
+  const calls = [];
+  const ui = fixture({ parse: async (message, options) => {
+    calls.push({ message, options });
+    return calls.length === 1
+      ? response({ productName: "bolo" }, [expectedUnits, receivingDays])
+      : response({ productName: "bolo", receivingDays: 30 }, [], {}, skipped);
+  } });
+  await ui.enter("Quero vender bolo.");
+  await ui.elements.form.emit("submit");
+  assert.equal(ui.elements["pending-list"].children.length, 2);
+  await clickButton(ui.elements["pending-list"].children[0], "Deixar em branco");
+  assert.equal(ui.elements["pending-list"].children.length, 1);
+  await clickButton(ui.elements["pending-list"], "Informar valor");
+  ui.elements.clarification.value = "30";
+  await ui.elements.clarification.emit("input");
+  await ui.elements["clarification-form"].emit("submit");
+  assert.deepEqual(calls[1].options.clarification.previousAnalysis.skipped, skipped);
+  assert.equal(ui.elements["pending-list"].children.length, 0);
+  assert.ok(descendants(ui.elements.fields).some((item) => item.textContent === "Não informado"));
+  await ui.elements.apply.emit("click");
+  assert.deepEqual(ui.applied, [{ productName: "bolo", receivingDays: 30 }]);
+});
+
+test("campo opcional ignorado não bloqueia a aplicação nem mostra aviso obrigatório", async () => {
+  const issue = { code: "AI_CONFIRM_FIELD", field: "insuranceCost", message: "Não consegui determinar o seguro por unidade." };
+  const ui = fixture({ parse: async () => response({ desiredNetMargin: 20 }, [issue]) });
+  await ui.enter();
+  await ui.elements.form.emit("submit");
+  assert.equal(descendants(ui.elements["pending-list"]).some((item) => /Sem esse valor/.test(item.textContent)), false);
+  await clickButton(ui.elements["pending-list"], "Deixar em branco");
+  assert.equal(ui.elements.apply.hidden, false);
+  await ui.elements.apply.emit("click");
+  assert.deepEqual(ui.applied, [{ desiredNetMargin: 20 }]);
+});
+
+test("estimativa disponível pode ser aceita explicitamente", async () => {
+  const ui = fixture({ parse: async () => response(
+    { desiredNetMargin: 20, packagingCost: 2 }, [], { packagingCost: "estimated" },
+  ) });
+  await ui.enter();
+  await ui.elements.form.emit("submit");
+  assert.ok(descendants(ui.elements["pending-list"]).some((item) => item.textContent === "Estimativa sugerida: 2"));
+  assert.equal(ui.elements.apply.hidden, true);
+  await clickButton(ui.elements["pending-list"], "Usar estimativa");
+  assert.equal(ui.elements.apply.hidden, false);
+  await ui.elements.apply.emit("click");
+  assert.deepEqual(ui.applied, [{ desiredNetMargin: 20, packagingCost: 2 }]);
+});
+
+test("estimativa disponível pode ser substituída por valor informado", async () => {
+  let calls = 0;
+  const ui = fixture({ parse: async (_message, options) => {
+    calls += 1;
+    if (calls === 1) return response({ desiredNetMargin: 20, packagingCost: 2 }, [], { packagingCost: "estimated" });
+    assert.deepEqual(options.clarification.previousAnalysis.pending, [
+      { code: "AI_USER_VALUE_REQUIRED", field: "packagingCost" },
+    ]);
+    assert.equal("packagingCost" in options.clarification.previousAnalysis.fields, false);
+    return response({ desiredNetMargin: 20, packagingCost: 3 });
+  } });
+  await ui.enter();
+  await ui.elements.form.emit("submit");
+  await clickButton(ui.elements["pending-list"], "Informar outro valor");
+  ui.elements.clarification.value = "3";
+  await ui.elements.clarification.emit("input");
+  await ui.elements["clarification-form"].emit("submit");
+  await ui.elements.apply.emit("click");
+  assert.deepEqual(ui.applied, [{ desiredNetMargin: 20, packagingCost: 3 }]);
+});
+
+test("estimativa disponível pode ficar em branco sem aplicar zero", async () => {
+  const ui = fixture({ parse: async () => response(
+    { desiredNetMargin: 20, insuranceCost: 2 }, [], { insuranceCost: "estimated" },
+  ) });
+  await ui.enter();
+  await ui.elements.form.emit("submit");
+  await clickButton(ui.elements["pending-list"], "Deixar em branco");
+  await ui.elements.apply.emit("click");
+  assert.deepEqual(ui.applied, [{ desiredNetMargin: 20 }]);
+  assert.ok(descendants(ui.elements.fields).some((item) => item.textContent === "Não informado"));
+});
+
+test("vários campos faltando aparecem juntos em uma lista compacta", async () => {
+  const issues = [
+    { code: "AI_REQUIRED_FIELD_MISSING", field: "expectedMonthlyUnits", message: "Não consegui determinar a quantidade mensal prevista." },
+    { code: "AI_REQUIRED_FIELD_MISSING", field: "deliveryCost", message: "Não consegui determinar o frete." },
+    { code: "AI_REQUIRED_FIELD_MISSING", field: "receivingDays", message: "Não consegui determinar o prazo de recebimento." },
+  ];
+  const ui = fixture({ parse: async () => response({ productName: "bolo" }, issues) });
+  await ui.enter("Quero vender bolo.");
+  await ui.elements.form.emit("submit");
+  assert.equal(ui.elements["pending-list"].children.length, 3);
+  assert.equal(ui.elements["clarification-form"].hidden, true);
+  assert.equal(descendants(ui.elements["pending-list"]).filter((item) => item.textContent === "Informar valor").length, 3);
+  assert.equal(descendants(ui.elements["pending-list"]).filter((item) => item.textContent === "Deixar em branco").length, 3);
 });
 
 test("frontend rejeita código, campo ou mensagem de pendência fora do contrato", () => {

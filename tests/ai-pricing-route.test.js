@@ -57,7 +57,8 @@ test("rota HTTP retorna patch e prévia validados, sem prompts ou extração bru
   assert.equal(result.status, 200);
   assert.deepEqual(result.body.fields, { deliveryCost: 7 });
   assert.equal(result.body.summary[0].field, "deliveryCost");
-  assert.deepEqual(Object.keys(result.body), ["fields", "sources", "summary", "pending", "needsClarification", "calculationReady"]);
+  assert.deepEqual(Object.keys(result.body), ["fields", "sources", "skipped", "summary", "pending", "needsClarification", "calculationReady"]);
+  assert.deepEqual(result.body.skipped, {});
   assert.deepEqual(result.body.pending, []);
   assert.equal(result.body.needsClarification, false);
   assert.equal(result.headers.get("cache-control"), "no-store");

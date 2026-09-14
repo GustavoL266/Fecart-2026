@@ -93,6 +93,57 @@ test("modo complete lista somente obrigatórios que a Gemini não conseguiu pree
   assert.equal(result.pending.some(({ code, field }) => code === "AI_REQUIRED_FIELD_MISSING" && field === "materialCost"), true);
 });
 
+test("campo skipped não volta às pendências em um esclarecimento posterior", async () => {
+  const skipped = { expectedMonthlyUnits: { value: null, source: "skipped" } };
+  const result = await parsePricingMessage({
+    provider: {
+      fillMode: "complete",
+      extract: async () => ({ entries: [entry("deliveryCost", 7, "7")] }),
+    },
+    input: {
+      message: "7",
+      clarification: {
+        context: "Quero vender bolo.",
+        previousAnalysis: {
+          fields: { productName: "bolo" },
+          sources: { productName: "user_provided" },
+          skipped,
+          pending: [{ code: "AI_USER_VALUE_REQUIRED", field: "deliveryCost" }],
+          needsClarification: true,
+        },
+      },
+    },
+  });
+  assert.deepEqual(result.skipped, skipped);
+  assert.equal(result.pending.some(({ field }) => field === "expectedMonthlyUnits"), false);
+  assert.deepEqual(result.summary.find(({ field }) => field === "expectedMonthlyUnits"), {
+    field: "expectedMonthlyUnits",
+    label: "Quantidade mensal prevista",
+    value: "Não informado",
+    source: "skipped",
+  });
+});
+
+test("entrada direta contextual aceita percentual sem exigir símbolo na resposta", async () => {
+  const result = await parsePricingMessage({
+    provider: { extract: async () => ({ entries: [entry("desiredNetMargin", 20, "20")] }) },
+    input: {
+      message: "20",
+      clarification: {
+        context: "Quero vender bolo.",
+        previousAnalysis: {
+          fields: { productName: "bolo" },
+          sources: { productName: "user_provided" },
+          pending: [{ code: "AI_USER_VALUE_REQUIRED", field: "desiredNetMargin" }],
+          needsClarification: true,
+        },
+      },
+    },
+  });
+  assert.equal(result.fields.desiredNetMargin, 20);
+  assert.equal(result.sources.desiredNetMargin, "user_provided");
+});
+
 test("extrai todos os dados unitários explícitos do bolo sem inventar ausentes nem preço calculado", () => {
   const message = "Vendo bolo de chocolate. Gasto 18 reais de ingredientes por unidade, 3 reais de embalagem por unidade e tenho perda de 10%. Quero margem de 25%.";
   const result = extract(message, [

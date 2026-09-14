@@ -29,6 +29,9 @@ const FIELD_RULES = Object.freeze({
 });
 
 export const PRICING_FIELD_IDS = Object.freeze(Object.keys(FIELD_RULES));
+export const REQUIRED_PRICING_FIELD_IDS = Object.freeze(Object.entries(FIELD_RULES)
+  .filter(([, rule]) => !rule.optional)
+  .map(([fieldId]) => fieldId));
 export const CAPACITY_FIELD_IDS = Object.freeze(["workerCount", "productiveHoursPerWorkerMonth", "unitsPerWorkerHour"]);
 
 const ASSISTANT_TEXT_FIELDS = Object.freeze({

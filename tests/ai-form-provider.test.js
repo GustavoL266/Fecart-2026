@@ -176,7 +176,7 @@ test("follow-up mensal mantém Structured Output e dá significado a resposta nu
   assert.match(instruction, /source="user_provided"/);
   assert.match(instruction, /não autoriza copiar uma quantidade de lote/i);
   assert.match(prompt, /AI_REQUIRED_FIELD_MISSING/);
-  assert.match(prompt, /Não foi possível estimar quantidade mensal prevista com segurança/);
+  assert.match(prompt, /Não consegui determinar quantidade mensal prevista/);
   assert.match(prompt, /É DE 10/);
 });
 
