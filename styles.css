@@ -72,6 +72,16 @@
   box-sizing: border-box;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 [hidden] {
   display: none !important;
 }
@@ -1727,6 +1737,255 @@ tr:last-child td {
   display: grid;
   gap: 12px;
   margin: 0;
+}
+
+.profile-dialog {
+  width: min(760px, calc(100% - 32px));
+}
+
+.profile-dialog .dialog-header {
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.profile-dialog-description {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.profile-identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid color-mix(in srgb, var(--green) 28%, var(--line));
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--green-soft), color-mix(in srgb, var(--panel) 92%, var(--green-soft)));
+  padding: 16px;
+}
+
+.profile-avatar {
+  display: grid;
+  flex: 0 0 58px;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--green) 55%, transparent);
+  border-radius: 50%;
+  background: var(--green);
+  color: white;
+  font-size: 1.08rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.profile-identity > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.profile-identity strong,
+.profile-identity span:last-child {
+  overflow-wrap: anywhere;
+}
+
+.profile-identity strong {
+  font-size: 1.05rem;
+}
+
+.profile-identity span:last-child {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.profile-sections {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.profile-section {
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--subtle-surface);
+  padding: 17px;
+}
+
+.profile-section-row,
+.profile-section-heading {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 12px;
+}
+
+.profile-section-row {
+  justify-content: space-between;
+}
+
+.profile-section-heading > div {
+  min-width: 0;
+}
+
+.profile-section-heading h3 {
+  font-size: 0.96rem;
+}
+
+.profile-section-heading p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.profile-section-icon {
+  display: grid;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--green-soft);
+  color: var(--green);
+  font-weight: 900;
+}
+
+.profile-personal-grid,
+.profile-password-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.profile-field {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.profile-field label {
+  font-size: 0.84rem;
+  font-weight: 780;
+}
+
+.profile-field input {
+  min-height: 46px;
+  border-radius: 9px;
+  padding: 0 12px;
+}
+
+.profile-field input[aria-invalid="true"] {
+  border-color: var(--red);
+  background: var(--risk-surface);
+}
+
+.profile-section-action {
+  flex: 0 0 auto;
+}
+
+.profile-password-summary,
+.profile-products-summary {
+  display: grid;
+  gap: 3px;
+}
+
+.profile-password-summary span,
+.profile-products-summary span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.profile-password-summary strong {
+  letter-spacing: 0.14em;
+}
+
+.profile-password-panel {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.profile-password-panel form {
+  display: grid;
+  gap: 12px;
+}
+
+.profile-password-grid {
+  align-items: start;
+}
+
+.profile-password-toggle {
+  width: 38px;
+  min-width: 38px;
+  padding: 0;
+  font-size: 0.95rem;
+}
+
+.profile-password-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.profile-password-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.profile-products-summary {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.profile-products-button {
+  justify-self: start;
+}
+
+.profile-status {
+  margin: 14px 0 0;
+}
+
+.profile-actions {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+@media (max-width: 680px) {
+  .profile-dialog-description {
+    font-size: 0.82rem;
+  }
+
+  .profile-avatar {
+    flex-basis: 52px;
+    width: 52px;
+    height: 52px;
+  }
+
+  .profile-personal-grid,
+  .profile-password-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-section-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .profile-section-action,
+  .profile-products-button,
+  .profile-password-actions button {
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .profile-products-summary {
+    padding-left: 48px;
+    text-align: left;
+  }
 }
 
 @media (max-width: 1080px) {

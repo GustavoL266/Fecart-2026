@@ -18,8 +18,9 @@ import { createIbptTaxProvider, ibptErrorForClient, IbptTaxError } from "./lib/i
 import { searchFiscalNcms, confirmFiscalNcm, hasRelevantFiscalConfirmation } from "./lib/fiscal-classification.js";
 import { productForClient, userForClient } from "./lib/models.js";
 import { hashPassword, verifyPassword } from "./lib/passwords.js";
+import { changeOwnPassword, findOwnProfile, profileAccountErrorForClient, ProfileAccountError, updateOwnProfile } from "./lib/profile-account.js";
 import { authoritativeProductSnapshot } from "./lib/pricing-persistence.js";
-import { loginSchema, marketSearchSchema, ncmSearchSchema, productCreateSchema, productIdSchema, productListSchema, productMetadataSchema, registerSchema, taxEstimateSchema, validate } from "./lib/validation.js";
+import { changePasswordSchema, loginSchema, marketSearchSchema, ncmSearchSchema, productCreateSchema, productIdSchema, productListSchema, productMetadataSchema, profileUpdateSchema, registerSchema, taxEstimateSchema, validate } from "./lib/validation.js";
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
 const config = getConfig();
@@ -222,13 +223,34 @@ app.post("/auth/logout", async (req, res, next) => {
 
 app.get("/auth/me", async (req, res, next) => {
   try {
-    const user = await currentUser(req);
+    const user = req.session.userId ? await findOwnProfile(pool, req.session.userId) : null;
     if (!user) {
       console.info("[Auth] /auth/me authenticated=false");
       return res.status(401).json({ error: "Sua sessão expirou. Entre novamente.", code: "SESSION_REQUIRED" });
     }
     console.info("[Auth] /auth/me authenticated=true");
     return res.json(authenticatedPayload(user));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.patch("/auth/me", requireAuth, async (req, res, next) => {
+  try {
+    const input = validate(profileUpdateSchema, req.body, { code: "PROFILE_VALIDATION_ERROR" });
+    const user = await updateOwnProfile(pool, req.user.id, input);
+    if (!user) return sessionRequired(req, res);
+    return res.json({ user: userForClient(user) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/auth/change-password", requireAuth, authLimiter, async (req, res, next) => {
+  try {
+    const input = validate(changePasswordSchema, req.body, { code: "PASSWORD_VALIDATION_ERROR" });
+    await changeOwnPassword(pool, req.user.id, input);
+    return res.status(204).end();
   } catch (error) {
     return next(error);
   }
@@ -482,7 +504,9 @@ app.use((error, req, res, next) => {
         : status >= 500
           ? "Não foi possível concluir a operação. Tente novamente em instantes."
           : error.message;
-  const payload = error instanceof IbptTaxError
+  const payload = error instanceof ProfileAccountError
+    ? profileAccountErrorForClient(error)
+    : error instanceof IbptTaxError
     ? ibptErrorForClient(error)
     : error instanceof FocusNFeError
     ? focusNFeErrorForClient(error, [focusNfeConfig.token])

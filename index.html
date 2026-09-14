@@ -869,15 +869,108 @@
       </form>
     </dialog>
 
-    <dialog id="profileDialog" class="modal-dialog profile-dialog" aria-labelledby="profileDialogTitle">
+    <dialog id="profileDialog" class="modal-dialog profile-dialog" aria-labelledby="profileDialogTitle" aria-describedby="profileDialogDescription">
       <div class="dialog-header">
         <div>
-          <p class="eyebrow">Sua conta</p>
+          <p class="eyebrow">Minha conta</p>
           <h2 id="profileDialogTitle">Meu perfil</h2>
+          <p id="profileDialogDescription" class="profile-dialog-description">Gerencie seus dados e a segurança da conta.</p>
         </div>
         <button type="button" class="icon-button" data-close-dialog aria-label="Fechar">×</button>
       </div>
-      <dl id="profileDetails" class="profile-details"></dl>
+
+      <div class="profile-identity" aria-label="Identificação da conta">
+        <span id="profileAvatar" class="profile-avatar" aria-hidden="true">?</span>
+        <div>
+          <strong id="profileDisplayName"></strong>
+          <span id="profileDisplayEmail"></span>
+        </div>
+      </div>
+
+      <form id="profileForm" novalidate></form>
+      <div class="profile-sections">
+        <section class="profile-section" aria-labelledby="profilePersonalTitle">
+          <div class="profile-section-heading">
+            <span class="profile-section-icon" aria-hidden="true">⌾</span>
+            <div><h3 id="profilePersonalTitle">Dados pessoais</h3><p>Informações usadas para identificar sua conta.</p></div>
+          </div>
+          <div class="profile-personal-grid">
+            <div class="profile-field">
+              <label for="profileName">Nome</label>
+              <input id="profileName" name="name" form="profileForm" type="text" autocomplete="name" required minlength="2" maxlength="120" aria-describedby="profileNameError" />
+              <p id="profileNameError" class="field-error" role="alert" hidden></p>
+            </div>
+            <div class="profile-field">
+              <label for="profileEmail">E-mail</label>
+              <input id="profileEmail" name="email" form="profileForm" type="email" autocomplete="email" required maxlength="320" aria-describedby="profileEmailError" />
+              <p id="profileEmailError" class="field-error" role="alert" hidden></p>
+            </div>
+          </div>
+        </section>
+
+        <section class="profile-section" aria-labelledby="profileSecurityTitle">
+          <div class="profile-section-row">
+            <div class="profile-section-heading">
+              <span class="profile-section-icon" aria-hidden="true">◇</span>
+              <div><h3 id="profileSecurityTitle">Segurança</h3><p>Sua senha permanece protegida e nunca é exibida.</p></div>
+            </div>
+            <button id="profileChangePasswordButton" type="button" class="secondary-button profile-section-action" aria-controls="profilePasswordPanel" aria-expanded="false">Alterar senha</button>
+          </div>
+          <div class="profile-password-summary"><span>Senha</span><strong aria-label="Senha oculta">••••••••</strong></div>
+
+          <div id="profilePasswordPanel" class="profile-password-panel" hidden>
+            <form id="profilePasswordForm" novalidate>
+              <div class="profile-field">
+                <label for="profileCurrentPassword">Senha atual</label>
+                <div class="password-control">
+                  <input id="profileCurrentPassword" name="currentPassword" type="password" autocomplete="current-password" required maxlength="72" aria-describedby="profileCurrentPasswordError" />
+                  <button type="button" class="password-toggle profile-password-toggle" data-password-toggle="profileCurrentPassword" aria-label="Mostrar senha" aria-pressed="false"><span aria-hidden="true">👁</span><span class="visually-hidden" data-password-toggle-label>Mostrar senha</span></button>
+                </div>
+                <p id="profileCurrentPasswordError" class="field-error" role="alert" hidden></p>
+              </div>
+              <div class="profile-password-grid">
+                <div class="profile-field">
+                  <label for="profileNewPassword">Nova senha</label>
+                  <div class="password-control">
+                    <input id="profileNewPassword" name="newPassword" type="password" autocomplete="new-password" required minlength="8" maxlength="72" aria-describedby="profileNewPasswordError profilePasswordHint" />
+                    <button type="button" class="password-toggle profile-password-toggle" data-password-toggle="profileNewPassword" aria-label="Mostrar senha" aria-pressed="false"><span aria-hidden="true">👁</span><span class="visually-hidden" data-password-toggle-label>Mostrar senha</span></button>
+                  </div>
+                  <p id="profileNewPasswordError" class="field-error" role="alert" hidden></p>
+                </div>
+                <div class="profile-field">
+                  <label for="profileNewPasswordConfirmation">Confirmar nova senha</label>
+                  <div class="password-control">
+                    <input id="profileNewPasswordConfirmation" name="newPasswordConfirmation" type="password" autocomplete="new-password" required minlength="8" maxlength="72" aria-describedby="profileNewPasswordConfirmationError" />
+                    <button type="button" class="password-toggle profile-password-toggle" data-password-toggle="profileNewPasswordConfirmation" aria-label="Mostrar senha" aria-pressed="false"><span aria-hidden="true">👁</span><span class="visually-hidden" data-password-toggle-label>Mostrar senha</span></button>
+                  </div>
+                  <p id="profileNewPasswordConfirmationError" class="field-error" role="alert" hidden></p>
+                </div>
+              </div>
+              <p id="profilePasswordHint" class="profile-password-hint">Use de 8 a 72 caracteres, com pelo menos uma letra e um número.</p>
+              <div class="profile-password-actions">
+                <button id="profilePasswordSaveButton" type="submit" disabled>Atualizar senha</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section class="profile-section" aria-labelledby="profileAccountTitle">
+          <div class="profile-section-row profile-account-row">
+            <div class="profile-section-heading">
+              <span class="profile-section-icon" aria-hidden="true">▥</span>
+              <div><h3 id="profileAccountTitle">Conta</h3><p>Precificações salvas exclusivamente para este usuário.</p></div>
+            </div>
+            <div class="profile-products-summary"><span>Produtos salvos</span><strong id="profileProductCount">0 produtos</strong></div>
+          </div>
+          <button id="profileProductsButton" type="button" class="secondary-button profile-products-button">Ver meus produtos <span aria-hidden="true">→</span></button>
+        </section>
+      </div>
+
+      <p id="profileStatus" class="form-message profile-status" role="status" aria-live="polite" hidden></p>
+      <div class="dialog-actions profile-actions">
+        <button id="profileCancelButton" type="button" class="secondary-button">Cancelar</button>
+        <button id="profileSaveButton" type="submit" form="profileForm" disabled>Salvar alterações</button>
+      </div>
     </dialog>
 
     <script src="file-protocol-redirect.js"></script>

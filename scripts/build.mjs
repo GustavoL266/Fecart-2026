@@ -20,6 +20,7 @@ const sourceFiles = [
   "js/ui/detail-pages.js",
   "js/ui/dashboard.js",
   "js/ui/history.js",
+  "js/ui/profile-settings.js",
   "js/ui/pricing-tabs.js",
   "js/ui/pricing-panel.js",
   "js/main.js",

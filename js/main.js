@@ -11,6 +11,7 @@ import { createAiAssistant } from "./ui/ai-assistant.js";
 import { financialValueSize } from "./utils/formatters.js";
 import { renderDashboard, renderIncompleteDashboard } from "./ui/dashboard.js";
 import { renderProductDetails, renderProductsList } from "./ui/history.js";
+import { createProfileSettings } from "./ui/profile-settings.js";
 import { createPricingTabs } from "./ui/pricing-tabs.js";
 import { createPricingPanel } from "./ui/pricing-panel.js";
 
@@ -669,10 +670,14 @@ function navigate(view, detailTarget = "") {
 
 function setAuthenticatedUser(user, taxAvailability = null) {
   authenticationRevision += 1;
-  state.user = user;
+  updateCurrentUser(user);
   state.taxAvailability = taxAvailability;
-  $("#currentUserName").textContent = user.name;
   void syncRoute();
+}
+
+function updateCurrentUser(user) {
+  state.user = user;
+  $("#currentUserName").textContent = user.name;
 }
 
 function clearAuthenticatedState() {
@@ -683,7 +688,7 @@ function clearAuthenticatedState() {
   state.selectedProduct = null;
   state.taxAvailability = null;
   $("#currentUserName").textContent = "Conta";
-  $("#profileDetails").replaceChildren();
+  profileSettings.closeForSession();
   clearMarketReference(window.sessionStorage);
   window.history.replaceState(null, "", window.location.pathname);
 }
@@ -1073,20 +1078,39 @@ async function editCurrentProduct(event) {
   }
 }
 
-function showProfile() {
-  const details = $("#profileDetails");
-  details.replaceChildren();
-  [["Nome", state.user.name], ["E-mail", state.user.email]].forEach(([label, value]) => {
-    const item = document.createElement("div");
-    const term = document.createElement("dt");
-    const definition = document.createElement("dd");
-    term.textContent = label;
-    definition.textContent = value;
-    item.append(term, definition);
-    details.append(item);
-  });
-  openDialog($("#profileDialog"));
-}
+const profileSettings = createProfileSettings({
+  dialog: $("#profileDialog"),
+  elements: {
+    avatar: $("#profileAvatar"),
+    displayName: $("#profileDisplayName"),
+    displayEmail: $("#profileDisplayEmail"),
+    productCount: $("#profileProductCount"),
+    profileForm: $("#profileForm"),
+    nameInput: $("#profileName"),
+    nameError: $("#profileNameError"),
+    emailInput: $("#profileEmail"),
+    emailError: $("#profileEmailError"),
+    status: $("#profileStatus"),
+    saveButton: $("#profileSaveButton"),
+    cancelButton: $("#profileCancelButton"),
+    productsButton: $("#profileProductsButton"),
+    changePasswordButton: $("#profileChangePasswordButton"),
+    passwordPanel: $("#profilePasswordPanel"),
+    passwordForm: $("#profilePasswordForm"),
+    currentPasswordInput: $("#profileCurrentPassword"),
+    currentPasswordError: $("#profileCurrentPasswordError"),
+    newPasswordInput: $("#profileNewPassword"),
+    newPasswordError: $("#profileNewPasswordError"),
+    newPasswordConfirmationInput: $("#profileNewPasswordConfirmation"),
+    newPasswordConfirmationError: $("#profileNewPasswordConfirmationError"),
+    passwordSaveButton: $("#profilePasswordSaveButton"),
+    passwordToggleButtons: document.querySelectorAll("#profileDialog [data-password-toggle]"),
+  },
+  api,
+  getUser: () => state.user,
+  onUserUpdated: updateCurrentUser,
+  onOpenProducts: () => navigate("products"),
+});
 
 async function logout() {
   try {
@@ -1287,7 +1311,9 @@ document.querySelectorAll("[data-password-toggle]").forEach((button) => {
     const input = $(`#${button.dataset.passwordToggle}`);
     const isPassword = input.type === "password";
     input.type = isPassword ? "text" : "password";
-    button.textContent = isPassword ? "Ocultar" : "Mostrar";
+    const label = button.querySelector("[data-password-toggle-label]");
+    if (label) label.textContent = isPassword ? "Ocultar senha" : "Mostrar senha";
+    else button.textContent = isPassword ? "Ocultar" : "Mostrar";
     button.setAttribute("aria-label", isPassword ? "Ocultar senha" : "Mostrar senha");
     button.setAttribute("aria-pressed", String(isPassword));
   });
@@ -1304,7 +1330,7 @@ document.querySelectorAll("[data-app-action]").forEach((button) => {
     if (action === "assistant") navigate("assistant");
     if (action === "products") navigate("products");
     if (action === "about") navigate("about");
-    if (action === "profile") showProfile();
+    if (action === "profile") void profileSettings.open(button);
     if (action === "logout") void logout();
   });
 });
@@ -1326,7 +1352,7 @@ $("#showMobileResultButton").addEventListener("click", () => {
 });
 
 $("#logoutButton").addEventListener("click", logout);
-$("#showProfileButton").addEventListener("click", showProfile);
+$("#showProfileButton").addEventListener("click", (event) => void profileSettings.open(event.currentTarget));
 $("#showProductsButton").addEventListener("click", () => navigate("products"));
 $("#showAboutButton").addEventListener("click", () => navigate("about"));
 $("#backToDashboardButton").addEventListener("click", () => navigate("assistant"));

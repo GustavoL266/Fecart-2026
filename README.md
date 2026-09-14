@@ -2,7 +2,7 @@
 
 Aplicação web para calcular preço de venda sustentável, comparar referências de mercado e salvar um histórico privado por usuário.
 
-Este README é o documento central de contexto do projeto. Ele foi ampliado para permitir que uma pessoa ou uma nova sessão do Codex continue o desenvolvimento em outro computador sem depender do histórico de conversas. A descrição abaixo corresponde ao código revisado em **12/09/2026**. Ao modificar comportamentos importantes, atualize também este documento e o guia específico da integração afetada.
+Este README é o documento central de contexto do projeto. Ele foi ampliado para permitir que uma pessoa ou uma nova sessão do Codex continue o desenvolvimento em outro computador sem depender do histórico de conversas. A descrição abaixo corresponde ao código revisado em **14/09/2026**. Ao modificar comportamentos importantes, atualize também este documento e o guia específico da integração afetada.
 
 ## Comece por aqui em uma nova sessão
 
@@ -67,7 +67,7 @@ O projeto não implementa controle de estoque, pedidos, recebimentos, emissão d
 
 ### Entrada e identificação do produto
 
-O usuário cria uma conta ou entra com e-mail e senha. Na área do assistente, identifica o produto com nome e descrição opcional. O formulário começa com campos financeiros vazios; valores obrigatórios não são preenchidos automaticamente com zero.
+O usuário cria uma conta ou entra com e-mail e senha. Em **Meu perfil**, pode atualizar nome e e-mail, alterar a senha mediante confirmação da senha atual e consultar a quantidade de produtos salvos. A sessão usa o UUID interno da conta, portanto a atualização do e-mail não encerra a sessão; duplicidades continuam bloqueadas pela restrição única do PostgreSQL. Na área do assistente, identifica o produto com nome e descrição opcional. O formulário começa com campos financeiros vazios; valores obrigatórios não são preenchidos automaticamente com zero.
 
 A sidebar organiza o preenchimento em etapas: **Produto, Fiscal, Diretos, Indiretos, Produção, Despesas, Consulta e Prazos**. A troca de etapa preserva os valores. Os módulos de abas e redimensionamento cuidam da navegação por clique, toque e teclado, além da adaptação entre desktop e celular.
 
@@ -146,6 +146,7 @@ O cálculo da simulação acontece no navegador para atualizar a interface imedi
 | [js/ui/dashboard.js](js/ui/dashboard.js) | Cards principais, resultados de mercado, estatísticas, estimativa IBPT e estados de dados incompletos. |
 | [js/ui/detail-pages.js](js/ui/detail-pages.js) | Detalhamento da precificação atual e suas visualizações. |
 | [js/ui/history.js](js/ui/history.js) | Lista e apresentação de produtos salvos, incluindo compatibilidade histórica. |
+| [js/ui/profile-settings.js](js/ui/profile-settings.js) | Modal de conta, avatar por iniciais, edição validada, troca de senha e acesso ao histórico. |
 | [js/ui/pricing-tabs.js](js/ui/pricing-tabs.js) | Etapas da sidebar, navegação e indicação de preenchimento. |
 | [js/ui/pricing-panel.js](js/ui/pricing-panel.js) | Redimensionamento do painel de preenchimento. |
 | [js/ui/ai-assistant.js](js/ui/ai-assistant.js) | Modal, análise, prévia, confirmação, cancelamento e descarte de respostas antigas. |
@@ -171,6 +172,7 @@ O cálculo da simulação acontece no navegador para atualizar a interface imedi
 | [lib/validation.js](lib/validation.js) | Schemas Zod dos contratos de autenticação, produto, mercado e fiscal. |
 | [lib/passwords.js](lib/passwords.js) | Hash e verificação de senhas. |
 | [lib/models.js](lib/models.js) | Conversão das linhas do banco em respostas públicas. |
+| [lib/profile-account.js](lib/profile-account.js) | Consultas privadas do perfil, atualização da própria conta e troca segura de senha. |
 | [lib/pricing-persistence.js](lib/pricing-persistence.js) | Recalcula a partir das entradas e produz o snapshot financeiro para salvar. |
 | [lib/market-search.js](lib/market-search.js) | Orquestra a pesquisa de mercado e seu contrato de resposta. |
 | [lib/searchapi-market-provider.js](lib/searchapi-market-provider.js) | Cliente externo de Google Shopping, normalização, cache e tratamento de falhas. |
@@ -216,6 +218,7 @@ Isso tem consequências importantes para manutenção:
 - Preenchimento assistido por IA com prévia obrigatória agrupada por origem, modo completo, limites de estimativa e validação canônica no backend, sem substituir as fórmulas financeiras.
 - Valores monetários com fonte adaptada ao comprimento e ao container, sem quebra, corte ou invasão dos cards vizinhos.
 - Cadastro, login, logout e recuperação da sessão em `/auth/me`.
+- Perfil completo com nome e e-mail editáveis, avatar por iniciais, contagem privada de produtos e alteração de senha com bcrypt.
 - Rotas protegidas para criar, listar, consultar, editar e excluir produtos.
 - Todos os acessos a produto verificam `user_id` junto ao ID do produto. Um produto de outra conta retorna `404` e nunca é exposto.
 - Histórico com busca por nome, ordenação por data, visualização, edição, exclusão e reutilização de uma precificação anterior.
@@ -529,7 +532,7 @@ Os equivalentes via npm são `npm run lint`, `npm test`, `npm run build`, `npm r
 
 `migrations/001_initial.sql` cria:
 
-- `users`: usuário, e-mail único, `password_hash` e timestamps;
+- `users`: usuário, e-mail único, `password_hash` e timestamps; nome, e-mail e hash existentes atendem às configurações do perfil sem nova migration;
 - `products`: dados de precificação, `user_id`, cálculo completo e timestamps;
 - `user_sessions`: sessões do Express armazenadas no PostgreSQL.
 
@@ -567,7 +570,9 @@ Um banco local recém-criado começa vazio. Dados de produção não fazem parte
 | POST | `/auth/register` | Pública |
 | POST | `/auth/login` | Pública |
 | POST | `/auth/logout` | Sessão atual |
-| GET | `/auth/me` | Sessão atual |
+| GET | `/auth/me` | Sessão atual; devolve dados públicos da conta e contagem de produtos próprios |
+| PATCH | `/auth/me` | Obrigatória; atualiza nome e e-mail somente do usuário da sessão |
+| POST | `/auth/change-password` | Obrigatória; valida a senha atual e grava somente o novo hash bcrypt |
 | GET | `/products` | Obrigatória |
 | GET | `/products/:id` | Obrigatória + dono |
 | GET | `/fiscal/ncms/:codigo` | Obrigatória; proxy backend para Focus NFe |
@@ -591,6 +596,9 @@ O frontend sempre envia cookies com `credentials: "include"`. Em produção, o R
 6. Abra **Meus produtos**, pesquise, visualize, edite, reutilize e exclua um registro.
 7. Faça logout e login novamente: os produtos permanecem no banco.
 8. Para validar isolamento, crie outra conta e tente abrir o ID de um produto da primeira: a API responderá `Produto não encontrado`.
+9. Abra **Meu perfil**, altere nome e e-mail e confirme que o cabeçalho e um novo login refletem os dados atualizados.
+10. Em **Alterar senha**, confira confirmação divergente e senha atual incorreta antes de validar logout e login com a nova senha.
+11. Confirme que **Ver meus produtos** abre o histórico e que cancelar ou fechar o modal descarta alterações não salvas.
 
 Para confirmar o usuário diretamente no banco sem revelar dados sensíveis, use uma consulta como:
 
@@ -690,7 +698,7 @@ Duas regras antigas de `#suggestedPrice` baseadas em viewport sobrepunham a tipo
 
 ### Segurança implementada
 
-As senhas são verificadas por bcrypt, e a sessão é regenerada na autenticação. Os cookies têm `HttpOnly`, `SameSite=Lax` e configuração segura em produção. As consultas SQL utilizam parâmetros, e operações de produto filtram pelo proprietário.
+As senhas são verificadas por bcrypt, e a sessão é regenerada na autenticação. A troca de senha exige o hash atual, gera outro hash bcrypt com os mesmos 12 rounds e preserva a sessão autenticada pelo UUID, sem retornar ou registrar senhas. Os cookies têm `HttpOnly`, `SameSite=Lax` e configuração segura em produção. As consultas SQL utilizam parâmetros; operações de produto filtram pelo proprietário e atualizações de perfil recebem o ID exclusivamente de `req.user.id`, nunca do corpo da requisição.
 
 O Helmet configura CSP com scripts e estilos da própria aplicação. `style-src-attr 'none'` significa que soluções baseadas em estilos inline podem falhar em produção. Prefira classes e atributos de apresentação já tratados em CSS; os testes verificam esse contrato.
 
@@ -734,6 +742,8 @@ Na correção do botão **Analisar esclarecimento**, também em 12/09/2026, pass
 Na segunda revisão do assistente, em 12/09/2026, passaram **315 testes**. A causa dos novos 502 foi localizada depois de respostas HTTP 200 da Gemini: a validação local rejeitava evidências literais compactas (`R$300`, `R$4,50`) e a referência `para esse lote` quando o significado ou a quantidade estavam numa oração adjacente. A validação agora usa somente janelas locais literais e contexto explícito de produção/mercado; preço próprio de venda continua sem virar custo ou referência concorrente. Margem de 250% vira pendência com o limite exato, campos independentes permanecem na prévia e `expectedMonthlyUnits` só é aceito com mês/mensal explícito. Chamadas reais com `gemini-3.5-flash-lite` retornaram HTTP 200 para margem inválida, preço concorrente, quatro variações de mercado e dois cenários de prompt injection. Uma reprodução no navegador confirmou que digitar o caractere final e enviar imediatamente serializa a mensagem completa, sem atraso artificial.
 
 Na correção da regressão de quantidade mensal em 12/09/2026, passaram **328 testes** e o lint de 78 arquivos JavaScript. O validador deixou de descartar o contexto somente quando a única pendência é `AI_REQUIRED_FIELD_MISSING` para `expectedMonthlyUnits`: “10”, “é 10”, “é de 10”, “10 por mês” e “produzo 10 mensalmente” passam a resolver o valor literal, enquanto uma resposta numérica à pergunta de rendimento continua sendo quantidade do lote. Nas repetições reais de `clarification-monthly`, houve um 503 transitório e uma saída HTTP 200 com `wasteRate.basis` incompatível que o backend rejeitou corretamente; a execução final completou as duas gerações com HTTP 200, formulário válido e preço técnico calculável. No navegador local, “É DE 10” removeu a pergunta, habilitou a confirmação, gerou exatamente um POST de esclarecimento e, depois de aplicar, exibiu preço sustentável de R$ 19,22 com as estimativas daquela execução. O build foi executado; como nenhum módulo de `js/` mudou, o conteúdo versionado de `app.js` permaneceu idêntico.
+
+Na evolução de **Meu perfil** em 14/09/2026, passaram **351 testes**, lint de 82 arquivos JavaScript e build sobre a `main` atualizada. Nome e e-mail passaram a ser editáveis com validação em ambas as camadas e bloqueio de duplicidade; a senha atual é verificada antes de gerar o novo hash, e todas as consultas usam o usuário autenticado da sessão. A contagem de produtos vem do PostgreSQL sem expor registros. Uma prévia local com respostas simuladas confirmou o modal e a seção de senha nas larguras 1920, 1366, 1024, 768 e 390 px, sem estouro horizontal, além de feedback de salvamento, cancelamento, ESC, retorno de foco e navegação para **Meus Produtos**. Como este ambiente não possuía PostgreSQL nem segredo de sessão configurados, a rodada não incluiu logout/login real após a troca de senha; os contratos de banco e controlador foram cobertos por testes isolados.
 
 Os testes automatizados de APIs usam respostas simuladas e não demonstram a disponibilidade das credenciais de produção. A chamada real descrita acima usou exclusivamente o `.env` local e comprova o contrato e o acesso nessa conta, não as variáveis do serviço Render. Após o deploy, execute uma vez `pnpm gemini:check` no Shell do serviço para validar a conta de produção. Um resultado com mocks precisa ser relatado como tal. Capturas, navegadores temporários e relatórios locais de uma sessão não devem ser presumidos disponíveis em outro clone.
 

@@ -35,6 +35,7 @@ function bootstrapFixture(get) {
     ApiError,
     api: { get: async (path, options) => { requests.push({ path, options }); return get(); } },
     aiAssistant: { invalidate() {} },
+    profileSettings: { closeForSession() {} },
     clearMarketReference() {},
     syncRoute() {},
     showAuth: (mode, message) => authViews.push({ mode, message }),
@@ -163,12 +164,13 @@ function authMeFixture(query) {
   let route;
   const context = vm.createContext({
     pool: { query },
+    findOwnProfile: async (database, userId) => (await query("SELECT profile WHERE users.id = $1", [userId])).rows[0] || null,
     console: { info() {} },
     app: { get: (_path, handler) => { route = handler; } },
     authenticatedPayload: (user) => ({ user }),
   });
   vm.runInContext(between(serverSource, "async function currentUser(", "function sessionRequired("), context);
-  vm.runInContext(between(serverSource, 'app.get("/auth/me"', 'app.get("/health"'), context);
+  vm.runInContext(between(serverSource, 'app.get("/auth/me"', 'app.patch("/auth/me"'), context);
   return async (session) => {
     const response = { status: 200, body: null, error: null };
     const res = { status: (status) => { response.status = status; return res; }, json: (body) => { response.body = body; } };
@@ -190,7 +192,7 @@ test("/auth/me consulta o usuário da sessão e separa ausência de sessão de f
   assert.equal(active.body.user, user);
   assert.equal(queries.length, 1);
   assert.equal(queries[0].values[0], user.id);
-  assert.match(queries[0].sql, /WHERE id = \$1/);
+  assert.match(queries[0].sql, /WHERE users\.id = \$1/);
   const failed = new Error("Database temporarily unavailable");
   const broken = await authMeFixture(async () => { throw failed; })({ userId: user.id });
   assert.equal(broken.error, failed);
