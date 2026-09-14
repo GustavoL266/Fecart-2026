@@ -177,11 +177,11 @@
             <button id="pricing-tab-sales" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-sales" aria-selected="false" tabindex="-1" data-pricing-tab="sales" data-pricing-label="Despesas da venda">
               <span class="pricing-tab-status" aria-hidden="true">○</span><span>Despesas</span>
             </button>
-            <button id="pricing-tab-market" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-market" aria-selected="false" tabindex="-1" data-pricing-tab="market" data-pricing-label="Consulta de mercado">
-              <span class="pricing-tab-status" aria-hidden="true">○</span><span>Consulta</span>
-            </button>
             <button id="pricing-tab-terms" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-terms" aria-selected="false" tabindex="-1" data-pricing-tab="terms" data-pricing-label="Prazos financeiros">
               <span class="pricing-tab-status" aria-hidden="true">○</span><span>Prazos</span>
+            </button>
+            <button id="pricing-tab-market" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-market" aria-selected="false" tabindex="-1" data-pricing-tab="market" data-pricing-label="Consulta de mercado">
+              <span class="pricing-tab-status" aria-hidden="true">○</span><span>Consulta</span>
             </button>
           </nav>
         </div>
@@ -363,10 +363,57 @@
           </div>
           <footer class="pricing-step-actions">
             <button class="pricing-step-button secondary-button" type="button" data-pricing-go="production"><span aria-hidden="true">←</span> Anterior</button>
-            <button class="pricing-step-button" type="button" data-pricing-go="market">Próximo <span aria-hidden="true">→</span></button>
+            <button class="pricing-step-button" type="button" data-pricing-go="terms">Próximo <span aria-hidden="true">→</span></button>
           </footer>
         </section>
 
+        <section id="pricing-panel-terms" class="control-section pricing-tab-panel" role="tabpanel" aria-labelledby="pricing-tab-terms" data-pricing-panel="terms" hidden>
+          <div class="tab-panel-heading">
+            <p class="section-title">Prazos financeiros</p>
+            <p class="section-description">Prazos que influenciam a necessidade e o custo de capital.</p>
+          </div>
+          <div class="field-grid">
+            <div class="sidebar-grid sidebar-grid--two">
+              <div class="sidebar-field">
+                <label for="inventoryDays">Estoque/produção</label>
+                <div class="sidebar-input-wrap has-suffix">
+                  <input id="inventoryDays" type="text" inputmode="decimal" placeholder="Ex.: 10" autocomplete="off" />
+                  <span class="input-affix input-suffix" aria-hidden="true">dias</span>
+                </div>
+              </div>
+              <div class="sidebar-field">
+                <label for="receivingDays">Recebimento</label>
+                <div class="sidebar-input-wrap has-suffix">
+                  <input id="receivingDays" type="text" inputmode="decimal" placeholder="Ex.: 7" autocomplete="off" />
+                  <span class="input-affix input-suffix" aria-hidden="true">dias</span>
+                </div>
+              </div>
+            </div>
+            <div class="sidebar-field">
+              <label for="paymentDays">Pagamento</label>
+              <div class="sidebar-input-wrap has-suffix">
+                <input id="paymentDays" type="text" inputmode="decimal" placeholder="Ex.: 30" autocomplete="off" />
+                <span class="input-affix input-suffix" aria-hidden="true">dias</span>
+              </div>
+            </div>
+            <div class="sidebar-field">
+              <label for="monthlyCapitalRate">Custo do capital/mês</label>
+              <div class="sidebar-input-wrap has-suffix">
+                <input id="monthlyCapitalRate" type="text" inputmode="decimal" placeholder="Ex.: 2,5" autocomplete="off" />
+                <span class="input-affix input-suffix" aria-hidden="true">%</span>
+              </div>
+            </div>
+            <div class="sidebar-grid sidebar-grid--two">
+              <div class="sidebar-field"><label for="discountRate">Desconto planejado percentual <span>(opcional)</span></label><div class="sidebar-input-wrap has-suffix"><input id="discountRate" type="text" inputmode="decimal" placeholder="Ex.: 10" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">%</span></div></div>
+              <div class="sidebar-field"><label for="fixedDiscountAmount">Ou desconto fixo <span>(opcional)</span></label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="fixedDiscountAmount" type="text" inputmode="decimal" placeholder="Ex.: 5,00" autocomplete="off" /></div></div>
+            </div>
+            <p class="helper-text">O desconto é comercial: não reduz custos nem a margem desejada. Escolha somente uma forma.</p>
+          </div>
+          <footer class="pricing-step-actions">
+            <button class="pricing-step-button secondary-button" type="button" data-pricing-go="sales"><span aria-hidden="true">←</span> Anterior</button>
+            <button class="pricing-step-button" type="button" data-pricing-go="market">Próximo <span aria-hidden="true">→</span></button>
+          </footer>
+        </section>
         <section id="pricing-panel-market" class="control-section pricing-tab-panel" role="tabpanel" aria-labelledby="pricing-tab-market" data-pricing-panel="market" hidden>
           <div class="market-consultation-heading">
             <span class="market-consultation-icon" aria-hidden="true">↗</span>
@@ -470,58 +517,11 @@
             </section>
 
           </div>
-          <footer class="pricing-step-actions">
-            <button class="pricing-step-button secondary-button" type="button" data-pricing-go="sales"><span aria-hidden="true">←</span> Anterior</button>
-            <button class="pricing-step-button" type="button" data-pricing-go="terms">Próximo <span aria-hidden="true">→</span></button>
+          <footer class="pricing-step-actions is-last">
+            <button class="pricing-step-button secondary-button" type="button" data-pricing-go="terms"><span aria-hidden="true">←</span> Anterior</button>
           </footer>
         </section>
 
-        <section id="pricing-panel-terms" class="control-section pricing-tab-panel" role="tabpanel" aria-labelledby="pricing-tab-terms" data-pricing-panel="terms" hidden>
-          <div class="tab-panel-heading">
-            <p class="section-title">Prazos financeiros</p>
-            <p class="section-description">Prazos que influenciam a necessidade e o custo de capital.</p>
-          </div>
-          <div class="field-grid">
-            <div class="sidebar-grid sidebar-grid--two">
-              <div class="sidebar-field">
-                <label for="inventoryDays">Estoque/produção</label>
-                <div class="sidebar-input-wrap has-suffix">
-                  <input id="inventoryDays" type="text" inputmode="decimal" placeholder="Ex.: 10" autocomplete="off" />
-                  <span class="input-affix input-suffix" aria-hidden="true">dias</span>
-                </div>
-              </div>
-              <div class="sidebar-field">
-                <label for="receivingDays">Recebimento</label>
-                <div class="sidebar-input-wrap has-suffix">
-                  <input id="receivingDays" type="text" inputmode="decimal" placeholder="Ex.: 7" autocomplete="off" />
-                  <span class="input-affix input-suffix" aria-hidden="true">dias</span>
-                </div>
-              </div>
-            </div>
-            <div class="sidebar-field">
-              <label for="paymentDays">Pagamento</label>
-              <div class="sidebar-input-wrap has-suffix">
-                <input id="paymentDays" type="text" inputmode="decimal" placeholder="Ex.: 30" autocomplete="off" />
-                <span class="input-affix input-suffix" aria-hidden="true">dias</span>
-              </div>
-            </div>
-            <div class="sidebar-field">
-              <label for="monthlyCapitalRate">Custo do capital/mês</label>
-              <div class="sidebar-input-wrap has-suffix">
-                <input id="monthlyCapitalRate" type="text" inputmode="decimal" placeholder="Ex.: 2,5" autocomplete="off" />
-                <span class="input-affix input-suffix" aria-hidden="true">%</span>
-              </div>
-            </div>
-            <div class="sidebar-grid sidebar-grid--two">
-              <div class="sidebar-field"><label for="discountRate">Desconto planejado percentual <span>(opcional)</span></label><div class="sidebar-input-wrap has-suffix"><input id="discountRate" type="text" inputmode="decimal" placeholder="Ex.: 10" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">%</span></div></div>
-              <div class="sidebar-field"><label for="fixedDiscountAmount">Ou desconto fixo <span>(opcional)</span></label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="fixedDiscountAmount" type="text" inputmode="decimal" placeholder="Ex.: 5,00" autocomplete="off" /></div></div>
-            </div>
-            <p class="helper-text">O desconto é comercial: não reduz custos nem a margem desejada. Escolha somente uma forma.</p>
-          </div>
-          <footer class="pricing-step-actions is-last">
-            <button class="pricing-step-button secondary-button" type="button" data-pricing-go="market"><span aria-hidden="true">←</span> Anterior</button>
-          </footer>
-        </section>
         </div>
       </aside>
 
