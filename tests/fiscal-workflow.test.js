@@ -58,12 +58,13 @@ function workflow() {
   }
   const document = { querySelector(selector) { if (!nodes.has(selector)) nodes.set(selector, node()); return nodes.get(selector); }, createElement: node };
   const $ = (selector) => document.querySelector(selector);
-  const elements = Object.fromEntries(["ncmCode", "productOrigin", "countryOfOrigin", "originState", "destinationState", "taxRegime", "cfop", "taxSituation", "customerType", "operationPurpose"].map((id) => [id, $(`#${id}`)]));
+  const elements = Object.fromEntries(["ncmCode", "productOrigin", "countryOfOrigin", "originState", "destinationState", "taxRegime", "cfop", "taxSituation", "customerType", "operationPurpose", "marketReferenceRule", "marketPrice"].map((id) => [id, $(`#${id}`)]));
   const context = vm.createContext({
     $, document, elements, state: { taxAvailability: taxProvider.health(), countryOfOrigin: "" },
-    ncmSearchRevision: 0, ncmLookupRevision: 0, marketSearchRevision: 0,
+    ncmSearchRevision: 0, ncmLookupRevision: 0, marketSearchRevision: 0, manualMarketValue: null,
     normalizeProductForFiscalSearch, isRelevantFiscalNcm, normalizeNcmDescription, normalizeFiscalState, marketTaxError, marketTaxPrerequisiteError, ApiError,
     taxService: new TaxService({ apiClient: api }), api,
+    clearMarketReference() {}, window: { sessionStorage: {} },
     market: { async search(query) {
       marketQueries.push(query);
       return { query, items: [{ id: "min", title: "Menor", price: 100 }, { id: "max", title: "Maior", price: 8_899 }, { id: "mid", title: "Intermediário", price: 700 }], stats: { count: 3, min: 100, max: 8_899, average: 3_233, median: 700 } };
@@ -71,7 +72,7 @@ function workflow() {
     render() { context.renderProductOriginFields(); context.renderNcmState(); renderIncompleteDashboard(document, context.marketStateForRender(), {}); },
     setMarketError(_query, error) { throw error; },
   });
-  for (const name of ["emptyFocusState", "emptyNcmSearchState", "emptyMarketState", "emptyMarketTaxState", "currentFiscalClassification", "fiscalCategoryLabel", "normalizeCountryOfOrigin", "clearProductOriginGeography", "renderProductOriginFields", "prepareFiscalClassification", "currentMarketTaxContext", "marketTaxSignature", "marketStateForRender", "maximumMarketItem", "messageFor", "ncmSearchErrorMessage", "renderNcmState", "searchNcmSuggestions", "lookupNcm", "resetNcmClassification", "setMarketTaxError", "maybeCalculateMaximumTaxes", "calculateMaximumTaxes", "searchMarket"]) {
+  for (const name of ["emptyFocusState", "emptyNcmSearchState", "emptyMarketState", "emptyMarketTaxState", "currentFiscalClassification", "fiscalCategoryLabel", "normalizeCountryOfOrigin", "clearProductOriginGeography", "renderProductOriginFields", "prepareFiscalClassification", "currentMarketTaxContext", "marketTaxSignature", "marketStateForRender", "maximumMarketItem", "minimumMarketItem", "marketTaxTargets", "messageFor", "ncmSearchErrorMessage", "renderNcmState", "searchNcmSuggestions", "lookupNcm", "resetNcmClassification", "setMarketTaxError", "maybeCalculateMarketTaxes", "calculateMarketTaxes", "searchMarket"]) {
     const start = mainSource.search(new RegExp(`^(?:async )?function ${name}\\(`, "m"));
     assert.ok(start >= 0, name);
     const remainder = mainSource.slice(start);
@@ -128,7 +129,7 @@ test("iPhone, bolo, notebook e televisão têm NCM relevante e estimativa IBPT",
   }
 });
 
-test("fluxo completo preserva a pesquisa, confirma NCM e estima exclusivamente o maior", async () => {
+test("fluxo completo preserva a pesquisa, confirma NCM e estima os extremos sem seleção", async () => {
   const w = workflow();
   await w.begin();
   assert.deepEqual(w.marketQueries, ["iPhone 15 Pro Max"]);
@@ -145,15 +146,19 @@ test("fluxo completo preserva a pesquisa, confirma NCM e estima exclusivamente o
   const originalStats = JSON.stringify(w.context.marketState.stats);
   w.selectOrigin("nacional");
   await settle(() => w.context.marketState.tax.status === "success");
-  const request = w.requests.find((candidate) => candidate.path === "/tax/estimate");
-  assert.deepEqual(request.body, {
-    ncm: phone.codigo,
-    productOrigin: "nacional",
-    unitValue: 8_899,
-    classificationId: w.session.fiscalNcmConfirmation.classificationId,
-    originalQuery: "iPhone 15 Pro Max",
-    normalizedQuery: "telefone celular smartphone",
-  });
+  const requests = w.requests.filter((candidate) => candidate.path === "/tax/estimate");
+  assert.deepEqual(requests.map((request) => request.body.unitValue), [100, 8_899]);
+  for (const request of requests) assert.deepEqual(request.body, {
+      ncm: phone.codigo,
+      productOrigin: "nacional",
+      unitValue: request.body.unitValue,
+      classificationId: w.session.fiscalNcmConfirmation.classificationId,
+      originalQuery: "iPhone 15 Pro Max",
+      normalizedQuery: "telefone celular smartphone",
+    });
+  assert.equal(w.context.marketState.tax.mode, "extremes");
+  assert.equal(w.context.marketState.tax.calculations.minimum.marketPrice, 100);
+  assert.equal(w.context.marketState.tax.calculations.maximum.marketPrice, 8_899);
   assert.equal(w.context.marketState.tax.result.total, 11_558.02);
   assert.equal(w.context.marketState.items.find((item) => item.id === "max").price, 8_899);
   assert.equal(JSON.stringify(w.context.marketState.stats), originalStats);
@@ -183,7 +188,7 @@ test("alternar a origem troca UF por país, limpa o estado anterior e preserva i
   assert.equal(w.context.state.countryOfOrigin, "");
   assert.notEqual(w.context.marketState.tax.signature, nationalSignature);
   assert.match(w.$("#marketStats").innerHTML, /País de origem necessário/);
-  assert.equal(w.requests.filter((request) => request.path === "/tax/estimate").length, 1);
+  assert.equal(w.requests.filter((request) => request.path === "/tax/estimate").length, 2);
 
   w.selectCountry("  China  ");
   await settle(() => w.context.marketState.tax.status === "success" && w.context.marketState.tax.signature !== nationalSignature);
@@ -191,7 +196,7 @@ test("alternar a origem troca UF por país, limpa o estado anterior e preserva i
   assert.equal(w.context.currentMarketTaxContext().countryOfOrigin, "China");
   assert.equal(w.context.marketState.tax.result.rates.federal, 24.57);
   assert.equal(w.context.marketState.tax.result.total, 12_153.36);
-  assert.equal(w.requests.filter((request) => request.path === "/tax/estimate").length, 2);
+  assert.equal(w.requests.filter((request) => request.path === "/tax/estimate").length, 4);
   assert.equal("countryOfOrigin" in w.requests.at(-1).body, false);
 
   w.selectOrigin("nacional");
@@ -199,6 +204,32 @@ test("alternar a origem troca UF por país, limpa o estado anterior e preserva i
   assert.equal(w.$("#countryOfOriginField").hidden, true);
   assert.equal(w.context.elements.countryOfOrigin.value, "");
   assert.equal(w.context.state.countryOfOrigin, "");
+});
+
+test("seleção troca a base tributária e remoção restaura automaticamente os extremos", async () => {
+  const w = workflow();
+  await w.begin();
+  await w.context.lookupNcm(phone.codigo);
+  w.selectOrigin("nacional");
+  await settle(() => w.context.marketState.tax.status === "success");
+
+  const selectedItem = w.context.marketState.items.find((item) => item.id === "mid");
+  w.context.marketState = { ...w.context.marketState, selectedItem, tax: w.context.emptyMarketTaxState() };
+  await w.context.maybeCalculateMarketTaxes();
+  await settle(() => w.context.marketState.tax.status === "success");
+  assert.equal(w.context.marketState.tax.mode, "selected");
+  assert.deepEqual(Object.keys(w.context.marketState.tax.calculations), ["selected"]);
+  assert.equal(w.context.marketState.tax.calculations.selected.marketPrice, 700);
+  assert.equal(w.requests.filter((request) => request.path === "/tax/estimate").at(-1).body.unitValue, 700);
+  assert.match(w.$("#marketStats").innerHTML, /Baseado no produto selecionado/);
+
+  w.context.marketState = { ...w.context.marketState, selectedItem: null, tax: w.context.emptyMarketTaxState() };
+  await w.context.maybeCalculateMarketTaxes();
+  await settle(() => w.context.marketState.tax.status === "success");
+  assert.equal(w.context.marketState.tax.mode, "extremes");
+  assert.deepEqual(Object.keys(w.context.marketState.tax.calculations), ["minimum", "maximum"]);
+  assert.deepEqual(w.requests.filter((request) => request.path === "/tax/estimate").slice(-2).map((request) => request.body.unitValue), [100, 8_899]);
+  assert.match(w.$("#marketStats").innerHTML, /Baseado nos extremos da pesquisa/);
 });
 
 test("mudar categoria ou NCM invalida a estimativa anterior", async () => {

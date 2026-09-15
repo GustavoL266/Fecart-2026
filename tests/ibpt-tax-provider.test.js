@@ -75,7 +75,7 @@ test("decodifica conteúdo Windows-1252 sem exigir UTF-8", () => {
 test("serviço do navegador envia somente os dados da estimativa local", async () => {
   let request;
   const service = new TaxService({ apiClient: { async post(path, body) { request = { path, body }; return {}; } } });
-  await service.calculateMaximum({ ncm: "85171300", productOrigin: "nacional", unitValue: 100, classificationId: "proof", originalQuery: "iPhone", normalizedQuery: "telefone celular smartphone" });
+  await service.calculateForPrice({ ncm: "85171300", productOrigin: "nacional", unitValue: 100, classificationId: "proof", originalQuery: "iPhone", normalizedQuery: "telefone celular smartphone" });
   assert.deepEqual(request, { path: "/tax/estimate", body: { ncm: "85171300", productOrigin: "nacional", unitValue: 100, classificationId: "proof", originalQuery: "iPhone", normalizedQuery: "telefone celular smartphone" } });
 });
 

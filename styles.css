@@ -787,7 +787,7 @@ input[type="range"] {
   margin-bottom: 16px;
 }
 
-.market-stats div {
+.market-stats > div {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px;
@@ -3997,7 +3997,7 @@ tr:last-child td {
   margin: 0;
 }
 
-.market-dashboard-section .market-stats div {
+.market-dashboard-section .market-stats > div {
   min-height: 82px;
   background: color-mix(in srgb, var(--surface) 45%, var(--panel));
 }
@@ -4018,6 +4018,10 @@ tr:last-child td {
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  grid-column: 1 / -1;
+  gap: 14px;
+  min-height: 0;
+  padding: 18px;
 }
 
 .market-dashboard-section .market-tax-stat.is-success {
@@ -4027,6 +4031,196 @@ tr:last-child td {
 
 .market-dashboard-section .market-tax-stat.is-error {
   border-color: color-mix(in srgb, var(--red) 45%, var(--line));
+}
+
+.market-tax-mode-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.market-tax-mode-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.market-tax-mode-heading span,
+.market-tax-selected-title span,
+.market-tax-summary-metric span,
+.market-tax-scenario-card span,
+.market-tax-shared-rate span {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  line-height: 1.3;
+}
+
+.market-tax-mode-heading strong {
+  font-size: 1rem !important;
+  line-height: 1.25;
+}
+
+.market-tax-mode-badge {
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--green) 45%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--green-soft) 75%, var(--panel));
+  color: var(--green) !important;
+  padding: 6px 9px;
+}
+
+.market-tax-selected-title {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.market-tax-selected-title strong {
+  font-size: 1rem !important;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.market-tax-summary-grid,
+.market-tax-detail-selected {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.market-tax-detail-selected {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.market-tax-summary-metric {
+  display: grid;
+  align-content: space-between;
+  gap: 9px;
+  min-width: 0;
+  min-height: 78px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 8px !important;
+  background: color-mix(in srgb, var(--panel) 82%, transparent) !important;
+  padding: 11px !important;
+}
+
+.market-tax-summary-metric strong {
+  font-size: 1rem !important;
+}
+
+.market-tax-summary-metric.is-total {
+  border-color: color-mix(in srgb, var(--green) 55%, var(--line)) !important;
+  background: color-mix(in srgb, var(--green-soft) 72%, var(--panel)) !important;
+}
+
+.market-tax-summary-metric.is-total strong {
+  color: var(--green);
+}
+
+.market-tax-extremes-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.market-tax-shared-rate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 9px;
+}
+
+.market-tax-shared-rate strong {
+  font-size: 0.9rem !important;
+}
+
+.market-tax-scenarios,
+.market-tax-detail-scenarios {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.market-tax-scenario-card {
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  padding: 12px;
+}
+
+.market-tax-scenario-card > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.market-tax-scenario-card > div:first-child strong {
+  font-size: 0.84rem !important;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.market-tax-scenario-card dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.market-tax-scenario-card dl > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.market-tax-scenario-card dt,
+.market-tax-scenario-card dd {
+  margin: 0;
+  font-size: 0.76rem;
+}
+
+.market-tax-scenario-card dt {
+  color: var(--muted);
+}
+
+.market-tax-scenario-card dd {
+  color: var(--ink);
+  font-weight: 800;
+  text-align: right;
+}
+
+.market-tax-scenario-card .is-total {
+  border-top: 1px solid var(--line);
+  padding-top: 7px;
+}
+
+.market-tax-scenario-card .is-total dd {
+  color: var(--green);
+}
+
+.market-tax-source {
+  margin: 0 !important;
+}
+
+.market-tax-state-message {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.market-tax-state-message strong {
+  font-size: 0.95rem !important;
+}
+
+.market-tax-state-message small {
+  margin: 0 !important;
 }
 
 .market-tax-card-metrics {
@@ -4175,6 +4369,13 @@ tr:last-child td {
   color: var(--green);
   font-size: 1.08rem;
   padding-top: 5px;
+}
+
+.market-tax-rate-details {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  padding: 12px;
 }
 
 .market-tax-origin-section {
@@ -4822,6 +5023,11 @@ tr:last-child td {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .market-tax-summary-grid,
+  .market-tax-detail-selected {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .summary-card,
   .summary-card-primary,
   .summary-card-primary + .summary-card,
@@ -4868,6 +5074,21 @@ tr:last-child td {
 
   .market-dashboard-section .market-stats {
     grid-template-columns: 1fr;
+  }
+
+  .market-tax-summary-grid,
+  .market-tax-detail-selected,
+  .market-tax-scenarios,
+  .market-tax-detail-scenarios {
+    grid-template-columns: 1fr;
+  }
+
+  .market-tax-mode-heading {
+    display: grid;
+  }
+
+  .market-tax-mode-badge {
+    width: fit-content;
   }
 
   .ncm-suggestion-list li {

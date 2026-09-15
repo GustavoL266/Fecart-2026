@@ -30,10 +30,9 @@ test("dashboard lê o resultado canônico e distingue produto individual", () =>
   assert.equal(document.nodes.get("#marketPanel").hidden, false);
   assert.match(document.nodes.get("#marketDashboardStatus").textContent, /2 referências encontradas/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /Média/);
-  assert.match(document.nodes.get("#marketStats").innerHTML, /Maior \+ tributos/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Baseado no produto selecionado/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /NCM necessário/);
-  assert.match(document.nodes.get("#marketStats").innerHTML, /Produto alternativo/);
-  assert.match(document.nodes.get("#marketStats").innerHTML, /Preço de mercado: R\$\s32,00/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Produto principal/);
   assert.doesNotMatch(document.nodes.get("#marketStats").innerHTML, /Fonte fiscal: Focus NFe/);
   assert.match(document.nodes.get("#marketResults").innerHTML, /Produto principal/);
   assert.match(document.nodes.get("#marketResults").innerHTML, /Referência selecionada/);
@@ -42,22 +41,26 @@ test("dashboard lê o resultado canônico e distingue produto individual", () =>
   assert.match(document.nodes.get("#primaryMarketSource").textContent, /Produto principal.*Loja Exemplo.*Google Shopping/);
 });
 
-test("dashboard atualiza Maior + tributos estimados com os componentes IBPT", () => {
+test("sem seleção, dashboard compara menor e maior preço com os componentes IBPT", () => {
+  const minimum = { id: "produto-minimo", title: "Produto mínimo", price: 100, source: "Loja", seller: "Loja", currency: "BRL", url: "https://example.com/min" };
   const maximum = { id: "produto-maximo", title: "Produto máximo", price: 100, source: "Loja", seller: "Loja", currency: "BRL", url: "https://example.com/max" };
+  maximum.price = 200;
   const result = calculatePricing(inputs, null);
   const document = documentStub();
   renderDashboard(document, result, {
     status: "success",
     query: "Produto máximo",
-    items: [maximum],
-    stats: { count: 1, average: 100, median: 100, min: 100, max: 100 },
+    items: [minimum, maximum],
+    stats: { count: 2, average: 150, median: 150, min: 100, max: 200 },
     marketplace: "Google Shopping",
     taxContext: { ncm: "09012100", ncmConfirmed: true, productOrigin: "nacional", originState: "SP", destinationState: "RJ" },
     taxAvailability: { provider: "IBPT", configured: true, version: "26.2.A" },
     tax: {
       status: "success",
+      mode: "extremes",
       expanded: true,
-      result: {
+      calculations: {
+        minimum: {
         marketPrice: 100,
         total: 131.45,
         estimatedTaxes: 31.45,
@@ -68,13 +71,32 @@ test("dashboard atualiza Maior + tributos estimados com os componentes IBPT", ()
         validFrom: "20/08/2026",
         validTo: "30/09/2026",
         rates: { federal: 13.45, state: 18, municipal: 0, total: 31.45 },
+        },
+        maximum: {
+          marketPrice: 200,
+          total: 262.9,
+          estimatedTaxes: 62.9,
+          ncm: "09012100",
+          productOrigin: "nacional",
+          source: "IBPT / Empresômetro",
+          version: "26.2.A",
+          validFrom: "20/08/2026",
+          validTo: "30/09/2026",
+          rates: { federal: 13.45, state: 18, municipal: 0, total: 31.45 },
+        },
       },
     },
   }, new ConfiguredTaxRuleEngine().assess(inputs));
 
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Baseado nos extremos da pesquisa/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Menor preço \+ tributos/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Maior preço \+ tributos/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s131,45/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s262,90/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /IBPT \/ Empresômetro/);
-  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Maior/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Comparação tributária/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Menor preço \+ tributos/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Maior preço \+ tributos/);
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Carga tributária estimada/);
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Tributos estimados/);
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Versão: 26\.2\.A/);
@@ -94,13 +116,15 @@ test("detalhamento importado mostra país sem alterar a origem tributária do IB
     query: "Produto importado",
     items: [maximum],
     stats: { count: 1, average: 100, median: 100, min: 100, max: 100 },
+    selectedItem: maximum,
     marketplace: "Google Shopping",
     taxContext: { ncm: "09012100", ncmConfirmed: true, productOrigin: "importado", countryOfOrigin: "China", destinationState: "RJ" },
     taxAvailability: { provider: "IBPT", configured: true, version: "26.2.A" },
     tax: {
       status: "success",
+      mode: "selected",
       expanded: true,
-      result: {
+      calculations: { selected: {
         marketPrice: 100,
         total: 142.57,
         estimatedTaxes: 42.57,
@@ -111,10 +135,13 @@ test("detalhamento importado mostra país sem alterar a origem tributária do IB
         validFrom: "20/08/2026",
         validTo: "30/09/2026",
         rates: { federal: 24.57, state: 18, municipal: 0, total: 42.57 },
-      },
+      } },
     },
   }, new ConfiguredTaxRuleEngine().assess(inputs));
 
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Baseado no produto selecionado/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Preço base/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Total com tributos/);
   const details = document.nodes.get("#marketTaxDetails").innerHTML;
   assert.match(details, /Origem do produto<\/dt><dd>Importado \(Fora do País\)/);
   assert.match(details, /País de origem<\/dt><dd>China/);

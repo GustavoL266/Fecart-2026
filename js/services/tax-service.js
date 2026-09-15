@@ -37,7 +37,7 @@ export class TaxService {
     this.#api = apiClient;
   }
 
-  calculateMaximum({ ncm, productOrigin, unitValue, classificationId, originalQuery, normalizedQuery }) {
+  calculateForPrice({ ncm, productOrigin, unitValue, classificationId, originalQuery, normalizedQuery }) {
     return this.#api.post("/tax/estimate", {
       ncm,
       productOrigin,

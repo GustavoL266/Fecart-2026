@@ -27,16 +27,31 @@ test("país de origem possui estado separado e não altera o payload enviado ao 
   assert.match(main, /countryOfOrigin:\s*""/);
   assert.match(main, /countryOfOrigin:\s*elements\.productOrigin\.value === "importado" \? state\.countryOfOrigin : ""/);
   assert.match(main, /elements\.countryOfOrigin\.addEventListener\("change"/);
-  assert.doesNotMatch(main.match(/taxService\.calculateMaximum\(\{[\s\S]*?\}\);/)?.[0] || "", /countryOfOrigin/);
+  assert.doesNotMatch(main.match(/taxService\.calculateForPrice\(\{[\s\S]*?\}\);/)?.[0] || "", /countryOfOrigin/);
 });
 
-test("card e detalhamento mostram carga, tributos, total, fonte, versão e vigência", () => {
-  for (const label of ["Maior + tributos estimados", "Carga tributária estimada", "Tributos estimados", "IBPT / Empresômetro", "Versão:", "Vigência:"]) {
+test("card e detalhamento mostram os modos selecionado e extremos com os dados tributários", () => {
+  for (const label of ["Baseado no produto selecionado", "Baseado nos extremos da pesquisa", "Menor preço + tributos", "Maior preço + tributos", "Carga tributária estimada", "Tributos estimados", "Fonte:", "Versão:", "Vigência:"]) {
     assert.match(dashboard, new RegExp(label.replace(/[+]/g, "\\+")));
   }
-  assert.match(dashboard, /tax\.result\.rates\.total/);
-  assert.match(dashboard, /tax\.result\.estimatedTaxes/);
-  assert.match(dashboard, /market-tax-card-metrics/);
+  assert.match(dashboard, /calculations\.selected/);
+  assert.match(dashboard, /calculations\.minimum/);
+  assert.match(dashboard, /calculations\.maximum/);
+  assert.match(dashboard, /market-tax-summary-grid/);
+});
+
+test("selecionar, remover ou iniciar outra pesquisa invalida a base tributária anterior", () => {
+  const selectStart = main.indexOf("function selectMarketProduct");
+  const selectEnd = main.indexOf("function restoreManualMarket", selectStart);
+  const restoreEnd = main.indexOf("function toggleMarketTaxDetails", selectEnd);
+  const searchStart = main.indexOf("async function searchMarket");
+  const searchEnd = main.indexOf("function selectMarketProduct", searchStart);
+
+  for (const flow of [main.slice(selectStart, selectEnd), main.slice(selectEnd, restoreEnd)]) {
+    assert.match(flow, /tax:\s*emptyMarketTaxState\(\)/);
+    assert.match(flow, /maybeCalculateMarketTaxes\(\)/);
+  }
+  assert.match(main.slice(searchStart, searchEnd), /selectedItem:\s*null/);
 });
 
 test("confirmação de NCM mostra somente status, código, categoria e alteração", () => {
