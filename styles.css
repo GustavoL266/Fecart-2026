@@ -92,7 +92,6 @@ body {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: var(--surface);
   color: var(--ink);
-  overflow-x: hidden;
 }
 
 button,
@@ -5580,5 +5579,291 @@ tr:last-child td {
 
   .primary-price-sustainable {
     grid-column: auto;
+  }
+}
+
+/*
+ * Responsividade orientada pelo espaco disponivel.
+ * O zoom do navegador reduz a viewport CSS naturalmente; o layout responde a
+ * essa largura sem escala artificial nem leitura do nivel de zoom em JavaScript.
+ */
+html,
+body {
+  max-inline-size: 100%;
+}
+
+:where(
+  .app-shell,
+  .pricing-sidebar,
+  .pricing-tab-content,
+  .workspace,
+  .dashboard-view,
+  .detail-page,
+  .history-view,
+  .about-view,
+  .about-content,
+  .auth-view,
+  .auth-card,
+  .market-dashboard-section,
+  .market-dashboard-section > *,
+  .dashboard-summary-grid,
+  .detail-visual-grid,
+  .detail-information-grid,
+  .table-panel,
+  .modal-dialog,
+  .modal-dialog form
+) {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+:where(input, select, textarea, button) {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+:where(img, svg, video) {
+  max-inline-size: 100%;
+}
+
+/* A lateral continua independente no desktop, mas nunca toma o dashboard inteiro. */
+.app-shell {
+  grid-template-columns:
+    clamp(20rem, var(--pricing-panel-width, 24rem), min(38.75rem, 34vw))
+    0.625rem
+    minmax(0, 1fr);
+  inline-size: 100%;
+}
+
+.pricing-sidebar {
+  inline-size: 100%;
+  scrollbar-gutter: stable;
+}
+
+.workspace {
+  align-content: start;
+  padding: clamp(1.25rem, 2.3vw, 2.25rem);
+}
+
+.topbar,
+.history-topbar,
+.about-topbar,
+.market-dashboard-heading,
+.dialog-header {
+  flex-wrap: wrap;
+}
+
+.topbar > :first-child,
+.history-topbar > :first-child,
+.market-dashboard-heading > :first-child,
+.dialog-header > :first-child {
+  flex: 1 1 18rem;
+}
+
+.user-menu,
+.product-actions,
+.dialog-actions,
+.dialog-detail-actions {
+  max-inline-size: 100%;
+}
+
+.decision-grid,
+.lower-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+}
+
+.dashboard-summary-grid {
+  container: dashboard-summary / inline-size;
+}
+
+.market-dashboard-section {
+  container: market-dashboard / inline-size;
+}
+
+.detail-page {
+  container: detail-content / inline-size;
+}
+
+.pricing-tabs,
+.detail-table-scroll,
+.about-flow {
+  max-inline-size: 100%;
+  overscroll-behavior-inline: contain;
+}
+
+.table-panel {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.modal-dialog,
+.profile-dialog {
+  inline-size: min(47.5rem, calc(100% - 2rem));
+  max-inline-size: calc(100% - 2rem);
+  max-block-size: calc(100dvh - 2rem);
+  margin: auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.modal-dialog:not(.profile-dialog):not(.ai-assistant-dialog) {
+  inline-size: min(40.625rem, calc(100% - 2rem));
+}
+
+@container dashboard-summary (max-width: 72rem) {
+  .summary-card {
+    grid-column: span 6;
+  }
+
+  .summary-card-primary,
+  .summary-card-primary + .summary-card,
+  .summary-card-alerts {
+    grid-column: 1 / -1;
+  }
+}
+
+@container dashboard-summary (max-width: 40rem) {
+  .summary-card,
+  .summary-card-primary,
+  .summary-card-primary + .summary-card,
+  .summary-card-primary.has-market-reference ~ .summary-card,
+  .summary-card-alerts {
+    grid-column: 1 / -1;
+    min-height: 0;
+  }
+
+  .primary-price-grid,
+  .summary-primary-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .summary-primary-actions {
+    display: grid;
+    align-items: stretch;
+  }
+}
+
+@container market-dashboard (max-width: 66rem) {
+  .market-dashboard-section .market-results {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .market-tax-summary-grid,
+  .market-tax-detail-selected {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container market-dashboard (max-width: 42rem) {
+  .market-dashboard-heading,
+  .market-tax-mode-heading {
+    display: grid;
+  }
+
+  .market-provider-label,
+  .market-tax-mode-badge {
+    inline-size: fit-content;
+  }
+
+  .market-dashboard-section .market-results,
+  .market-tax-summary-grid,
+  .market-tax-detail-selected,
+  .market-tax-scenarios,
+  .market-tax-detail-scenarios {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .market-tax-shared-rate,
+  .market-tax-scenario-card dl > div {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .market-tax-scenario-card dd {
+    text-align: left;
+  }
+}
+
+@container detail-content (max-width: 64rem) {
+  .detail-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detail-visual-grid,
+  .detail-information-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container detail-content (max-width: 42rem) {
+  .detail-hero,
+  .detail-metric-grid,
+  .donut-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .detail-hero-margin {
+    min-inline-size: 0;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+    padding: 1.25rem 0 0;
+  }
+}
+
+/*
+ * Modo compacto: equivale ao espaco que aparece em notebooks ou com zoom alto.
+ * Mantem a navegacao desktop, empilha a lateral e libera toda a largura ao resumo.
+ */
+@media (max-width: 75rem) and (min-width: 56.3125rem) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pricing-panel-resizer {
+    display: none;
+  }
+
+  .pricing-sidebar,
+  .app-shell .pricing-sidebar {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    box-shadow: none;
+    padding: 1.5rem clamp(1.25rem, 3vw, 2rem) 1.75rem;
+  }
+
+  .sidebar-sticky-top,
+  .pricing-sidebar .sidebar-header {
+    position: static;
+  }
+
+  .workspace > .topbar {
+    align-items: flex-start;
+  }
+
+  .workspace > .topbar .user-menu {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+
+  .history-controls {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 56.25rem) {
+  .history-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .modal-dialog,
+  .profile-dialog,
+  .modal-dialog:not(.profile-dialog):not(.ai-assistant-dialog) {
+    inline-size: calc(100% - 1.5rem);
+    max-inline-size: calc(100% - 1.5rem);
+    max-block-size: calc(100dvh - 1.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   }
 }
