@@ -5629,7 +5629,7 @@ body {
 /* A lateral continua independente no desktop, mas nunca toma o dashboard inteiro. */
 .app-shell {
   grid-template-columns:
-    clamp(20rem, var(--pricing-panel-width, 24rem), min(38.75rem, 34vw))
+    clamp(17.5rem, var(--pricing-panel-width, 24rem), min(38.75rem, 30vw))
     0.625rem
     minmax(0, 1fr);
   inline-size: 100%;
@@ -5637,6 +5637,10 @@ body {
 
 .pricing-sidebar {
   inline-size: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   scrollbar-gutter: stable;
 }
 
@@ -5810,36 +5814,8 @@ body {
   }
 }
 
-/*
- * Modo compacto: equivale ao espaco que aparece em notebooks ou com zoom alto.
- * Mantem a navegacao desktop, empilha a lateral e libera toda a largura ao resumo.
- */
+/* Ajustes internos compactos sem antecipar o empilhamento do shell desktop. */
 @media (max-width: 75rem) and (min-width: 56.3125rem) {
-  .app-shell {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .pricing-panel-resizer {
-    display: none;
-  }
-
-  .pricing-sidebar,
-  .app-shell .pricing-sidebar {
-    height: auto;
-    min-height: 0;
-    max-height: none;
-    overflow: visible;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-    box-shadow: none;
-    padding: 1.5rem clamp(1.25rem, 3vw, 2rem) 1.75rem;
-  }
-
-  .sidebar-sticky-top,
-  .pricing-sidebar .sidebar-header {
-    position: static;
-  }
-
   .workspace > .topbar {
     align-items: flex-start;
   }
