@@ -15,12 +15,14 @@ function marketLabel(market) {
 
 function renderExplanation(document, result) {
   const explanations = [
-    `Matéria-prima ajustada: ${dashboardMoney(result.adjustedMaterialCost)} (${percent(result.inputs.wasteRate)} de desperdício).`,
-    `Custo direto: ${dashboardMoney(result.directCost)}; custo indireto: ${dashboardMoney(result.indirectCost)}, rateado por ${result.inputs.expectedMonthlyUnits.toLocaleString("pt-BR")} unidade(s)/mês.`,
+    `Insumos: ${dashboardMoney(result.inputs.materialCost)}; perdas e desperdício: ${dashboardMoney(result.wasteCost)} (${percent(result.inputs.wasteRate)}).`,
+    `Frete da empresa por unidade: ${dashboardMoney(result.freightCostPerUnit)}; mão de obra direta: ${dashboardMoney(result.directLaborCost)}; taxa fixa por unidade: ${dashboardMoney(result.fixedSaleFeePerUnit)}.`,
+    `Custo direto: ${dashboardMoney(result.directCost)}; custos mensais rateados: ${dashboardMoney(result.indirectCost)} pelo método ${result.inputs.allocationMethod}.`,
     `Ciclo financeiro: ${result.financedDays.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} dia(s); base financiada: ${dashboardMoney(result.financedBase)}; taxa do período: ${percent(result.periodCapitalRate)}; custo financeiro: ${dashboardMoney(result.financialCost)}.`,
-    `Despesas percentuais: ${percent(result.saleExpenseRate)}; margem desejada: ${percent(result.desiredNetMargin)}; preço bruto: ${dashboardMoney(result.technicalPriceRaw)}; preço técnico arredondado para cima: ${dashboardMoney(result.technicalPrice)}.`,
+    `Preço de equilíbrio: ${dashboardMoney(result.breakEvenPrice)}. Despesas percentuais: ${percent(result.saleExpenseRate)}; margem desejada: ${percent(result.desiredNetMargin)}; preço recomendado: ${dashboardMoney(result.technicalPrice)}. Fórmula: custo completo ÷ (1 − despesas − margem).`,
   ];
-  if (result.market.price) explanations.push(`${marketLabel(result.market)}: ${dashboardMoney(result.market.price)}; diferença para o preço técnico: ${dashboardMoney(result.market.difference)} (${percent(result.market.differenceRate)}).`);
+  if (result.minimumMarginPrice !== null) explanations.push(`Margem mínima: ${percent(result.minimumMargin)}; preço mínimo comercial: ${dashboardMoney(result.minimumMarginPrice)}. Este valor não é o preço de equilíbrio.`);
+  if (result.market.price) explanations.push(`${marketLabel(result.market)}: ${dashboardMoney(result.market.price)}; diferença para o preço recomendado: ${dashboardMoney(result.market.difference)} (${percent(result.market.differenceRate)}). Essa referência não alterou o cálculo.`);
   if (result.discount.type !== "none") explanations.push(`Estratégia de desconto ${result.discount.type === "percentage" ? "percentual" : "fixo"}: preço anunciado ${dashboardMoney(result.discount.advertisedPrice)}, desconto ${dashboardMoney(result.discount.discountAmount)} e preço após desconto ${dashboardMoney(result.discount.postDiscountPrice)}.`);
   document.querySelector("#explanationList").innerHTML = explanations.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
 }
@@ -33,10 +35,11 @@ function renderCostTable(document, result) {
 function renderAlerts(document, result, assessment) {
   const alerts = [];
   if (result.financedDays > 0) alerts.push(["warning", `O ciclo financeiro acrescenta ${dashboardMoney(result.financialCost)} por unidade.`]);
-  if (result.inputs.productionCapacity && result.inputs.productionCapacity.monthlyCapacity < result.inputs.expectedMonthlyUnits) alerts.push(["warning", "A capacidade produtiva informada é menor que a quantidade mensal usada no rateio. O preço não foi alterado por isso."]);
-  if (result.market.price && result.market.difference < 0) alerts.push(["risk", `O preço técnico está ${dashboardMoney(Math.abs(result.market.difference))} acima da referência de mercado. A referência não altera o preço técnico.`]);
+  if (result.inputs.capitalRateSource === "estimated") alerts.push(["warning", "O custo mensal do capital foi informado como estimativa. Revise-o quando tiver um valor validado."]);
+  if (result.inputs.capitalRateSource === "zero") alerts.push(["warning", "O custo mensal do capital está em 0% porque você informou que não sabe o percentual."]);
+  if (result.market.price && result.market.difference < 0) alerts.push(["risk", `O preço recomendado está ${dashboardMoney(Math.abs(result.market.difference))} acima da referência de mercado. A referência não altera o cálculo.`]);
   if (assessment.focusUnavailable) alerts.push(["warning", "A Focus NFe está indisponível; a carga tributária continua manual e não foi alterada."]);
-  alerts.push(["warning", "A carga tributária é estimada manualmente. A Focus NFe valida NCM, mas não calcula alíquotas."]);
+  alerts.push(["warning", "O percentual efetivo de impostos foi informado manualmente. A Focus NFe valida NCM, mas não calcula essa alíquota."]);
   document.querySelector("#alerts").innerHTML = alerts.map(([type, text]) => `<div class="${type}">${escapeHtml(text)}</div>`).join("");
   document.querySelector("#alertCount").textContent = `${alerts.length} ${alerts.length === 1 ? "ponto de atenção" : "pontos de atenção"}`;
   document.querySelector("#alertSummary").textContent = alerts[0][1];
@@ -46,7 +49,7 @@ function renderAlerts(document, result, assessment) {
 function renderFiscalSummary(document, assessment) {
   const ncm = assessment.ncm?.codigo || "não informado";
   const status = assessment.ncmValidation.status === "success" ? `validado pela Focus NFe em ${assessment.ncmValidation.environment}` : "não validado nesta simulação";
-  document.querySelector("#fiscalSummary").innerHTML = `<p><strong>NCM:</strong> ${escapeHtml(ncm)} (${escapeHtml(status)})</p><p><strong>Carga usada:</strong> estimada manualmente; a Focus NFe não calculou qualquer alíquota.</p><p><strong>Tributos ainda dependentes de regra externa:</strong> ${escapeHtml(assessment.unresolvedTaxes.join(", "))}.</p>`;
+  document.querySelector("#fiscalSummary").innerHTML = `<p><strong>NCM:</strong> ${escapeHtml(ncm)} (${escapeHtml(status)})</p><p><strong>Percentual efetivo usado:</strong> informado manualmente, sem alteração silenciosa. A Focus NFe não calculou qualquer alíquota.</p><p><strong>Tributos ainda dependentes de regra externa:</strong> ${escapeHtml(assessment.unresolvedTaxes.join(", "))}.</p>`;
 }
 
 function maximumMarketItemForDisplay(marketState) {
@@ -252,7 +255,8 @@ function renderMarketPanel(document, marketState) {
 
 export function renderIncompleteDashboard(document, marketState, errors) {
   const count = Object.keys(errors).length;
-  ["baseCost", "marketReferencePrice", "suggestedPrice", "profitPerSale", "estimatedMargin", "detailSuggestedPrice", "detailBaseCost", "detailSalesRate", "detailProfit", "detailMargin"].forEach((id) => { const node = document.querySelector(`#${id}`); if (node) node.textContent = "—"; });
+  ["baseCost", "marketReferencePrice", "suggestedPrice", "profitPerSale", "estimatedMargin", "breakEvenPrice", "minimumMarginPrice", "desiredMarginPrice", "advertisedPrice", "postDiscountPrice", "detailSuggestedPrice", "detailBreakEvenPrice", "detailMinimumMarginPrice", "detailDesiredMarginPrice", "detailAdvertisedPrice", "detailPostDiscountPrice", "detailBaseCost", "detailSalesRate", "detailProfit", "detailMargin"].forEach((id) => { const node = document.querySelector(`#${id}`); if (node) node.textContent = "—"; });
+  ["minimumMarginPriceRow", "advertisedPriceRow", "postDiscountPriceRow", "detailMinimumMarginCard", "detailAdvertisedPriceCard", "detailPostDiscountPriceCard"].forEach((id) => { const node = document.querySelector(`#${id}`); if (node) node.hidden = true; });
   document.querySelector("#priceStatus").textContent = "Aguardando dados válidos";
   document.querySelector("#recommendationText").textContent = "Corrija os campos indicados para calcular e salvar.";
   document.querySelector("#marketStatus").textContent = "Mercado é opcional e será comparado quando houver referência válida.";
@@ -281,6 +285,16 @@ export function renderDashboard(document, result, marketState, fiscalAssessment)
     : "Referência opcional não informada";
   document.querySelector("#marketPriceLabel").textContent = marketLabel(market);
   setFinancialValue(document.querySelector("#suggestedPrice"), dashboardMoney(result.technicalPrice));
+  setFinancialValue(document.querySelector("#breakEvenPrice"), dashboardMoney(result.breakEvenPrice));
+  setFinancialValue(document.querySelector("#desiredMarginPrice"), dashboardMoney(result.technicalPrice));
+  const minimumRow = document.querySelector("#minimumMarginPriceRow");
+  minimumRow.hidden = result.minimumMarginPrice === null;
+  setFinancialValue(document.querySelector("#minimumMarginPrice"), dashboardMoney(result.minimumMarginPrice));
+  const hasDiscount = result.discount.type !== "none";
+  document.querySelector("#advertisedPriceRow").hidden = !hasDiscount;
+  document.querySelector("#postDiscountPriceRow").hidden = !hasDiscount;
+  setFinancialValue(document.querySelector("#advertisedPrice"), dashboardMoney(result.discount.advertisedPrice));
+  setFinancialValue(document.querySelector("#postDiscountPrice"), dashboardMoney(result.discount.postDiscountPrice));
   setFinancialValue(document.querySelector("#profitPerSale"), dashboardMoney(result.profitAmount));
   document.querySelector("#estimatedMargin").textContent = percent(result.actualNetMargin);
   const primaryMarketValue = document.querySelector("#primaryMarketValue");
@@ -292,8 +306,8 @@ export function renderDashboard(document, result, marketState, fiscalAssessment)
       ? `${selectedReference.title} · Loja: ${selectedReference.seller || selectedReference.source} · Google Shopping`
       : `${marketLabel(market)} · ${market.source || "Google Shopping"}`
     : "Sem referência de mercado";
-  document.querySelector("#priceStatus").textContent = "Preço técnico";
-  document.querySelector("#recommendationText").textContent = "Preço mínimo sustentável, calculado sem usar mercado ou desconto como custo.";
+  document.querySelector("#priceStatus").textContent = "Preço recomendado";
+  document.querySelector("#recommendationText").textContent = "Margem tratada como percentual do preço de venda. Mercado e desconto não entram como custo.";
   document.querySelector("#marketStatus").textContent = market.price ? `Diferença: ${dashboardMoney(market.difference)} (${percent(market.differenceRate)}).` : "Sem referência de mercado; o cálculo técnico não é bloqueado.";
   const meter = document.querySelector("#marketMeter");
   meter.value = market.price ? Math.min((result.technicalPrice / market.price) * 100, 100) : 0;

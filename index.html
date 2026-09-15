@@ -168,14 +168,14 @@
             <button id="pricing-tab-direct" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-direct" aria-selected="false" tabindex="-1" data-pricing-tab="direct" data-pricing-label="Custos diretos">
               <span class="pricing-tab-status" aria-hidden="true">○</span><span>Diretos</span>
             </button>
-            <button id="pricing-tab-indirect" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-indirect" aria-selected="false" tabindex="-1" data-pricing-tab="indirect" data-pricing-label="Custos indiretos">
-              <span class="pricing-tab-status" aria-hidden="true">○</span><span>Indiretos</span>
+            <button id="pricing-tab-indirect" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-indirect" aria-selected="false" tabindex="-1" data-pricing-tab="indirect" data-pricing-label="Custos fixos">
+              <span class="pricing-tab-status" aria-hidden="true">○</span><span>Fixos</span>
             </button>
             <button id="pricing-tab-production" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-production" aria-selected="false" tabindex="-1" data-pricing-tab="production" data-pricing-label="Produção">
               <span class="pricing-tab-status" aria-hidden="true">○</span><span>Produção</span>
             </button>
-            <button id="pricing-tab-sales" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-sales" aria-selected="false" tabindex="-1" data-pricing-tab="sales" data-pricing-label="Despesas da venda">
-              <span class="pricing-tab-status" aria-hidden="true">○</span><span>Despesas</span>
+            <button id="pricing-tab-sales" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-sales" aria-selected="false" tabindex="-1" data-pricing-tab="sales" data-pricing-label="Taxas e margem">
+              <span class="pricing-tab-status" aria-hidden="true">○</span><span>Taxas</span>
             </button>
             <button id="pricing-tab-terms" class="pricing-tab" type="button" role="tab" aria-controls="pricing-panel-terms" aria-selected="false" tabindex="-1" data-pricing-tab="terms" data-pricing-label="Prazos financeiros">
               <span class="pricing-tab-status" aria-hidden="true">○</span><span>Prazos</span>
@@ -220,53 +220,21 @@
         <section id="pricing-panel-direct" class="control-section pricing-tab-panel" role="tabpanel" aria-labelledby="pricing-tab-direct" data-pricing-panel="direct" hidden>
           <div class="tab-panel-heading">
             <p class="section-title">Custos diretos</p>
-            <p class="section-description">Custos ligados diretamente à fabricação ou entrega do produto.</p>
+            <p class="section-description">Valores por unidade ou por pedido ligados diretamente ao produto.</p>
           </div>
+          <p class="field-group-label">Dados essenciais</p>
           <div class="field-grid">
-            <div class="sidebar-field">
-              <label for="materialCost">Insumos e matéria-prima por unidade</label>
-              <div class="sidebar-input-wrap has-prefix">
-                <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                <input id="materialCost" type="text" inputmode="decimal" placeholder="Ex.: 12,50" autocomplete="off" />
-              </div>
-            </div>
-            <div class="sidebar-field">
-              <label for="wasteRate">Perda e desperdício</label>
-              <div class="sidebar-input-wrap has-suffix">
-                <input id="wasteRate" type="text" inputmode="decimal" placeholder="Ex.: 8" autocomplete="off" />
-                <span class="input-affix input-suffix" aria-hidden="true">%</span>
-              </div>
-            </div>
-            <div class="sidebar-field">
-              <label for="packagingCost">Embalagem e rotulagem</label>
-              <div class="sidebar-input-wrap has-prefix">
-                <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                <input id="packagingCost" type="text" inputmode="decimal" placeholder="Ex.: 2,00" autocomplete="off" />
-              </div>
-            </div>
-            <div class="sidebar-field">
-              <label for="deliveryCost">Frete ou entrega por venda</label>
-              <div class="sidebar-input-wrap has-prefix">
-                <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                <input id="deliveryCost" type="text" inputmode="decimal" placeholder="Ex.: 1,50" autocomplete="off" />
-              </div>
-            </div>
-            <div class="sidebar-grid sidebar-grid--two">
-              <div class="sidebar-field">
-                  <label for="insuranceCost">Seguro <span>(opcional)</span></label>
-                <div class="sidebar-input-wrap has-prefix">
-                  <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                  <input id="insuranceCost" type="text" inputmode="decimal" placeholder="Ex.: 1,00" autocomplete="off" />
-                </div>
-              </div>
-            </div>
-            <div class="sidebar-field">
-              <label for="otherDirectExpenses">Outras despesas diretas <span>(opcional)</span></label>
-              <div class="sidebar-input-wrap has-prefix">
-                <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                <input id="otherDirectExpenses" type="text" inputmode="decimal" placeholder="Ex.: 3,00" autocomplete="off" />
-              </div>
-            </div>
+            <div class="sidebar-field"><label for="materialCost">Insumos e matéria-prima por unidade</label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="materialCost" type="text" inputmode="decimal" placeholder="Ex.: 12,50" autocomplete="off" /></div></div>
+            <div class="sidebar-field"><label for="wasteRate">Perda e desperdício</label><div class="sidebar-input-wrap has-suffix"><input id="wasteRate" type="text" inputmode="decimal" placeholder="Ex.: 8" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">%</span></div><p class="helper-text">Ajusta o custo dos insumos pelo rendimento real. Use 0% se não houver perda.</p></div>
+            <div class="sidebar-field"><label for="packagingCost">Embalagem e rotulagem por unidade</label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="packagingCost" type="text" inputmode="decimal" placeholder="Ex.: 2,00" autocomplete="off" /></div></div>
+            <div class="sidebar-field"><label for="otherVariableCost">Outros custos variáveis de produção por unidade <span>(opcional)</span></label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="otherVariableCost" type="text" inputmode="decimal" placeholder="Ex.: 0,80" autocomplete="off" /></div><p class="helper-text">Ex.: energia, gás, água utilizada na produção ou outros custos que aumentam conforme a quantidade produzida.</p></div>
+
+            <div class="sidebar-subsection"><p class="field-group-label">Frete</p><p class="helper-text">O sistema transforma o frete do pedido em custo por unidade e considera somente a parcela paga pela empresa.</p></div>
+            <div class="sidebar-field"><label for="averageOrderFreight">Frete médio do pedido</label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="averageOrderFreight" type="text" inputmode="decimal" placeholder="Ex.: 15,00" autocomplete="off" /></div></div>
+            <div class="sidebar-field"><label for="freightPayer">Quem paga o frete?</label><select id="freightPayer"><option value="company">Empresa paga 100%</option><option value="customer">Cliente paga 100%</option><option value="shared">Dividido entre empresa e cliente</option></select></div>
+            <div id="companyFreightShareField" class="sidebar-field conditional-field" hidden><label for="companyFreightShare">Percentual pago pela empresa</label><div class="sidebar-input-wrap has-suffix"><input id="companyFreightShare" type="text" inputmode="decimal" placeholder="Ex.: 50" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">%</span></div></div>
+            <div class="sidebar-field"><label for="averageOrderUnits">Quantidade média de unidades por pedido</label><input id="averageOrderUnits" type="text" inputmode="decimal" placeholder="Ex.: 3" autocomplete="off" /><p class="helper-text">Usada também para dividir taxas fixas cobradas por pedido.</p></div>
+            <div class="sidebar-field"><label for="otherDirectExpenses">Outras despesas diretas <span>(opcional)</span></label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="otherDirectExpenses" type="text" inputmode="decimal" placeholder="Ex.: 3,00" autocomplete="off" /></div><p class="helper-text">Ex.: seguro da venda, taxas específicas, materiais adicionais ou outros custos diretamente ligados à unidade.</p></div>
           </div>
           <footer class="pricing-step-actions">
             <button class="pricing-step-button secondary-button" type="button" data-pricing-go="fiscal"><span aria-hidden="true">←</span> Anterior</button>
@@ -276,24 +244,25 @@
 
         <section id="pricing-panel-indirect" class="control-section pricing-tab-panel" role="tabpanel" aria-labelledby="pricing-tab-indirect" data-pricing-panel="indirect" hidden>
           <div class="tab-panel-heading">
-            <p class="section-title">Custos indiretos</p>
-            <p class="section-description">Custos da estrutura da empresa distribuídos entre as vendas.</p>
+            <p class="section-title">Custos fixos mensais</p>
+            <p class="section-description">Estrutura da empresa distribuída entre os produtos sem repetir a mão de obra direta.</p>
           </div>
           <div class="field-grid">
-            <div class="sidebar-field">
-              <label for="monthlyPayroll">Folha salarial mensal</label>
-              <div class="sidebar-input-wrap has-prefix">
-                <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                <input id="monthlyPayroll" type="text" inputmode="decimal" placeholder="Ex.: 12.600,00" autocomplete="off" />
+            <div class="sidebar-field"><label for="monthlyFixedCosts">Total de custos fixos mensais</label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="monthlyFixedCosts" type="text" inputmode="decimal" placeholder="Ex.: 16.000,00" autocomplete="off" /></div><p class="helper-text">Ex.: aluguel, internet, contador, softwares, serviços administrativos, energia fixa, telefone e outros custos estruturais.</p></div>
+            <div class="double-count-warning" role="note"><strong>Evite dupla contagem</strong><p>Não inclua salários da produção já informados na seção de mão de obra. Também não repita depreciação ou manutenção cadastradas abaixo.</p></div>
+            <details class="advanced-pricing-options">
+              <summary>Opções avançadas de rateio e equipamentos</summary>
+              <p class="helper-text">O método por quantidade é o padrão. Os demais só funcionam após você informar as bases necessárias.</p>
+              <div class="field-grid advanced-field-grid">
+                <div class="sidebar-field"><label for="allocationMethod">Método de rateio</label><select id="allocationMethod"><option value="quantity">Por quantidade produzida</option><option value="labor-hours">Por horas de mão de obra</option><option value="machine-hours">Por horas de máquina</option><option value="revenue">Por faturamento</option></select></div>
+                <div id="allocationLaborHoursField" class="sidebar-field conditional-field" hidden><label for="allocationLaborHours">Horas totais de mão de obra da empresa no mês</label><div class="sidebar-input-wrap has-suffix"><input id="allocationLaborHours" type="text" inputmode="decimal" placeholder="Ex.: 176" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">h</span></div><p class="helper-text">No modo automático de mão de obra, o sistema reutiliza as horas produtivas totais já informadas.</p></div>
+                <div id="machineAllocationFields" class="conditional-field" hidden><div class="sidebar-grid sidebar-grid--two"><div class="sidebar-field"><label for="machineTimeMinutes">Tempo de máquina por unidade</label><div class="sidebar-input-wrap has-suffix"><input id="machineTimeMinutes" type="text" inputmode="decimal" placeholder="Ex.: 20" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">min</span></div></div><div class="sidebar-field"><label for="monthlyMachineHours">Horas totais de máquina no mês</label><div class="sidebar-input-wrap has-suffix"><input id="monthlyMachineHours" type="text" inputmode="decimal" placeholder="Ex.: 160" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">h</span></div></div></div></div>
+                <div id="revenueAllocationFields" class="conditional-field" hidden><div class="sidebar-grid sidebar-grid--two"><div class="sidebar-field"><label for="monthlyBusinessRevenue">Faturamento mensal total da empresa</label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="monthlyBusinessRevenue" type="text" inputmode="decimal" placeholder="Ex.: 50.000" autocomplete="off" /></div></div><div class="sidebar-field"><label for="monthlyProductRevenue">Faturamento mensal esperado deste produto</label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="monthlyProductRevenue" type="text" inputmode="decimal" placeholder="Ex.: 10.000" autocomplete="off" /></div></div></div></div>
+                <div class="sidebar-subsection"><p class="field-group-label">Equipamentos</p><p class="helper-text">Opcional. A depreciação e a manutenção seguem o mesmo método de rateio escolhido acima.</p></div>
+                <div class="sidebar-field"><label for="equipmentValue">Valor total dos equipamentos utilizados <span>(opcional)</span></label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="equipmentValue" type="text" inputmode="decimal" placeholder="Ex.: 12.000" autocomplete="off" /></div></div>
+                <div class="sidebar-grid sidebar-grid--two"><div class="sidebar-field"><label for="equipmentUsefulLifeMonths">Vida útil estimada</label><div class="sidebar-input-wrap has-suffix"><input id="equipmentUsefulLifeMonths" type="text" inputmode="decimal" placeholder="Ex.: 60" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">meses</span></div></div><div class="sidebar-field"><label for="equipmentMaintenanceMonthly">Manutenção média mensal</label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="equipmentMaintenanceMonthly" type="text" inputmode="decimal" placeholder="Ex.: 150" autocomplete="off" /></div></div></div>
               </div>
-            </div>
-            <div class="sidebar-field">
-              <label for="monthlyFixedCosts">Custos fixos mensais</label>
-              <div class="sidebar-input-wrap has-prefix">
-                <span class="input-affix input-prefix" aria-hidden="true">R$</span>
-                <input id="monthlyFixedCosts" type="text" inputmode="decimal" placeholder="Ex.: 16.000,00" autocomplete="off" />
-              </div>
-            </div>
+            </details>
           </div>
           <footer class="pricing-step-actions">
             <button class="pricing-step-button secondary-button" type="button" data-pricing-go="direct"><span aria-hidden="true">←</span> Anterior</button>
@@ -303,28 +272,17 @@
 
         <section id="pricing-panel-production" class="control-section pricing-tab-panel" role="tabpanel" aria-labelledby="pricing-tab-production" data-pricing-panel="production" hidden>
           <div class="tab-panel-heading">
-            <p class="section-title">Produção e capacidade</p>
-            <p class="section-description">A quantidade mensal é a única base do rateio. A capacidade é opcional e não altera o preço.</p>
+            <p class="section-title">Produção e mão de obra</p>
+            <p class="section-description">Calcule a mão de obra por unidade a partir do tempo real de produção.</p>
           </div>
+          <p class="field-group-label">Dados essenciais</p>
           <div class="field-grid">
-            <div class="sidebar-grid sidebar-grid--two">
-              <div class="sidebar-field">
-                <label for="workerCount">Número de trabalhadores</label>
-                <input id="workerCount" type="text" inputmode="numeric" placeholder="Ex.: 6" autocomplete="off" />
-              </div>
-              <div class="sidebar-field">
-                <label for="productiveHoursPerWorkerMonth">Horas produtivas por trabalhador/mês <span>(opcional)</span></label>
-                <input id="productiveHoursPerWorkerMonth" type="text" inputmode="decimal" placeholder="Ex.: 176" autocomplete="off" />
-              </div>
-            </div>
-            <div class="sidebar-field">
-              <label for="unitsPerWorkerHour">Unidades por trabalhador/hora <span>(opcional)</span></label>
-              <input id="unitsPerWorkerHour" type="text" inputmode="decimal" placeholder="Ex.: 12" autocomplete="off" />
-            </div>
-            <div class="sidebar-field">
-              <label for="expectedMonthlyUnits">Quantidade prevista de unidades por mês</label>
-              <input id="expectedMonthlyUnits" type="text" inputmode="decimal" placeholder="Ex.: 4000" autocomplete="off" />
-            </div>
+            <div class="sidebar-field"><label for="expectedMonthlyUnits">Quantidade deste produto que você espera produzir/vender por mês</label><input id="expectedMonthlyUnits" type="text" inputmode="decimal" placeholder="Ex.: 400" autocomplete="off" /><p class="helper-text">Essa quantidade é usada para distribuir custos mensais quando o rateio padrão está selecionado.</p></div>
+            <div class="sidebar-field"><label for="productionTimeMinutes">Tempo médio para produzir 1 unidade</label><div class="sidebar-input-wrap has-suffix"><input id="productionTimeMinutes" type="text" inputmode="decimal" placeholder="Ex.: 30" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">min</span></div><p class="helper-text">Ex.: 15 para quinze minutos, 30 para meia hora ou 60 para uma hora.</p></div>
+            <div class="sidebar-field"><label for="laborCostMode">Como informar o custo da mão de obra?</label><select id="laborCostMode"><option value="automatic">Calcular automaticamente</option><option value="manual">Informar custo/hora manualmente</option></select></div>
+            <div id="automaticLaborFields" class="conditional-field"><div class="sidebar-grid sidebar-grid--two"><div class="sidebar-field"><label for="monthlyLaborCost">Custo mensal total da mão de obra de produção</label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="monthlyLaborCost" type="text" inputmode="decimal" placeholder="Ex.: 8.000" autocomplete="off" /></div></div><div class="sidebar-field"><label for="monthlyProductiveHours">Horas produtivas totais da equipe no mês</label><div class="sidebar-input-wrap has-suffix"><input id="monthlyProductiveHours" type="text" inputmode="decimal" placeholder="Ex.: 320" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">h</span></div></div></div><p class="helper-text">Custo/hora = custo mensal da equipe ÷ horas produtivas totais.</p></div>
+            <div id="manualLaborFields" class="sidebar-field conditional-field" hidden><label for="laborHourlyCost">Custo da mão de obra por hora</label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="laborHourlyCost" type="text" inputmode="decimal" placeholder="Ex.: 25,00" autocomplete="off" /></div></div>
+            <div class="double-count-warning" role="note"><strong>Mão de obra entra uma única vez</strong><p>O valor calculado aqui já compõe o custo direto. Não o repita nos custos fixos mensais.</p></div>
           </div>
           <footer class="pricing-step-actions">
             <button class="pricing-step-button secondary-button" type="button" data-pricing-go="indirect"><span aria-hidden="true">←</span> Anterior</button>
@@ -334,33 +292,23 @@
 
         <section id="pricing-panel-sales" class="control-section pricing-tab-panel" role="tabpanel" aria-labelledby="pricing-tab-sales" data-pricing-panel="sales" hidden>
           <div class="tab-panel-heading">
-            <p class="section-title">Despesas sobre a venda</p>
-            <p class="section-description">Percentuais cobrados sobre cada venda realizada.</p>
+            <p class="section-title">Taxas da venda e margem</p>
+            <p class="section-description">Percentuais calculados sobre o preço efetivamente pago pelo cliente.</p>
           </div>
+          <p class="field-group-label">Dados essenciais</p>
           <div class="sidebar-grid sidebar-grid--two sidebar-sales-grid">
-            <div class="sidebar-field">
-              <label for="taxRate">Carga tributária estimada</label>
-              <div class="sidebar-input-wrap has-suffix">
-                <input id="taxRate" type="text" inputmode="decimal" placeholder="Ex.: 6" autocomplete="off" />
-                <span class="input-affix input-suffix" aria-hidden="true">%</span>
-              </div>
-              <p class="helper-text">Informe a taxa validada por sua regra fiscal/contador. A Focus NFe não calcula este percentual.</p>
-            </div>
-            <div class="sidebar-field">
-              <label for="paymentFeeRate">Taxa de pagamento</label>
-              <div class="sidebar-input-wrap has-suffix">
-                <input id="paymentFeeRate" type="text" inputmode="decimal" placeholder="Ex.: 2,8" autocomplete="off" />
-                <span class="input-affix input-suffix" aria-hidden="true">%</span>
-              </div>
-            </div>
-            <div class="sidebar-field">
-              <label for="commissionRate">Comissão</label>
-              <div class="sidebar-input-wrap has-suffix">
-                <input id="commissionRate" type="text" inputmode="decimal" placeholder="Ex.: 0" autocomplete="off" />
-                <span class="input-affix input-suffix" aria-hidden="true">%</span>
-              </div>
-            </div>
+            <div class="sidebar-field"><label for="taxRate">Percentual efetivo de impostos sobre a venda</label><div class="sidebar-input-wrap has-suffix"><input id="taxRate" type="text" inputmode="decimal" placeholder="Ex.: 6" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">%</span></div><p class="helper-text">Informe aproximadamente qual percentual do preço de venda é destinado a impostos. Utilize a alíquota validada pela sua empresa, contador ou integração fiscal.</p></div>
+            <div class="sidebar-field"><label for="paymentFeeRate">Taxa de pagamento/cartão <span>(opcional)</span></label><div class="sidebar-input-wrap has-suffix"><input id="paymentFeeRate" type="text" inputmode="decimal" placeholder="Ex.: 2,8" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">%</span></div></div>
+            <div class="sidebar-field"><label for="commissionRate">Comissão <span>(opcional)</span></label><div class="sidebar-input-wrap has-suffix"><input id="commissionRate" type="text" inputmode="decimal" placeholder="Ex.: 5" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">%</span></div></div>
+            <div class="sidebar-field"><label for="marketplaceFeeRate">Taxa de marketplace/plataforma <span>(opcional)</span></label><div class="sidebar-input-wrap has-suffix"><input id="marketplaceFeeRate" type="text" inputmode="decimal" placeholder="Ex.: 12" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">%</span></div></div>
+            <div class="sidebar-field"><label for="fixedFeePerOrder">Taxa fixa por venda/pedido <span>(opcional)</span></label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="fixedFeePerOrder" type="text" inputmode="decimal" placeholder="Ex.: 4,00" autocomplete="off" /></div><p class="helper-text">Será dividida pela quantidade média de unidades por pedido.</p></div>
           </div>
+          <div class="double-count-warning" role="note"><strong>Revise as taxas</strong><p>Não repita na comissão um percentual que já esteja incluído na taxa da plataforma.</p></div>
+          <div class="field-grid margin-fields">
+            <div class="sidebar-field"><label for="desiredNetMargin">Margem de lucro desejada</label><div class="sidebar-input-wrap has-suffix"><input id="desiredNetMargin" type="text" inputmode="decimal" placeholder="Ex.: 25" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">%</span></div><p class="helper-text">Percentual do <strong>preço de venda</strong> que você deseja manter como lucro após os custos considerados. Margem não é markup: com custo de R$ 100 e margem de 30%, o preço necessário é R$ 142,86, não R$ 130.</p></div>
+            <div class="sidebar-field"><label for="minimumMargin">Margem mínima <span>(opcional)</span></label><div class="sidebar-input-wrap has-suffix"><input id="minimumMargin" type="text" inputmode="decimal" placeholder="Ex.: 15" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">%</span></div><p class="helper-text">Gera um preço mínimo comercial separado do preço de equilíbrio.</p></div>
+          </div>
+          <details class="advanced-pricing-options"><summary>Opções avançadas da venda</summary><div class="field-grid advanced-field-grid"><div class="sidebar-field"><label for="postSaleLossRate">Perdas pós-venda <span>(opcional)</span></label><div class="sidebar-input-wrap has-suffix"><input id="postSaleLossRate" type="text" inputmode="decimal" placeholder="Ex.: 2" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">%</span></div><p class="helper-text">Ex.: devoluções, trocas, inadimplência e estornos.</p></div></div></details>
           <footer class="pricing-step-actions">
             <button class="pricing-step-button secondary-button" type="button" data-pricing-go="production"><span aria-hidden="true">←</span> Anterior</button>
             <button class="pricing-step-button" type="button" data-pricing-go="terms">Próximo <span aria-hidden="true">→</span></button>
@@ -370,44 +318,44 @@
         <section id="pricing-panel-terms" class="control-section pricing-tab-panel" role="tabpanel" aria-labelledby="pricing-tab-terms" data-pricing-panel="terms" hidden>
           <div class="tab-panel-heading">
             <p class="section-title">Prazos financeiros</p>
-            <p class="section-description">Prazos que influenciam a necessidade e o custo de capital.</p>
+            <p class="section-description">Prazos que determinam por quantos dias a operação precisa ser financiada.</p>
           </div>
           <div class="field-grid">
             <div class="sidebar-grid sidebar-grid--two">
               <div class="sidebar-field">
-                <label for="inventoryDays">Estoque/produção</label>
+                <label for="inventoryDays">Dias entre comprar/produzir e realizar a venda</label>
                 <div class="sidebar-input-wrap has-suffix">
                   <input id="inventoryDays" type="text" inputmode="decimal" placeholder="Ex.: 10" autocomplete="off" />
                   <span class="input-affix input-suffix" aria-hidden="true">dias</span>
-                </div>
+                </div><p class="helper-text">Tempo médio em que o dinheiro fica aplicado no estoque ou na produção antes da venda.</p>
               </div>
               <div class="sidebar-field">
-                <label for="receivingDays">Recebimento</label>
+                <label for="receivingDays">Prazo para receber do cliente</label>
                 <div class="sidebar-input-wrap has-suffix">
                   <input id="receivingDays" type="text" inputmode="decimal" placeholder="Ex.: 7" autocomplete="off" />
                   <span class="input-affix input-suffix" aria-hidden="true">dias</span>
-                </div>
+                </div><p class="helper-text">Número médio de dias entre realizar a venda e receber o dinheiro.</p>
               </div>
             </div>
             <div class="sidebar-field">
-              <label for="paymentDays">Pagamento</label>
+              <label for="paymentDays">Prazo para pagar fornecedores</label>
               <div class="sidebar-input-wrap has-suffix">
                 <input id="paymentDays" type="text" inputmode="decimal" placeholder="Ex.: 30" autocomplete="off" />
                 <span class="input-affix input-suffix" aria-hidden="true">dias</span>
-              </div>
+              </div><p class="helper-text">Número médio de dias concedidos pelos fornecedores.</p>
             </div>
-            <div class="sidebar-field">
-              <label for="monthlyCapitalRate">Custo do capital/mês</label>
+            <div class="sidebar-field"><label for="capitalRateSource">Você sabe o custo mensal do capital?</label><select id="capitalRateSource"><option value="informed">Sim, vou informar</option><option value="zero">Não sei — usar 0%</option><option value="estimated">Usar uma estimativa informada por mim</option></select><p class="helper-text">É o custo do dinheiro utilizado para financiar estoque e operação antes do recebimento. O sistema nunca inventa esse percentual.</p></div>
+            <div id="monthlyCapitalRateField" class="sidebar-field">
+              <label for="monthlyCapitalRate">Custo mensal do capital</label>
               <div class="sidebar-input-wrap has-suffix">
                 <input id="monthlyCapitalRate" type="text" inputmode="decimal" placeholder="Ex.: 2,5" autocomplete="off" />
                 <span class="input-affix input-suffix" aria-hidden="true">%</span>
-              </div>
+              </div><p id="capitalRateEstimateNotice" class="helper-text" hidden>Este valor será identificado no cálculo como uma estimativa informada.</p>
             </div>
-            <div class="sidebar-grid sidebar-grid--two">
-              <div class="sidebar-field"><label for="discountRate">Desconto planejado percentual <span>(opcional)</span></label><div class="sidebar-input-wrap has-suffix"><input id="discountRate" type="text" inputmode="decimal" placeholder="Ex.: 10" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">%</span></div></div>
-              <div class="sidebar-field"><label for="fixedDiscountAmount">Ou desconto fixo <span>(opcional)</span></label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="fixedDiscountAmount" type="text" inputmode="decimal" placeholder="Ex.: 5,00" autocomplete="off" /></div></div>
-            </div>
-            <p class="helper-text">O desconto é comercial: não reduz custos nem a margem desejada. Escolha somente uma forma.</p>
+            <div class="sidebar-field"><label for="discountType">Você pretende oferecer desconto?</label><select id="discountType"><option value="none">Não</option><option value="percentage">Percentual</option><option value="fixed">Valor fixo</option></select></div>
+            <div id="percentageDiscountField" class="sidebar-field conditional-field" hidden><label for="discountRate">Desconto planejado</label><div class="sidebar-input-wrap has-suffix"><input id="discountRate" type="text" inputmode="decimal" placeholder="Ex.: 10" autocomplete="off" /><span class="input-affix input-suffix" aria-hidden="true">%</span></div></div>
+            <div id="fixedDiscountField" class="sidebar-field conditional-field" hidden><label for="fixedDiscountAmount">Desconto planejado</label><div class="sidebar-input-wrap has-prefix"><span class="input-affix input-prefix" aria-hidden="true">R$</span><input id="fixedDiscountAmount" type="text" inputmode="decimal" placeholder="Ex.: 5,00" autocomplete="off" /></div></div>
+            <p class="helper-text">Esse desconto será aplicado sobre o preço anunciado. O sistema aumenta o preço anunciado para que o valor após o desconto preserve a margem desejada.</p>
           </div>
           <footer class="pricing-step-actions">
             <button class="pricing-step-button secondary-button" type="button" data-pricing-go="sales"><span aria-hidden="true">←</span> Anterior</button>
@@ -490,8 +438,8 @@
             <section class="manual-market-fallback" aria-labelledby="manual-market-title">
               <div class="tab-panel-heading compact">
                 <p class="eyebrow">Alternativa manual</p>
-                <p class="section-title" id="manual-market-title">Preço médio local dos concorrentes</p>
-                <p class="section-description">Este valor é usado somente quando nenhuma referência externa está selecionada.</p>
+                <p class="section-title" id="manual-market-title">Preço médio de produtos equivalentes dos concorrentes</p>
+                <p class="section-description">Utilizado apenas como referência de mercado. Não altera custo, equilíbrio ou preço baseado na margem.</p>
               </div>
               <div class="sidebar-grid sidebar-grid--two">
                 <div class="sidebar-field">
@@ -501,15 +449,8 @@
                     <input id="marketPrice" type="text" inputmode="decimal" placeholder="Ex.: 32,00" autocomplete="off" />
                   </div>
                 </div>
-                <div class="sidebar-field">
-                  <label for="desiredNetMargin">Margem líquida desejada</label>
-                  <div class="sidebar-input-wrap has-suffix">
-                    <input id="desiredNetMargin" type="text" inputmode="decimal" placeholder="Ex.: 18" autocomplete="off" />
-                    <span class="input-affix input-suffix" aria-hidden="true">%</span>
-                  </div>
-                </div>
               </div>
-              <p id="manualMarketStatus" class="helper-text">Mercado é opcional e nunca altera automaticamente o preço técnico.</p>
+              <p id="manualMarketStatus" class="helper-text">Mercado é opcional e nunca altera automaticamente o preço recomendado.</p>
               <div class="sidebar-field">
                 <label for="marketReferenceRule">Referência usada na comparação</label>
                 <select id="marketReferenceRule"><option value="manual">Média informada manualmente</option><option value="selected-product">Produto individual selecionado</option><option value="market-average">Média da pesquisa Google Shopping</option><option value="market-median">Mediana da pesquisa Google Shopping</option></select>
@@ -581,9 +522,9 @@
               </div>
               <div id="primaryPriceGrid" class="primary-price-grid">
                 <div class="primary-price-cell primary-price-sustainable">
-                  <span>Seu preço sustentável</span>
+                  <span>Preço com margem desejada</span>
                   <strong id="suggestedPrice" class="summary-value financial-value">R$ 0,00</strong>
-                  <small>Margem líquida: <strong id="estimatedMargin">0%</strong></small>
+                  <small>Margem real no preço recomendado: <strong id="estimatedMargin">0%</strong></small>
                 </div>
                 <div id="primaryMarketValue" class="primary-price-cell" hidden>
                   <span>Preço de mercado</span>
@@ -597,6 +538,13 @@
                 </div>
               </div>
               <p id="recommendationText" class="summary-description"></p>
+              <div class="pricing-result-ladder" aria-label="Faixas do preço calculado">
+                <div><span>Preço de equilíbrio</span><strong id="breakEvenPrice" class="financial-value">R$ 0,00</strong><small>Cobre custos e taxas, sem lucro.</small></div>
+                <div id="minimumMarginPriceRow" hidden><span>Preço com margem mínima</span><strong id="minimumMarginPrice" class="financial-value">R$ 0,00</strong><small>Preço mínimo comercial informado.</small></div>
+                <div><span>Preço com margem desejada</span><strong id="desiredMarginPrice" class="financial-value">R$ 0,00</strong><small>Preço recomendado antes de desconto.</small></div>
+                <div id="advertisedPriceRow" hidden><span>Preço anunciado para permitir desconto</span><strong id="advertisedPrice" class="financial-value">R$ 0,00</strong><small>Valor a anunciar antes do desconto.</small></div>
+                <div id="postDiscountPriceRow" hidden><span>Preço após desconto</span><strong id="postDiscountPrice" class="financial-value">R$ 0,00</strong><small>Preserva a margem desejada.</small></div>
+              </div>
               <div class="summary-primary-actions">
                 <div class="save-product-row">
                   <button id="saveProductButton" type="button">Salvar produto</button>
@@ -655,9 +603,9 @@
 
           <article id="detail-overview" class="detail-hero" data-detail-anchor="overview" tabindex="-1">
             <div>
-              <p class="eyebrow">Preço mínimo sustentável</p>
+              <p class="eyebrow">Preço com margem desejada</p>
               <strong id="detailSuggestedPrice" class="financial-value">R$ 0,00</strong>
-              <p>Valor mínimo financeiro para cobrir a operação e alcançar a margem configurada.</p>
+              <p>Valor recomendado para cobrir custos, despesas sobre a venda e alcançar a margem configurada.</p>
             </div>
             <div class="detail-hero-margin">
               <span>Margem líquida estimada</span>
@@ -665,11 +613,22 @@
             </div>
           </article>
 
+          <section class="detail-section" aria-labelledby="price-levels-title">
+            <div class="detail-section-heading"><p class="eyebrow">Faixas de decisão</p><h2 id="price-levels-title">Equilíbrio, margens e desconto</h2><p>Os valores não usam o preço dos concorrentes para alterar o cálculo.</p></div>
+            <div class="detail-metric-grid price-levels-grid">
+              <article class="metric-card"><span>Preço de equilíbrio</span><strong id="detailBreakEvenPrice" class="financial-value">R$ 0,00</strong><small>Sem lucro</small></article>
+              <article id="detailMinimumMarginCard" class="metric-card" hidden><span>Margem mínima</span><strong id="detailMinimumMarginPrice" class="financial-value">R$ 0,00</strong><small>Preço mínimo comercial</small></article>
+              <article class="metric-card"><span>Margem desejada</span><strong id="detailDesiredMarginPrice" class="financial-value">R$ 0,00</strong><small>Preço recomendado</small></article>
+              <article id="detailAdvertisedPriceCard" class="metric-card" hidden><span>Preço anunciado</span><strong id="detailAdvertisedPrice" class="financial-value">R$ 0,00</strong><small>Permite o desconto planejado</small></article>
+              <article id="detailPostDiscountPriceCard" class="metric-card" hidden><span>Após desconto</span><strong id="detailPostDiscountPrice" class="financial-value">R$ 0,00</strong><small>Preserva a margem desejada</small></article>
+            </div>
+          </section>
+
           <section class="detail-section" aria-labelledby="financial-summary-title">
             <div class="detail-section-heading"><p class="eyebrow">Resumo financeiro</p><h2 id="financial-summary-title">Os números por trás do preço</h2></div>
             <div class="detail-metric-grid">
               <article class="metric-card"><span>Custo-base</span><strong id="detailBaseCost" class="financial-value">R$ 0,00</strong><small>Custos necessários por venda</small></article>
-              <article class="metric-card"><span>Despesas sobre a venda</span><strong id="detailSalesRate">0%</strong><small>Tributos, taxa e comissão</small></article>
+              <article class="metric-card"><span>Despesas sobre a venda</span><strong id="detailSalesRate">0%</strong><small>Impostos, taxas, comissão e perdas</small></article>
               <article class="metric-card"><span>Lucro líquido</span><strong id="detailProfit" class="financial-value">R$ 0,00</strong><small>Resultado estimado por unidade</small></article>
               <article class="metric-card"><span>Pontos de atenção</span><strong id="detailAlertCount">0</strong><small>Revise antes de aplicar o preço</small></article>
             </div>
@@ -787,9 +746,9 @@
       <header class="about-topbar"><a class="brand about-brand" href="#assistente" aria-label="Voltar ao simulador"><span class="brand-mark">PC</span><span>Assistente de Precificação</span></a><button id="aboutBackButton" type="button" class="secondary-button"><span aria-hidden="true">←</span> Voltar ao simulador</button></header>
       <main class="about-content">
         <section class="about-hero"><div><p class="eyebrow">Conheça o assistente</p><h1 id="about-title" tabindex="-1">Preço sustentável começa com contexto.</h1><p>O Assistente de Precificação transforma custos e informações financeiras de um produto em uma estimativa organizada para apoiar sua decisão de venda.</p></div><div class="about-hero-note"><span aria-hidden="true">↗</span><strong>Decida com mais clareza</strong><p>Custos, despesas, impostos, margem, mercado e prazos reunidos em uma única análise.</p></div></section>
-        <section class="about-section" aria-labelledby="about-flow-title"><div class="about-section-heading"><p class="eyebrow">Como funciona</p><h2 id="about-flow-title">Da informação ao preço sustentável</h2><p>Cada etapa acrescenta contexto ao cálculo sem esconder os dados que formam o resultado.</p></div><ol class="about-flow"><li><span>01</span><div><strong>Produto</strong><small>Identifica o item.</small></div></li><li><span>02</span><div><strong>Fiscal</strong><small>Contextualiza a operação.</small></div></li><li><span>03</span><div><strong>Custos diretos</strong><small>Reúne custos por unidade.</small></div></li><li><span>04</span><div><strong>Custos indiretos</strong><small>Distribui a estrutura.</small></div></li><li><span>05</span><div><strong>Produção</strong><small>Considera a capacidade.</small></div></li><li><span>06</span><div><strong>Despesas</strong><small>Aplica taxas da venda.</small></div></li><li><span>07</span><div><strong>Mercado e margem</strong><small>Compara e define objetivo.</small></div></li><li><span>08</span><div><strong>Prazos financeiros</strong><small>Estima o custo de capital.</small></div></li><li class="is-result"><span>✓</span><div><strong>Preço sustentável</strong><small>Referência para sua decisão.</small></div></li></ol></section>
+        <section class="about-section" aria-labelledby="about-flow-title"><div class="about-section-heading"><p class="eyebrow">Como funciona</p><h2 id="about-flow-title">Da informação ao preço sustentável</h2><p>Cada etapa acrescenta contexto ao cálculo sem esconder os dados que formam o resultado.</p></div><ol class="about-flow"><li><span>01</span><div><strong>Produto</strong><small>Identifica o item.</small></div></li><li><span>02</span><div><strong>Fiscal</strong><small>Contextualiza a operação.</small></div></li><li><span>03</span><div><strong>Custos diretos</strong><small>Reúne custos por unidade e pedido.</small></div></li><li><span>04</span><div><strong>Custos fixos</strong><small>Distribui a estrutura sem repetir salários.</small></div></li><li><span>05</span><div><strong>Produção</strong><small>Calcula mão de obra pelo tempo da unidade.</small></div></li><li><span>06</span><div><strong>Taxas e margem</strong><small>Aplica percentuais sobre a venda.</small></div></li><li><span>07</span><div><strong>Prazos financeiros</strong><small>Estima o custo de capital.</small></div></li><li><span>08</span><div><strong>Mercado</strong><small>Compara sem alterar o cálculo.</small></div></li><li class="is-result"><span>✓</span><div><strong>Faixas de preço</strong><small>Equilíbrio, margens e desconto.</small></div></li></ol></section>
         <section class="about-section" aria-labelledby="about-stages-title"><div class="about-section-heading"><p class="eyebrow">Entenda as etapas</p><h2 id="about-stages-title">O que cada etapa considera?</h2><p>Abra apenas o tema que quiser consultar.</p></div><div class="about-accordions">
-          <details><summary><span aria-hidden="true">▣</span><strong>Produto</strong><span class="accordion-sign"></span></summary><p>Identifica o produto que será precificado.</p></details><details><summary><span aria-hidden="true">◎</span><strong>Fiscal</strong><span class="accordion-sign"></span></summary><p>Reúne NCM, regime tributário, UF, CFOP e CST/CSOSN para contextualizar a operação.</p></details><details><summary><span aria-hidden="true">↘</span><strong>Custos diretos</strong><span class="accordion-sign"></span></summary><p>Considera matéria-prima, embalagem, frete, seguro, perdas e outros custos diretamente relacionados ao produto ou à venda.</p></details><details><summary><span aria-hidden="true">⌂</span><strong>Custos indiretos</strong><span class="accordion-sign"></span></summary><p>Considera custos estruturais da empresa que precisam ser distribuídos entre as vendas.</p></details><details><summary><span aria-hidden="true">⚙</span><strong>Produção</strong><span class="accordion-sign"></span></summary><p>Considera capacidade produtiva, trabalhadores, produção por hora e operações mensais.</p></details><details><summary><span aria-hidden="true">%</span><strong>Despesas sobre a venda</strong><span class="accordion-sign"></span></summary><p>Considera impostos, taxas de pagamento e comissão que incidem sobre cada venda.</p></details><details><summary><span aria-hidden="true">⌁</span><strong>Mercado e margem</strong><span class="accordion-sign"></span></summary><p>Permite definir a margem desejada e comparar o preço calculado com referências de mercado.</p></details><details><summary><span aria-hidden="true">◷</span><strong>Prazos financeiros</strong><span class="accordion-sign"></span></summary><p>Considera prazos de recebimento e pagamento, além do custo de capital.</p></details>
+          <details><summary><span aria-hidden="true">▣</span><strong>Produto</strong><span class="accordion-sign"></span></summary><p>Identifica o produto que será precificado.</p></details><details><summary><span aria-hidden="true">◎</span><strong>Fiscal</strong><span class="accordion-sign"></span></summary><p>Reúne NCM, regime tributário, UF, CFOP e CST/CSOSN para contextualizar a operação.</p></details><details><summary><span aria-hidden="true">↘</span><strong>Custos diretos</strong><span class="accordion-sign"></span></summary><p>Considera matéria-prima, embalagem, frete do pedido, perdas, custos variáveis e outras despesas diretamente ligadas à unidade.</p></details><details><summary><span aria-hidden="true">⌂</span><strong>Custos fixos</strong><span class="accordion-sign"></span></summary><p>Distribui a estrutura mensal por quantidade ou por uma base avançada informada pelo usuário.</p></details><details><summary><span aria-hidden="true">⚙</span><strong>Produção</strong><span class="accordion-sign"></span></summary><p>Calcula a mão de obra direta a partir do custo por hora e do tempo médio de uma unidade.</p></details><details><summary><span aria-hidden="true">%</span><strong>Taxas e margem</strong><span class="accordion-sign"></span></summary><p>Considera impostos, taxas, comissão, margem mínima e margem desejada como percentuais do preço de venda.</p></details><details><summary><span aria-hidden="true">⌁</span><strong>Mercado</strong><span class="accordion-sign"></span></summary><p>Compara o preço calculado com referências de mercado sem alterar a fórmula principal.</p></details><details><summary><span aria-hidden="true">◷</span><strong>Prazos financeiros</strong><span class="accordion-sign"></span></summary><p>Considera prazos de recebimento e pagamento, custo do capital e desconto planejado.</p></details>
         </div></section>
         <section class="about-section" aria-labelledby="about-results-title"><div class="about-section-heading"><p class="eyebrow">Resultados</p><h2 id="about-results-title">O que o sistema entrega?</h2></div><div class="about-results-grid"><article><span>R$</span><strong>Preço mínimo sustentável</strong></article><article><span>%</span><strong>Margem líquida estimada</strong></article><article><span>▤</span><strong>Custo-base por venda</strong></article><article><span>↗</span><strong>Lucro líquido por unidade</strong></article><article><span>⇄</span><strong>Comparação com o mercado</strong></article><article><span>!</span><strong>Alertas de atenção</strong></article><article><span>∑</span><strong>Memória de cálculo</strong></article><article><span>⌕</span><strong>Análise detalhada</strong></article><article><span>◴</span><strong>Histórico de produtos</strong></article></div></section>
         <section class="about-feature-grid"><article><span class="about-feature-icon" aria-hidden="true">⌕</span><div><p class="eyebrow">Mercado Livre</p><h2>Referências comparáveis</h2><p>Pesquisas de produtos e anúncios comparáveis em marketplaces, como o Mercado Livre, podem servir como referência para apoiar a análise de mercado, conforme as integrações disponíveis.</p></div></article><article><span class="about-feature-icon" aria-hidden="true">↻</span><div><p class="eyebrow">Histórico e reutilização</p><h2>Menos retrabalho</h2><p>Salve produtos e reutilize informações posteriormente para facilitar novas precificações e comparações.</p></div></article></section>

@@ -7,7 +7,8 @@ export function priceCompositionFrom(result) {
     { label: "Custo direto", value: result.directCost },
     { label: "Custo indireto", value: result.indirectCost },
     { label: "Custo financeiro", value: result.financialCost },
-    { label: "Tributos, taxa e comissão", value: result.taxAmount + result.paymentFeeAmount + result.commissionAmount },
+    { label: "Taxa fixa por pedido", value: result.fixedSaleFeePerUnit },
+    { label: "Impostos, taxas, comissão e perdas", value: result.taxAmount + result.paymentFeeAmount + result.commissionAmount + result.marketplaceFeeAmount + result.postSaleLossAmount },
     { label: "Lucro líquido", value: result.profitAmount },
   ].filter((item) => item.value > 0);
 }
@@ -25,6 +26,16 @@ function renderComposition(document, result) {
 
 export function renderPriceDetails(document, result, alertCount) {
   setFinancialValue(document.querySelector("#detailSuggestedPrice"), money(result.technicalPrice));
+  setFinancialValue(document.querySelector("#detailBreakEvenPrice"), money(result.breakEvenPrice));
+  setFinancialValue(document.querySelector("#detailDesiredMarginPrice"), money(result.technicalPrice));
+  const minimumCard = document.querySelector("#detailMinimumMarginCard");
+  minimumCard.hidden = result.minimumMarginPrice === null;
+  setFinancialValue(document.querySelector("#detailMinimumMarginPrice"), money(result.minimumMarginPrice));
+  const hasDiscount = result.discount.type !== "none";
+  document.querySelector("#detailAdvertisedPriceCard").hidden = !hasDiscount;
+  document.querySelector("#detailPostDiscountPriceCard").hidden = !hasDiscount;
+  setFinancialValue(document.querySelector("#detailAdvertisedPrice"), money(result.discount.advertisedPrice));
+  setFinancialValue(document.querySelector("#detailPostDiscountPrice"), money(result.discount.postDiscountPrice));
   setFinancialValue(document.querySelector("#detailDonutPrice"), money(result.technicalPrice));
   setFinancialValue(document.querySelector("#detailBaseCost"), money(result.totalUnitCost));
   document.querySelector("#detailSalesRate").textContent = percent(result.saleExpenseRate);
@@ -34,16 +45,17 @@ export function renderPriceDetails(document, result, alertCount) {
   setFinancialValue(document.querySelector("#detailMarketCostLimit"), money(result.market.difference));
   document.querySelector("#detailAlertCount").textContent = `${alertCount} ${alertCount === 1 ? "ponto de atenção" : "pontos de atenção"}`;
   document.querySelector("#detailMarketNarrative").textContent = result.market.price
-    ? `Referência ${result.market.rule}: ${money(result.market.price)}. Diferença para o preço técnico: ${money(result.market.difference)} (${percent(result.market.differenceRate)}).`
-    : "Não há referência de mercado. Isso não bloqueia o preço técnico.";
+    ? `Referência ${result.market.rule}: ${money(result.market.price)}. Diferença para o preço recomendado: ${money(result.market.difference)} (${percent(result.market.differenceRate)}).`
+    : "Não há referência de mercado. Isso não bloqueia o cálculo do preço recomendado.";
   document.querySelector("#priceComparisonBars").innerHTML = [
-    ["Custo total", result.totalUnitCost], ["Preço técnico", result.technicalPrice], ["Mercado", result.market.price],
+    ["Custo total", result.totalUnitCost], ["Preço com margem desejada", result.technicalPrice], ["Mercado", result.market.price],
   ].filter(([, value]) => value !== null).map(([label, value]) => `<li><div><span>${label}</span><strong class="financial-value" data-financial-size="${financialValueSize(money(value))}">${money(value)}</strong></div></li>`).join("");
   renderComposition(document, result);
 }
 
 export function renderPriceDetailsUnavailable(document, invalidCount) {
-  ["detailSuggestedPrice", "detailDonutPrice", "detailBaseCost", "detailSalesRate", "detailProfit", "detailMargin", "detailMarketPrice", "detailMarketCostLimit"].forEach((id) => { document.querySelector(`#${id}`).textContent = "—"; });
+  ["detailSuggestedPrice", "detailBreakEvenPrice", "detailMinimumMarginPrice", "detailDesiredMarginPrice", "detailAdvertisedPrice", "detailPostDiscountPrice", "detailDonutPrice", "detailBaseCost", "detailSalesRate", "detailProfit", "detailMargin", "detailMarketPrice", "detailMarketCostLimit"].forEach((id) => { document.querySelector(`#${id}`).textContent = "—"; });
+  ["detailMinimumMarginCard", "detailAdvertisedPriceCard", "detailPostDiscountPriceCard"].forEach((id) => { document.querySelector(`#${id}`).hidden = true; });
   document.querySelector("#detailAlertCount").textContent = `${invalidCount} ${invalidCount === 1 ? "campo pendente" : "campos pendentes"}`;
   document.querySelector("#priceDonutSegments").innerHTML = "";
   document.querySelector("#priceCompositionLegend").innerHTML = "<li>Preencha os campos obrigatórios.</li>";

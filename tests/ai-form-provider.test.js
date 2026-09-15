@@ -116,7 +116,7 @@ test("modo complete mantém Structured Output e instrui estimativas com origem e
   assert.match(instruction, /Modo complete/);
   assert.match(instruction, /expectedMonthlyUnits/);
   assert.match(instruction, /source="estimated"/);
-  assert.match(instruction, /Não estime expectedMonthlyUnits/);
+  assert.match(instruction, /Nunca estime[\s\S]*quantidade mensal/);
   assert.doesNotMatch(instruction, /expectedMonthlyUnits=1/);
   assert.match(instruction, /NÃO calcule o preço final/);
   assert.equal(request.generationConfig.responseMimeType, "application/json");

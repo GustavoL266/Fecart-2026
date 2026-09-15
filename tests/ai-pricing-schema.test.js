@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { parsePricingMessage } from "../lib/ai-form-assistant.js";
-import { AI_FIELD_RULES, AI_MAX_EXTRACTION_ENTRIES, AI_OUTPUT_JSON_SCHEMA, validateAiExtraction } from "../lib/ai-pricing-schema.js";
+import { AI_FIELD_RULES, AI_MAX_EXTRACTION_ENTRIES, AI_OUTPUT_JSON_SCHEMA, finalizeAiPricingAnalysis, validateAiExtraction } from "../lib/ai-pricing-schema.js";
 
-const batchFields = new Set(["materialCost", "packagingCost", "deliveryCost", "insuranceCost", "otherDirectExpenses"]);
-const monthlyFields = new Set(["monthlyPayroll", "monthlyFixedCosts"]);
+const batchFields = new Set(["materialCost", "packagingCost", "otherVariableCost", "otherDirectExpenses"]);
+const monthlyFields = new Set(["monthlyLaborCost", "monthlyFixedCosts", "equipmentMaintenanceMonthly", "monthlyBusinessRevenue", "monthlyProductRevenue"]);
 const entry = (field, value, evidence, batchUnits = null, batchEvidence = null, overrides = {}) => ({
   field, value, source: "user_provided", evidence,
   basis: monthlyFields.has(field) ? "monthly-total" : batchFields.has(field) ? (batchUnits === null ? "unit" : "batch-total") : "not-applicable",
@@ -16,7 +16,7 @@ const invalid = { code: "AI_INVALID_RESPONSE", status: 502 };
 
 test("limite de entries continua rigoroso no backend sem maxItems no schema externo", () => {
   const repeated = Array.from({ length: AI_MAX_EXTRACTION_ENTRIES + 1 }, () => ({
-    ...entry("deliveryCost", 7, "frete 7"),
+    ...entry("averageOrderFreight", 7, "frete 7"),
   }));
   assert.throws(() => validateAiExtraction({ entries: repeated }, "frete 7"), invalid);
   assert.equal("maxItems" in AI_OUTPUT_JSON_SCHEMA.properties.entries, false);
@@ -75,21 +75,21 @@ test("quantidade do lote e quantidade mensal permanecem semanticamente separadas
 
 test("origem inferred exige evidência literal para uma consequência direta", () => {
   const message = "Venda com retirada no local e sem frete.";
-  const result = extract(message, [entry("deliveryCost", 0, "sem frete", null, null, { source: "inferred" })]);
-  assert.deepEqual(result.fields, { deliveryCost: 0 });
-  assert.deepEqual(result.sources, { deliveryCost: "inferred" });
-  assert.throws(() => extract(message, [entry("deliveryCost", 0, "entrega inventada", null, null, { source: "inferred" })]), invalid);
+  const result = extract(message, [entry("averageOrderFreight", 0, "sem frete", null, null, { source: "inferred" })]);
+  assert.deepEqual(result.fields, { averageOrderFreight: 0 });
+  assert.deepEqual(result.sources, { averageOrderFreight: "inferred" });
+  assert.throws(() => extract(message, [entry("averageOrderFreight", 0, "entrega inventada", null, null, { source: "inferred" })]), invalid);
 });
 
 test("modo complete lista somente obrigatórios que a Gemini não conseguiu preencher", async () => {
   const result = await parsePricingMessage({
     provider: { fillMode: "complete", extract: async () => ({ entries: [entry("desiredNetMargin", 20, "margem 20%")] }) },
-    input: { message: "margem 20%", currentFields: { deliveryCost: 7 } },
+    input: { message: "margem 20%", currentFields: { averageOrderFreight: 7 } },
   });
-  assert.equal(result.fields.deliveryCost, 7);
-  assert.equal(result.sources.deliveryCost, "user_provided");
+  assert.equal(result.fields.averageOrderFreight, 7);
+  assert.equal(result.sources.averageOrderFreight, "user_provided");
   assert.equal(result.calculationReady, false);
-  assert.equal(result.pending.some(({ field }) => field === "deliveryCost"), false);
+  assert.equal(result.pending.some(({ field }) => field === "averageOrderFreight"), false);
   assert.equal(result.pending.some(({ code, field }) => code === "AI_REQUIRED_FIELD_MISSING" && field === "materialCost"), true);
 });
 
@@ -98,7 +98,7 @@ test("campo skipped não volta às pendências em um esclarecimento posterior", 
   const result = await parsePricingMessage({
     provider: {
       fillMode: "complete",
-      extract: async () => ({ entries: [entry("deliveryCost", 7, "7")] }),
+      extract: async () => ({ entries: [entry("averageOrderFreight", 7, "7")] }),
     },
     input: {
       message: "7",
@@ -108,7 +108,7 @@ test("campo skipped não volta às pendências em um esclarecimento posterior", 
           fields: { productName: "bolo" },
           sources: { productName: "user_provided" },
           skipped,
-          pending: [{ code: "AI_USER_VALUE_REQUIRED", field: "deliveryCost" }],
+          pending: [{ code: "AI_USER_VALUE_REQUIRED", field: "averageOrderFreight" }],
           needsClarification: true,
         },
       },
@@ -122,6 +122,22 @@ test("campo skipped não volta às pendências em um esclarecimento posterior", 
     value: "Não informado",
     source: "skipped",
   });
+});
+
+test("modo completo respeita mão de obra manual e capital zero sem exigir campos inativos", () => {
+  const analysis = extract("Quero vender bolo.", [entry("productName", "bolo", "vender bolo")]);
+  const result = finalizeAiPricingAnalysis(analysis, {
+    materialCost: 20, wasteRate: 0, packagingCost: 0, averageOrderFreight: 0, averageOrderUnits: 1,
+    freightPayer: "company", laborCostMode: "manual", laborHourlyCost: 50, productionTimeMinutes: 30,
+    monthlyFixedCosts: 1000, expectedMonthlyUnits: 100, allocationMethod: "quantity", taxRate: 5,
+    desiredNetMargin: 20, inventoryDays: 0, receivingDays: 0, paymentDays: 0,
+    capitalRateSource: "zero", discountType: "none",
+  }, "complete");
+  assert.equal(result.calculationReady, true);
+  assert.deepEqual(result.pending, []);
+  assert.equal("monthlyLaborCost" in result.fields, false);
+  assert.equal("monthlyProductiveHours" in result.fields, false);
+  assert.equal("monthlyCapitalRate" in result.fields, false);
 });
 
 test("entrada direta contextual aceita percentual sem exigir símbolo na resposta", async () => {
@@ -157,13 +173,13 @@ test("extrai todos os dados unitários explícitos do bolo sem inventar ausentes
   assert.equal(result.summary.length, 5);
   assert.equal(result.summary.find((item) => item.field === "desiredNetMargin").value, "25%");
   assert.match(result.summary.find((item) => item.field === "materialCost").value, /18,00/);
-  assert.equal("deliveryCost" in result.fields, false);
+  assert.equal("averageOrderFreight" in result.fields, false);
   assert.equal("finalPrice" in result.fields, false);
 });
 
 for (const [message, field, value] of [
-  ["Coloque frete de 7 reais.", "deliveryCost", 7],
-  ["Adicione R$ 4 de frete.", "deliveryCost", 4],
+  ["Coloque frete médio do pedido de 7 reais.", "averageOrderFreight", 7],
+  ["Adicione R$ 4 de frete médio por pedido.", "averageOrderFreight", 4],
   ["Mude minha margem para 20%.", "desiredNetMargin", 20],
   ["Troque a margem para 22%.", "desiredNetMargin", 22],
   ["A matéria-prima agora custa R$ 35.", "materialCost", 35],
@@ -175,10 +191,10 @@ for (const [message, field, value] of [
   });
 }
 
-test("funcionários e produção horária não inventam horas nem volume mensal", () => {
-  const message = "Tenho 4 funcionários e cada um produz 10 unidades por hora.";
-  assert.deepEqual(extract(message, [entry("workerCount", 4, "4 funcionários"), entry("unitsPerWorkerHour", 10, "cada um produz 10 unidades por hora")]).fields,
-    { workerCount: 4, unitsPerWorkerHour: 10 });
+test("custo mensal e tempo de produção não inventam horas produtivas nem volume mensal", () => {
+  const message = "A mão de obra de produção custa R$ 4.000 por mês e cada unidade leva 10 minutos.";
+  assert.deepEqual(extract(message, [entry("monthlyLaborCost", 4000, "mão de obra de produção custa R$ 4.000 por mês"), entry("productionTimeMinutes", 10, "10 minutos")]).fields,
+    { monthlyLaborCost: 4000, productionTimeMinutes: 10 });
 });
 
 test("consulta de mercado devolve só a busca, sem inventar preço", () => {
@@ -253,8 +269,8 @@ test("normaliza totais explícitos do lote e explica a divisão na prévia", () 
 });
 
 test("null é omitido e não apaga campos preenchidos", () => {
-  const fields = extract("Matéria-prima por unidade R$ 20.", [entry("materialCost", 20, "Matéria-prima por unidade R$ 20"), entry("deliveryCost", null, "")]).fields;
-  assert.deepEqual({ deliveryCost: 5, ...fields }, { deliveryCost: 5, materialCost: 20 });
+  const fields = extract("Matéria-prima por unidade R$ 20.", [entry("materialCost", 20, "Matéria-prima por unidade R$ 20"), entry("averageOrderFreight", null, "")]).fields;
+  assert.deepEqual({ averageOrderFreight: 5, ...fields }, { averageOrderFreight: 5, materialCost: 20 });
 });
 
 test("retirar desconto explicitamente zera ambas as modalidades", () => {
@@ -297,8 +313,8 @@ for (const [field, value, message, code] of [
   ["desiredNetMargin", 100, "Margem 100%"],
   ["wasteRate", -5, "Perda -5%"],
   ["wasteRate", 100, "Perda 100%"],
-  ["workerCount", 4.5, "4,5 funcionários"],
-  ["productiveHoursPerWorkerMonth", 745, "745 horas"],
+  ["averageOrderUnits", 0, "0 unidades por pedido"],
+  ["monthlyProductiveHours", 0, "0 horas produtivas no mês"],
   ["expectedMonthlyUnits", 0, "0 unidades mensais"],
   ["receivingDays", 3651, "Recebimento 3651 dias"],
 ].map(([field, value, message]) => [field, value, message, value < 0 ? "AI_NEGATIVE_VALUE" : "AI_VALUE_OUT_OF_RANGE"])) {
@@ -310,7 +326,7 @@ for (const [field, value, message, code] of [
 }
 
 test("rejeita números/textos inventados ou evidência que não existe na mensagem", () => {
-  assert.throws(() => extract("Frete R$ 5.", [entry("deliveryCost", 7, "Frete R$ 5")]), invalid);
+  assert.throws(() => extract("Frete médio do pedido R$ 5.", [entry("averageOrderFreight", 7, "Frete médio do pedido R$ 5")]), invalid);
   assert.throws(() => extract("Frete R$ 5.", [entry("packagingCost", 5, "Frete R$ 5")]), invalid);
   assert.throws(() => extract("Comissão 25.", [entry("commissionRate", 25, "Comissão 25")]), invalid);
   assert.throws(() => extract("Vendo bolo.", [entry("productName", "bolo gourmet", "Vendo bolo")]), invalid);
@@ -430,12 +446,12 @@ test("números por extenso fundamentam lote, moeda e percentual", () => {
 });
 
 test("formatos monetários brasileiros e decimais permanecem equivalentes", () => {
-  const message = "Ingredientes por unidade R$ 1.234,56; embalagem por unidade 3.75 reais; frete por unidade R$ 0,10.";
+  const message = "Ingredientes por unidade R$ 1.234,56; embalagem por unidade 3.75 reais; frete médio do pedido R$ 0,10.";
   assert.deepEqual(extract(message, [
     entry("materialCost", 1234.56, "Ingredientes por unidade R$ 1.234,56"),
     entry("packagingCost", 3.75, "embalagem por unidade 3.75 reais"),
-    entry("deliveryCost", 0.1, "frete por unidade R$ 0,10"),
-  ]).fields, { materialCost: 1234.56, packagingCost: 3.75, deliveryCost: 0.1 });
+    entry("averageOrderFreight", 0.1, "frete médio do pedido R$ 0,10"),
+  ]).fields, { materialCost: 1234.56, packagingCost: 3.75, averageOrderFreight: 0.1 });
 });
 
 test("correção explícita substitui valor e divisor anteriores em vez de somá-los", () => {
@@ -449,8 +465,8 @@ test("correção explícita substitui valor e divisor anteriores em vez de somá
 });
 
 test("custo negativo ou lote com zero bloqueia só o campo dependente", () => {
-  const negative = "Frete por unidade R$ -5 e margem 15%.";
-  const first = extract(negative, [entry("deliveryCost", -5, "Frete por unidade R$ -5"), entry("desiredNetMargin", 15, "margem 15%")]);
+  const negative = "Frete médio do pedido R$ -5 e margem 15%.";
+  const first = extract(negative, [entry("averageOrderFreight", -5, "Frete médio do pedido R$ -5"), entry("desiredNetMargin", 15, "margem 15%")]);
   assert.deepEqual(first.fields, { desiredNetMargin: 15 });
   assert.deepEqual(first.pending.map(({ code }) => code), ["AI_NEGATIVE_VALUE"]);
 
@@ -552,9 +568,9 @@ test("custos mensais são agregados como mensais e energia direta permanece por 
   const result = extract(message, [
     entry("monthlyFixedCosts", 900, "Aluguel mensal R$ 900"),
     entry("monthlyFixedCosts", 100, "energia fixa mensal R$ 100"),
-    entry("otherDirectExpenses", 2, "energia direta por unidade R$ 2"),
+    entry("otherVariableCost", 2, "energia direta por unidade R$ 2"),
   ]);
-  assert.deepEqual(result.fields, { monthlyFixedCosts: 1000, otherDirectExpenses: 2 });
+  assert.deepEqual(result.fields, { monthlyFixedCosts: 1000, otherVariableCost: 2 });
 });
 
 test("esclarecimento por unidade preserva campos anteriores e valida somente o campo parcial", async () => {
@@ -643,7 +659,7 @@ test("resposta numérica não escolhe quantidade mensal quando há várias pergu
     fields: { productName: "bolo", materialCost: 15, desiredNetMargin: 10 },
     sources: { productName: "user_provided", materialCost: "user_provided", desiredNetMargin: "user_provided" },
     pending: [
-      { code: "AI_REQUIRED_FIELD_MISSING", field: "monthlyPayroll" },
+      { code: "AI_REQUIRED_FIELD_MISSING", field: "monthlyLaborCost" },
       { code: "AI_REQUIRED_FIELD_MISSING", field: "expectedMonthlyUnits" },
     ],
     needsClarification: true,
@@ -696,7 +712,7 @@ test("esclarecimento contextual não permite trocar o custo original sem correç
 });
 
 test("esclarecimento vazio, campo não pendente e validação final têm códigos distintos", async () => {
-  const context = "Ingredientes R$ 15; frete por unidade R$ 7.";
+  const context = "Ingredientes R$ 15; frete médio do pedido R$ 7.";
   const previousAnalysis = {
     fields: { productName: "bolo" },
     sources: { productName: "user_provided" },
@@ -708,7 +724,7 @@ test("esclarecimento vazio, campo não pendente e validação final têm código
     input: { message: " ", clarification: { context, previousAnalysis } },
   }), { code: "INVALID_AI_REQUEST", status: 400 });
   await assert.rejects(() => parsePricingMessage({
-    provider: { extract: async () => ({ entries: [entry("deliveryCost", 7, "frete por unidade R$ 7")] }) },
+    provider: { extract: async () => ({ entries: [entry("averageOrderFreight", 7, "frete médio do pedido R$ 7")] }) },
     input: { message: "por unidade", clarification: { context, previousAnalysis } },
   }), { code: "AI_CLARIFICATION_MERGE_FAILED", status: 422 });
 

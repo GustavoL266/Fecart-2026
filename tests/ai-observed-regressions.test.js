@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { finalizeAiPricingAnalysis, validateAiExtraction } from "../lib/ai-pricing-schema.js";
 
-const batchFields = new Set(["materialCost", "packagingCost", "deliveryCost", "insuranceCost", "otherDirectExpenses"]);
+const batchFields = new Set(["materialCost", "packagingCost", "otherVariableCost", "otherDirectExpenses"]);
 const entry = (field, value, evidence, batchUnits = null, batchEvidence = null, overrides = {}) => ({
   field, value, source: "user_provided", evidence,
   basis: batchFields.has(field) ? (batchUnits === null ? "unit" : "batch-total") : "not-applicable",
@@ -24,18 +24,19 @@ test("regressão observada: brigadeiros preservam os dois totais do lote", () =>
 });
 
 test("regressão observada: componentes adicionais usam o mesmo lote explícito", () => {
-  const message = "Produzo 50 camisetas. Pago R$600 nas camisetas, R$150 de estampagem, R$80 de embalagem, R$70 de transporte e quero lucrar 35%.";
+  const message = "Produzo 50 camisetas. Pago R$600 nas camisetas, R$150 de estampagem, R$80 de embalagem, R$70 de frete no pedido de 50 unidades e quero lucrar 35%.";
   const result = extract(message, [
     entry("productName", "camisetas", "Produzo 50 camisetas"),
     entry("materialCost", 600, "Pago R$600 nas camisetas", 50, "Produzo 50 camisetas"),
     entry("otherDirectExpenses", 150, "R$150 de estampagem", 50, "Produzo 50 camisetas"),
     entry("packagingCost", 80, "R$80 de embalagem", 50, "Produzo 50 camisetas"),
-    entry("deliveryCost", 70, "R$70 de transporte", 50, "Produzo 50 camisetas"),
+    entry("averageOrderFreight", 70, "R$70 de frete no pedido"),
+    entry("averageOrderUnits", 50, "pedido de 50 unidades"),
     entry("desiredNetMargin", 35, "lucrar 35%"),
   ]);
   assert.deepEqual(result.fields, {
     productName: "camisetas", materialCost: 12, otherDirectExpenses: 3,
-    packagingCost: 1.6, deliveryCost: 1.4, desiredNetMargin: 35,
+    packagingCost: 1.6, averageOrderFreight: 70, averageOrderUnits: 50, desiredNetMargin: 35,
   });
 });
 
@@ -45,11 +46,11 @@ test("regressão observada: energia do lote é direta, mas energia mensal é fix
     entry("productName", "velas artesanais", "Faço velas artesanais"),
     entry("packagingCost", 32, "Embalagem custa 32 reais", 40, "São 40 unidades por produção"),
     entry("materialCost", 180, "matéria-prima 180", 40, "São 40 unidades por produção"),
-    entry("otherDirectExpenses", 25, "25 reais de energia", 40, "São 40 unidades por produção"),
+    entry("otherVariableCost", 25, "25 reais de energia", 40, "São 40 unidades por produção"),
     entry("desiredNetMargin", 25, "margem de 25%"),
   ]).fields, {
     productName: "velas artesanais", packagingCost: 0.8, materialCost: 4.5,
-    otherDirectExpenses: 0.625, desiredNetMargin: 25,
+    otherVariableCost: 0.625, desiredNetMargin: 25,
   });
 
   const monthlyMessage = "Energia fixa mensal R$300.";
@@ -126,13 +127,13 @@ test("regressão observada: ambiguidades preservam só dados seguros", () => {
     entry("materialCost", 4.5, "cada uma custa 4,50"),
     entry("otherDirectExpenses", 67, "etiqueta deu 67 reais", 120, "garrafinhas são 120"),
     entry("packagingCost", 90, "embalagem acho q 90", 120, "garrafinhas são 120", { certainty: "include-uncertain" }),
-    entry("deliveryCost", 54, "frete foi 54 mas talvez eu não queira colocar o frete", 120, "garrafinhas são 120", { certainty: "include-uncertain" }),
+    entry("averageOrderFreight", 54, "frete foi 54 mas talvez eu não queira colocar o frete", null, null, { certainty: "include-uncertain" }),
     entry("desiredNetMargin", 30, "margem quero uns 30 ou 35 não sei", null, null, { certainty: "ambiguous-value" }),
   ]);
   assert.deepEqual(result.fields, { productName: "garrafinhas", materialCost: 4.5, otherDirectExpenses: 0.558333333333333 });
   assert.deepEqual(result.pending.map(({ code, field }) => ({ code, field })), [
     { code: "AI_CONFIRM_FIELD", field: "packagingCost" },
-    { code: "AI_CONFIRM_FIELD", field: "deliveryCost" },
+    { code: "AI_CONFIRM_FIELD", field: "averageOrderFreight" },
     { code: "AI_AMBIGUOUS_VALUE", field: "desiredNetMargin" },
   ]);
 });

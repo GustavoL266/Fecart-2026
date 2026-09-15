@@ -28,7 +28,7 @@ Antes de propor uma implementação, tenha em mente:
 - [Arquitetura e mapa dos arquivos](#arquitetura-e-mapa-dos-arquivos)
 - [Stack](#stack)
 - [Recursos implementados](#recursos-implementados)
-- [Precificação técnica v6](#precificação-técnica-v6)
+- [Precificação transparente v7](#precificação-transparente-v7)
 - [Campos e convenções de dados](#campos-e-convenções-de-dados)
 - [Fluxos internos e estado da aplicação](#fluxos-internos-e-estado-da-aplicação)
 - [Pré-requisitos](#pré-requisitos)
@@ -46,7 +46,7 @@ Antes de propor uma implementação, tenha em mente:
 
 ## Visão geral do produto
 
-O objetivo é ajudar o usuário a entender quanto precisa cobrar por uma unidade ou venda para cobrir seus custos, despesas de venda e margem líquida desejada. O usuário informa a estrutura de custos; a aplicação calcula o preço técnico, mostra sua composição e permite compará-lo com referências reais de mercado.
+O objetivo é ajudar o usuário a entender quanto precisa cobrar por uma unidade ou venda para cobrir seus custos, despesas de venda e margem líquida desejada. O usuário informa a estrutura de custos; a aplicação calcula preços de equilíbrio, mínimo e recomendado, mostra a composição e permite compará-los com referências reais de mercado.
 
 O sistema organiza informações que normalmente ficam espalhadas: matéria-prima, embalagem, perdas, frete, folha salarial, custos fixos, volume mensal, taxa de pagamento, comissão, capital de giro e prazos. A partir dessas entradas, apresenta um resultado consistente e uma memória de cálculo que pode ser consultada depois.
 
@@ -54,9 +54,9 @@ Há quatro responsabilidades centrais:
 
 | Responsabilidade | O que o sistema faz |
 | --- | --- |
-| Simular | Valida entradas e calcula o preço técnico sustentável com uma regra determinística. |
+| Simular | Valida entradas e calcula preços de equilíbrio, margem mínima e margem desejada com uma regra determinística. |
 | Explicar | Mostra custo-base, lucro, margem, alertas, composição e detalhamento da conta. |
-| Comparar | Consulta produtos no mercado ou usa uma referência manual, sem ajustar automaticamente o preço técnico para coincidir com concorrentes. |
+| Comparar | Consulta produtos no mercado ou usa uma referência manual, sem ajustar automaticamente o preço recomendado para coincidir com concorrentes. |
 | Registrar | Salva uma precificação privada, vinculada ao usuário, com entradas e resultado histórico. |
 
 O preenchimento por IA facilita a entrada desses dados. A pesquisa de mercado oferece uma comparação externa. A consulta fiscal fornece classificação e uma estimativa separada. O funcionamento do simulador manual não depende de obter uma resposta da Gemini, da SearchAPI ou da Focus NFe.
@@ -73,14 +73,14 @@ A sidebar organiza o preenchimento em etapas: **Produto, Fiscal, Diretos, Indire
 
 ### Simulação e dashboard
 
-Ao alterar um campo, o controlador revalida os dados e atualiza o dashboard. Se faltar uma informação obrigatória ou houver combinação inválida, o sistema mostra as pendências em vez de apresentar um resultado aparentemente definitivo. A confirmação de NCM e a consulta externa de mercado não são requisitos para calcular o preço técnico com os dados manuais válidos.
+Ao alterar um campo, o controlador revalida os dados e atualiza o dashboard. Se faltar uma informação obrigatória ou houver combinação inválida, o sistema mostra as pendências em vez de apresentar um resultado aparentemente definitivo. A confirmação de NCM e a consulta externa de mercado não são requisitos para calcular o preço recomendado com os dados manuais válidos.
 
 Os principais indicadores são:
 
-- **Seu preço sustentável:** preço técnico mínimo calculado para a estrutura informada.
+- **Preço recomendado:** preço que cobre a estrutura informada e preserva a margem desejada.
 - **Preço de mercado:** referência manual ou selecionada na pesquisa, quando disponível.
 - **Custo-base por venda:** custo unitário total utilizado na precificação.
-- **Lucro líquido por unidade:** resultado líquido calculado para o preço técnico.
+- **Lucro líquido por unidade:** resultado líquido calculado para o preço recomendado.
 - **Alertas:** pendências e observações relevantes, incluindo limites da avaliação fiscal.
 
 Os botões de detalhes abrem a análise da simulação, incluindo composição dos custos, memória da conta, visualizações e comparação com o mercado. Essa tela reutiliza os resultados do mesmo motor financeiro.
@@ -229,13 +229,13 @@ Isso tem consequências importantes para manutenção:
 - Cálculo técnico canônico no mesmo módulo puro para navegador e servidor, com validação em ambos os lados e sem arredondamentos intermediários.
 - Validação no navegador e no servidor, limitação de tentativas de autenticação, cabeçalhos de segurança e respostas sem hashes/senhas.
 
-## Precificação técnica v6
+## Precificação transparente v7
 
-O cálculo salvo usa `pricingSchemaVersion: 6` e `formulaVersion: "technical-pricing-v2"`. A matéria-prima é ajustada por `materialCost / (1 - wasteRate)`; os custos indiretos são `(folha + custos fixos) / quantidade mensal prevista`; e o capital de giro incide, com juros compostos, somente sobre o custo operacional durante `max(estoque + recebimento - pagamento, 0)` dias. O preço técnico é `custo total / (1 - tributos - taxa de pagamento - comissão - margem)`, calculado sem arredondar os custos intermediários e arredondado para cima ao centavo no resultado. A apresentação monetária e o preço anunciado da estratégia de desconto possuem seus próprios arredondamentos de saída.
+O cálculo salvo usa `pricingSchemaVersion: 7` e `formulaVersion: "transparent-pricing-v3"`. O formulário separa insumos, frete, mão de obra direta, custos fixos, equipamentos, despesas da venda e capital de giro. Todos os valores obrigatórios são informados explicitamente: o sistema não inventa custos, produtividade, margens ou taxas ausentes.
 
-Mercado e desconto não entram no custo nem mudam esse preço: mercado é apenas comparação opcional e o desconto gera preço anunciado cujo preço após desconto continua igual ou superior ao técnico. O servidor recebe somente entradas e gera o resultado, o resumo e a memória de cálculo; preços e totais enviados pelo navegador são ignorados. Nas colunas legadas, `cost_price` representa o custo direto e `additional_costs` representa custo indireto mais financeiro; o snapshot oficial permanece em `calculation_data`.
+O servidor recebe as entradas e recalcula o resultado, o resumo e a memória de cálculo pelo mesmo módulo puro usado no navegador. Totais ou preços derivados enviados pelo cliente são ignorados. Mercado é somente uma referência opcional e desconto é uma estratégia posterior: nenhum deles reduz o custo ou substitui a margem definida.
 
-Registros v5 continuam históricos: não são recalculados quando exibidos. Ao reutilizá-los, apenas campos semanticamente equivalentes são migrados; dias de estoque ficam vazios para confirmação e `discountAmount` legado não vira desconto comercial.
+Snapshots v6 continuam calculáveis com a fórmula histórica. Ao reutilizar registros v5 ou v6 no novo formulário, apenas equivalências seguras são migradas; mão de obra e tempo de produção ficam pendentes para confirmação, evitando conversões silenciosas entre folha geral e mão de obra direta.
 
 ### Sequência da conta
 
@@ -244,44 +244,53 @@ O resumo abaixo descreve o algoritmo implementado, e não uma regra adicional a 
 ```text
 materiaPrimaAjustada = materialCost / (1 - wasteRate)
 
-custoDireto = materiaPrimaAjustada + packagingCost + deliveryCost
-            + insuranceCost + otherDirectExpenses
+custoFreteUnitario = averageOrderFreight * parcelaPagaPelaEmpresa
+                   / averageOrderUnits
+custoHoraMaoDeObra = monthlyLaborCost / monthlyProductiveHours
+custoMaoDeObraUnitario = custoHoraMaoDeObra * productionTimeMinutes / 60
 
-custoIndiretoUnitario = (monthlyPayroll + monthlyFixedCosts)
-                     / expectedMonthlyUnits
+custoDireto = materiaPrimaAjustada + packagingCost + custoFreteUnitario
+            + custoMaoDeObraUnitario + otherVariableCost + otherDirectExpenses
 
-custoOperacional = custoDireto + custoIndiretoUnitario
+fatorRateio = quantidade, horas de mão de obra, horas de máquina ou faturamento
+custoFixoUnitario = monthlyFixedCosts * fatorRateio
+custoEquipamentoUnitario = (depreciacaoMensal + manutencaoMensal) * fatorRateio
+
+custoOperacional = custoDireto + custoFixoUnitario + custoEquipamentoUnitario
 diasFinanciados = max(inventoryDays + receivingDays - paymentDays, 0)
 taxaDoPeriodo = (1 + monthlyCapitalRate) ^ (diasFinanciados / 30) - 1
 custoFinanceiro = custoOperacional * taxaDoPeriodo
 custoTotalUnitario = custoOperacional + custoFinanceiro
+                   + fixedFeePerOrder / averageOrderUnits
 
 despesasPercentuais = taxRate + paymentFeeRate + commissionRate
-denominador = 1 - despesasPercentuais - desiredNetMargin
-precoTecnicoBruto = custoTotalUnitario / denominador
-precoTecnico = ceil(precoTecnicoBruto * 100) / 100
+                    + marketplaceFeeRate + postSaleLossRate
+precoEquilibrio = custoTotalUnitario / (1 - despesasPercentuais)
+precoMargemDesejada = custoTotalUnitario
+                    / (1 - despesasPercentuais - desiredNetMargin)
+precoRecomendado = ceil(precoMargemDesejada * 100) / 100
 ```
 
-O denominador precisa ser positivo. Desperdício e percentuais de venda não podem atingir 100%. Quantidade mensal prevista precisa ser maior que zero. Campos monetários não aceitam valores negativos; mercado, quando preenchido, exige um preço positivo.
+Os denominadores precisam ser positivos. Desperdício e percentuais não podem atingir 100%; quantidade mensal e unidades por pedido precisam ser maiores que zero. Campos monetários não aceitam valores negativos e as bases escolhidas para rateio precisam ser coerentes com o consumo do produto.
 
 **Margem líquida não é markup.** O percentual desejado participa do denominador porque representa uma fração do preço de venda. Não substitua esse cálculo por `custo × (1 + margem)` em uma correção de interface ou em uma implementação da IA.
 
-Como exemplo de leitura do código, se matéria-prima for `20`, margem for `30%`, volume mensal for `1` e os demais custos, taxas e prazos aplicáveis forem explicitamente zero, o preço bruto será `20 / 0,70`, e o preço técnico exibido será `R$ 28,58`. Isso é um cenário de teste com entradas definidas, não um preenchimento padrão.
+Como exemplo, para custo completo de `R$ 100,00`, sem despesas percentuais, uma margem de `20%` resulta em `R$ 125,00`; uma margem de `30%` resulta em `R$ 142,86`. Não use `custo × (1 + margem)`, pois isso é markup.
 
-### Desconto e capacidade produtiva
+### Desconto e volume mensal
 
-O desconto é uma estratégia comercial posterior ao preço técnico. Com desconto percentual, o preço anunciado parte de `precoTecnico / (1 - discountRate)`; com desconto fixo, parte de `precoTecnico + fixedDiscountAmount`. As duas modalidades positivas simultâneas são rejeitadas. O objetivo do anúncio é preservar o piso técnico após o desconto.
+O desconto é uma estratégia comercial posterior ao preço recomendado. Com desconto percentual, o preço anunciado parte de `precoRecomendado / (1 - discountRate)`; com desconto fixo, parte de `precoRecomendado + fixedDiscountAmount`. O tipo selecionado determina qual campo participa da conta, e o preço após desconto preserva a margem desejada.
 
-Os campos de capacidade produtiva são informativos. Funcionários × horas produtivas por funcionário/mês × unidades por funcionário/hora produz uma capacidade mensal estimada, mas **não substitui** `expectedMonthlyUnits` no rateio dos custos. Não copie automaticamente a capacidade para a previsão de vendas/produção mensal.
+`expectedMonthlyUnits` é sempre a quantidade deste produto que o usuário espera produzir ou vender no mês. O valor não é deduzido automaticamente de funcionários, faturamento ou capacidade e nunca é substituído por uma estimativa silenciosa.
 
 ### Separação entre preço, mercado e fiscal
 
 | Informação | Origem | Participação no sistema |
 | --- | --- | --- |
-| Preço técnico | Motor financeiro com entradas do usuário | Resultado principal da precificação. |
+| Preço de equilíbrio, mínimo e recomendado | Motor financeiro com entradas do usuário | Faixas explícitas para cobrir despesas, atingir a margem mínima opcional e atingir a margem desejada. |
 | Margem desejada | Usuário, manualmente ou por patch de IA confirmado | Percentual que participa do denominador do preço. |
-| Referência de mercado | Valor manual, produto selecionado, média ou mediana conforme regra escolhida | Comparação; não entra no custo nem muda o preço técnico. |
-| Carga tributária manual | `taxRate` informado pelo usuário | Despesa percentual do preço técnico. |
+| Referência de mercado | Valor manual, produto selecionado, média ou mediana conforme regra escolhida | Comparação; não entra no custo nem muda o preço recomendado. |
+| Percentual efetivo de impostos | `taxRate` informado pelo usuário | Despesa percentual do preço de venda; deve vir da empresa, contador ou integração fiscal. |
 | NCM confirmado | Sugestão e confirmação na Focus NFe | Classificação; não é uma alíquota nem confirmação da tributação completa. |
 | Maior + tributos estimados | Maior anúncio e alíquotas da tabela IBPT local | Card separado da consulta de mercado. |
 
@@ -293,35 +302,34 @@ Os nomes abaixo são os IDs reais usados pelo formulário. Ao adicionar um campo
 
 | Campo | Significado e unidade | Preenchimento |
 | --- | --- | --- |
-| `materialCost` | Matéria-prima/insumos por unidade ou venda, em R$ | Obrigatório |
-| `wasteRate` | Percentual de perda/desperdício da matéria-prima | Obrigatório |
-| `packagingCost` | Embalagem por unidade/venda, em R$ | Obrigatório |
-| `deliveryCost` | Frete/entrega por unidade/venda, em R$ | Obrigatório |
-| `insuranceCost` | Seguro por unidade/venda, em R$ | Opcional |
-| `otherDirectExpenses` | Outras despesas diretas por unidade/venda, em R$ | Opcional |
-| `monthlyPayroll` | Folha salarial total mensal, em R$ | Obrigatório |
-| `monthlyFixedCosts` | Outros custos fixos mensais, em R$ | Obrigatório |
-| `expectedMonthlyUnits` | Quantidade mensal prevista para rateio | Obrigatório e positivo |
-| `taxRate` | Carga tributária total estimada manualmente, em % | Obrigatório |
-| `paymentFeeRate` | Taxa do meio de pagamento, em % | Obrigatório |
-| `commissionRate` | Comissão sobre a venda, em % | Obrigatório |
-| `desiredNetMargin` | Margem líquida desejada, em % | Obrigatório |
+| `materialCost`, `wasteRate`, `packagingCost` | Insumos por unidade, perda percentual e embalagem por unidade | Obrigatórios; zero deve ser explícito |
+| `averageOrderFreight`, `freightPayer`, `companyFreightShare`, `averageOrderUnits` | Frete médio do pedido, quem paga, parcela da empresa e unidades médias por pedido | Frete e unidades obrigatórios; parcela exigida no modo compartilhado |
+| `otherVariableCost`, `otherDirectExpenses` | Outros custos variáveis e despesas diretas por unidade | Opcionais |
+| `laborCostMode` | Escolhe cálculo automático ou custo/hora manual da mão de obra direta | Obrigatório |
+| `monthlyLaborCost`, `monthlyProductiveHours` | Custo mensal da equipe produtiva e horas produtivas totais | Exigidos no modo automático |
+| `laborHourlyCost`, `productionTimeMinutes` | Custo/hora manual e tempo médio por unidade | Custo/hora condicional; tempo obrigatório |
+| `monthlyFixedCosts`, `expectedMonthlyUnits` | Custos fixos sem mão de obra direta e quantidade mensal deste produto | Obrigatórios; quantidade positiva |
+| `allocationMethod` e bases de rateio | Quantidade, horas de mão de obra, horas de máquina ou participação no faturamento | Bases condicionais ao método escolhido |
+| `equipmentValue`, `equipmentUsefulLifeMonths`, `equipmentMaintenanceMonthly` | Valor, vida útil e manutenção dos equipamentos | Opcionais; vida útil exigida quando há valor |
+| `taxRate` | Percentual efetivo de impostos sobre a venda | Obrigatório |
+| `paymentFeeRate`, `commissionRate`, `marketplaceFeeRate` | Taxa de pagamento, comissão e plataforma sobre a venda | Opcionais |
+| `fixedFeePerOrder`, `postSaleLossRate` | Taxa fixa por pedido e perdas pós-venda | Opcionais |
+| `minimumMargin`, `desiredNetMargin` | Margem mínima opcional e margem líquida desejada | Desejada obrigatória; mínima não pode superá-la |
 | `inventoryDays` | Prazo de estoque/produção, em dias | Obrigatório |
 | `receivingDays` | Prazo de recebimento da venda, em dias | Obrigatório |
 | `paymentDays` | Prazo de pagamento ao fornecedor, em dias | Obrigatório |
-| `monthlyCapitalRate` | Custo do capital ao mês, em % | Obrigatório |
-| `discountRate` | Desconto comercial percentual | Opcional |
-| `fixedDiscountAmount` | Desconto comercial fixo, em R$ | Opcional |
-| `marketPrice` | Referência manual dos concorrentes, em R$ | Opcional; vazia permanece sem referência |
+| `capitalRateSource`, `monthlyCapitalRate` | Origem escolhida e custo mensal do capital | Taxa exigida, exceto quando o usuário escolhe zero |
+| `discountType`, `discountRate`, `fixedDiscountAmount` | Tipo e valor da estratégia de desconto | Opcionais e mutuamente exclusivos |
+| `marketPrice` | Preço médio de produtos equivalentes no mercado | Opcional; apenas comparação |
 
-`productName` identifica o produto e é necessário para salvar. `productDescription` é opcional. A seção de capacidade possui `workerCount`, `productiveHoursPerWorkerMonth` e `unitsPerWorkerHour`: pode permanecer inteiramente vazia, mas, quando iniciada, exige os três campos para passar pela validação completa do formulário.
+`productName` identifica o produto e é necessário para salvar; `productDescription` é opcional. Opções condicionais controlam quais campos são ativos. Valores antigos preservados em campos ocultos não participam da validação nem da conta até o usuário selecionar novamente aquela opção.
 
 ### Percentuais, vazios e serialização
 
 - No input e no contrato de IA, `25` representa `25%`.
 - No domínio financeiro e em `pricing.inputs`, esse mesmo percentual é a fração `0.25`.
 - O parser do formulário aceita números brasileiros, como `1.234,56`, e diferencia campo vazio de valor inválido. Não envie strings com `R$` ou `%` diretamente para a função de cálculo.
-- No preenchimento manual, um campo obrigatório vazio permanece pendente. No modo completo da IA, uma hipótese neutra em zero só pode ser aplicada após aparecer como `estimated` na prévia e receber confirmação.
+- No preenchimento manual, um campo obrigatório vazio permanece pendente. A IA não pode estimar dados financeiros críticos; precisa perguntar ao usuário e obter confirmação explícita.
 - Custos opcionais vazios são normalizados para zero no cálculo; mercado vazio permanece `null`.
 - `emptyOptionalFields` acompanha o salvamento para distinguir o que estava vazio do que foi digitado explicitamente.
 - No patch da IA, `null` ou ausência significa **preservar**, enquanto `0` significa aplicar zero.

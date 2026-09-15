@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { getAiAssistantConfig } from "../lib/config.js";
 import { createAiFormProvider, parsePricingMessage } from "../lib/ai-form-assistant.js";
-import { applyAssistantFields, PRICING_FIELD_IDS, CAPACITY_FIELD_IDS, validatePricingForm } from "../js/ui/form.js";
+import { applyAssistantFields, FORM_OPTION_FIELD_IDS, PRICING_FIELD_IDS, validatePricingForm } from "../js/ui/form.js";
 
-const directCosts = new Set(["materialCost", "packagingCost", "deliveryCost", "insuranceCost", "otherDirectExpenses"]);
+const directCosts = new Set(["materialCost", "packagingCost", "otherVariableCost", "otherDirectExpenses"]);
 const entry = (field, value, evidence) => ({
   field, value, source: "user_provided", evidence, basis: directCosts.has(field) ? "unit" : "not-applicable",
   certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null,
 });
-const monthlyFields = new Set(["monthlyPayroll", "monthlyFixedCosts"]);
+const monthlyFields = new Set(["monthlyLaborCost", "monthlyFixedCosts"]);
 const estimatedEntry = (field, value) => ({
   field, value, source: "estimated", evidence: "",
   basis: monthlyFields.has(field) ? "monthly-total" : directCosts.has(field) ? "unit" : "not-applicable",
@@ -18,24 +18,17 @@ const estimatedEntry = (field, value) => ({
 const completeEstimates = ({ wasteRate = 5, packagingCost = 2 } = {}) => [
   estimatedEntry("wasteRate", wasteRate),
   estimatedEntry("packagingCost", packagingCost),
-  estimatedEntry("deliveryCost", 0),
-  estimatedEntry("insuranceCost", 0),
+  estimatedEntry("otherVariableCost", 0),
   estimatedEntry("otherDirectExpenses", 0),
-  estimatedEntry("monthlyPayroll", 0),
-  estimatedEntry("monthlyFixedCosts", 0),
-  estimatedEntry("taxRate", 0),
-  estimatedEntry("paymentFeeRate", 0),
-  estimatedEntry("commissionRate", 0),
-  estimatedEntry("inventoryDays", 0),
-  estimatedEntry("receivingDays", 0),
-  estimatedEntry("paymentDays", 0),
-  estimatedEntry("monthlyCapitalRate", 0),
-  estimatedEntry("discountRate", 0),
-  estimatedEntry("fixedDiscountAmount", 0),
 ];
+const completeCurrentFields = (overrides = {}) => ({
+  averageOrderFreight: 0, averageOrderUnits: 1, monthlyLaborCost: 0, monthlyProductiveHours: 160,
+  productionTimeMinutes: 0, monthlyFixedCosts: 0, taxRate: 0, inventoryDays: 0, receivingDays: 0,
+  paymentDays: 0, monthlyCapitalRate: 0, ...overrides,
+});
 const controls = () => Object.fromEntries([
-  ...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS, "productName", "productDescription",
-].map((id) => [id, { value: "" }]));
+  ...PRICING_FIELD_IDS, ...FORM_OPTION_FIELD_IDS, "productName", "productDescription",
+].map((id) => [id, { value: ({ laborCostMode: "automatic", freightPayer: "company", allocationMethod: "quantity", capitalRateSource: "informed", discountType: "none" })[id] || "" }]));
 const cases = [
   ["Quero vender bolo, meu custo de ingredientes por unidade é R$ 15 e quero margem de 10%", [
     entry("productName", "bolo", "Quero vender bolo"),
@@ -60,8 +53,8 @@ for (const [message, entries, expected] of cases) {
         return Response.json({ candidates: [{ finishReason: "STOP", content: { role: "model", parts: [{ text: JSON.stringify({ entries }) }] } }] });
       },
     });
-    const fields = Object.fromEntries([...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS, "productName", "productDescription"].map(id => [id, { value: "" }]));
-    fields.deliveryCost.value = "7";
+    const fields = controls();
+    fields.averageOrderFreight.value = "7";
     const result = await parsePricingMessage({ provider, input: { message } });
     assert.deepEqual(result.fields, expected);
     assert.deepEqual(result.pending, []);
@@ -70,8 +63,8 @@ for (const [message, entries, expected] of cases) {
     assert.equal(fields.desiredNetMargin.value, "");
     applyAssistantFields(result.fields, fields);
     assert.equal(fields.desiredNetMargin.value, String(expected.desiredNetMargin));
-    assert.equal(fields.deliveryCost.value, "7");
-    for (const id of ["monthlyPayroll", "expectedMonthlyUnits", "taxRate", "wasteRate"]) assert.equal(fields[id].value, "");
+    assert.equal(fields.averageOrderFreight.value, "7");
+    for (const id of ["monthlyLaborCost", "expectedMonthlyUnits", "taxRate", "wasteRate"]) assert.equal(fields[id].value, "");
     assert.equal(validatePricingForm(fields).isValid, false);
   });
 }
@@ -120,7 +113,7 @@ test("modo complete resolve o bolo após 'são por unidade' sem exigir que a res
       return { entries: [{ ...entry("materialCost", 15, "são por unidade"), basis: "unit" }] };
     },
   };
-  const first = await parsePricingMessage({ provider, input: { message } });
+  const first = await parsePricingMessage({ provider, input: { message, currentFields: completeCurrentFields() } });
   assert.equal(first.calculationReady, false);
   assert.deepEqual(first.pending.map(({ code, field }) => ({ code, field })), [
     { code: "AI_COST_BASIS_UNKNOWN", field: "materialCost" },
@@ -175,7 +168,7 @@ test("modo complete resolve '15 reais de um lote de 3' usando o contexto e prese
       }] };
     },
   };
-  const first = await parsePricingMessage({ provider, input: { message } });
+  const first = await parsePricingMessage({ provider, input: { message, currentFields: completeCurrentFields() } });
   const result = await parsePricingMessage({ provider, input: {
     message: "15 reais de um lote de 3",
     clarification: {
@@ -223,7 +216,7 @@ for (const answer of ["10", "é 10", "é de 10", "10 por mês", "produzo 10 mens
         return { entries: [entry("expectedMonthlyUnits", 10, answer)] };
       },
     };
-    const first = await parsePricingMessage({ provider, input: { message } });
+    const first = await parsePricingMessage({ provider, input: { message, currentFields: completeCurrentFields() } });
     assert.deepEqual(first.pending.map(({ code, field }) => ({ code, field })), [
       { code: "AI_REQUIRED_FIELD_MISSING", field: "expectedMonthlyUnits" },
     ]);
@@ -295,7 +288,7 @@ for (const scenario of [
       ...scenario.userEntries,
       ...completeEstimates(scenario.estimates),
     ] }) };
-    const result = await parsePricingMessage({ provider, input: { message: scenario.message } });
+    const result = await parsePricingMessage({ provider, input: { message: scenario.message, currentFields: completeCurrentFields() } });
     assert.equal(result.calculationReady, false);
     assert.equal(result.needsClarification, true);
     assert.equal(result.pending.some(({ code, field }) => code === "AI_REQUIRED_FIELD_MISSING" && field === "expectedMonthlyUnits"), true);

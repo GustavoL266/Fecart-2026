@@ -6,7 +6,7 @@ import { TaxService, marketTaxError, marketTaxPrerequisiteError } from "./servic
 import { normalizeProductForFiscalSearch, isRelevantFiscalNcm, normalizeNcmDescription } from "./domain/fiscal-classification.js";
 import { normalizeFiscalState } from "./domain/fiscal-context.js";
 import { clearMarketReference, loadMarketReference, saveMarketReference } from "./services/market-reference-store.js";
-import { applyAssistantFields, applySavedInputs, CAPACITY_FIELD_IDS, clearPricingInputs, migrateLegacyV5Inputs, PRICING_FIELD_IDS, readAssistantFieldContext, readAssistantRateContext, renderPricingErrors, validatePricingForm } from "./ui/form.js";
+import { applyAssistantFields, applySavedInputs, clearPricingInputs, FORM_OPTION_FIELD_IDS, migrateLegacyV5Inputs, migrateLegacyV6Inputs, PRICING_FIELD_IDS, readAssistantFieldContext, readAssistantRateContext, renderPricingErrors, validatePricingForm } from "./ui/form.js";
 import { createAiAssistant } from "./ui/ai-assistant.js";
 import { financialValueSize } from "./utils/formatters.js";
 import { renderDashboard, renderIncompleteDashboard } from "./ui/dashboard.js";
@@ -34,7 +34,7 @@ const formFieldIds = [
   "operationPurpose",
   "marketReferenceRule",
   ...PRICING_FIELD_IDS,
-  ...CAPACITY_FIELD_IDS,
+  ...FORM_OPTION_FIELD_IDS,
 ];
 const elements = Object.fromEntries(formFieldIds.map((id) => [id, $(`#${id}`)]));
 const pricingTabs = createPricingTabs($(".pricing-sidebar"));
@@ -252,6 +252,23 @@ function currentPricingValidation() {
   return validation;
 }
 
+function renderPricingConditionalFields() {
+  const laborAutomatic = elements.laborCostMode.value === "automatic";
+  const allocationMethod = elements.allocationMethod.value;
+  const discountType = elements.discountType.value;
+  const capitalSource = elements.capitalRateSource.value;
+  $("#companyFreightShareField").hidden = elements.freightPayer.value !== "shared";
+  $("#automaticLaborFields").hidden = !laborAutomatic;
+  $("#manualLaborFields").hidden = laborAutomatic;
+  $("#allocationLaborHoursField").hidden = allocationMethod !== "labor-hours" || laborAutomatic;
+  $("#machineAllocationFields").hidden = allocationMethod !== "machine-hours";
+  $("#revenueAllocationFields").hidden = allocationMethod !== "revenue";
+  $("#monthlyCapitalRateField").hidden = capitalSource === "zero";
+  $("#capitalRateEstimateNotice").hidden = capitalSource !== "estimated";
+  $("#percentageDiscountField").hidden = discountType !== "percentage";
+  $("#fixedDiscountField").hidden = discountType !== "fixed";
+}
+
 function emptyMarketTaxState(overrides = {}) {
   return { status: "idle", mode: "", expanded: false, result: null, calculations: null, suggestions: [], code: "", message: "", shortMessage: "", ...overrides };
 }
@@ -402,6 +419,7 @@ function marketReferenceFromState(inputs) {
 
 function render() {
   renderProductOriginFields();
+  renderPricingConditionalFields();
   const validation = currentPricingValidation();
   const viewMarketState = marketStateForRender();
   if (validation.isValid) {
@@ -913,6 +931,7 @@ function resetCurrentProductForm() {
   $("#ncmProductQuery").value = "";
   elements.marketReferenceRule.value = "manual";
   document.querySelector(".fiscal-advanced-fields")?.removeAttribute("open");
+  document.querySelectorAll(".advanced-pricing-options").forEach((details) => details.removeAttribute("open"));
   focusState = emptyFocusState();
   ncmSearchState = emptyNcmSearchState();
   marketState = emptyMarketState();
@@ -1057,8 +1076,10 @@ function reuseProduct(product) {
   $("#productName").value = "";
   $("#productDescription").value = "";
   const data = product.calculationData || {};
-  const isLegacy = data.version === 5 || data.pricingSchemaVersion === 5;
-  const savedInputs = isLegacy ? migrateLegacyV5Inputs(data.inputs) : data.inputs;
+  const isLegacyV5 = data.version === 5 || data.pricingSchemaVersion === 5;
+  const isLegacyV6 = data.pricingSchemaVersion === 6;
+  const isLegacy = isLegacyV5 || isLegacyV6;
+  const savedInputs = isLegacyV5 ? migrateLegacyV5Inputs(data.inputs) : isLegacyV6 ? migrateLegacyV6Inputs(data.inputs) : data.inputs;
   if (!applySavedInputs(savedInputs, elements, product.calculationData?.emptyOptionalFields)) {
     setMessage($("#historyMessage"), "Esta consulta não possui os dados necessários para ser reutilizada.");
     return;
@@ -1097,7 +1118,7 @@ function reuseProduct(product) {
   $("#productDialog").close();
   render();
   navigate("assistant");
-  setMessage($("#saveProductStatus"), isLegacy ? "Cálculo legado carregado: confirme estoque/produção e revise os campos antes de salvar uma nova versão." : "Consulta carregada. Ajuste os inputs e salve uma nova versão.", true);
+  setMessage($("#saveProductStatus"), isLegacy ? "Cálculo legado carregado: o frete e o seguro foram migrados com segurança; informe a nova mão de obra e revise os campos antes de salvar." : "Consulta carregada. Ajuste os inputs e salve uma nova versão.", true);
 }
 
 async function deleteProduct(id) {
@@ -1238,12 +1259,19 @@ async function submitRegistration(event) {
   }
 }
 
- [...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]
+ [...PRICING_FIELD_IDS]
   .filter((fieldId) => fieldId !== "marketPrice")
   .forEach((fieldId) => elements[fieldId].addEventListener("input", () => {
     touchedPricingFields.add(fieldId);
     render();
   }));
+
+FORM_OPTION_FIELD_IDS.forEach((fieldId) => {
+  elements[fieldId].addEventListener("change", () => {
+    touchedPricingFields.add(fieldId);
+    render();
+  });
+});
 
 [
   elements.taxRegime,

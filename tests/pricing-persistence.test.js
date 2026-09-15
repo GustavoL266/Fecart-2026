@@ -5,12 +5,12 @@ import { calculatePricing, PricingValidationError } from "../js/domain/pricing-c
 
 const inputs = { materialCost: 18.5, wasteRate: 0.05, packagingCost: 3.5, deliveryCost: 4, insuranceCost: 0.5, otherDirectExpenses: 1.5, monthlyPayroll: 12000, monthlyFixedCosts: 8000, expectedMonthlyUnits: 2000, taxRate: 0.06, paymentFeeRate: 0.028, commissionRate: 0.05, desiredNetMargin: 0.2, inventoryDays: 10, receivingDays: 7, paymentDays: 30, monthlyCapitalRate: 0.02, fiscalContext: { ncmCode: "18061000" } };
 
-test("servidor ignora derivados adulterados e devolve snapshot v6 autoritativo", () => {
+test("servidor ignora derivados adulterados e devolve snapshot v7 autoritativo", () => {
   const payload = { name: "Bolo", description: "", category: "Alimentos", suggestedPrice: 0.01, profitMargin: 99, pricing: { inputs, market: { rule: "manual" }, emptyOptionalFields: [] } };
   const snapshot = authoritativeProductSnapshot(payload);
   assert.equal(snapshot.suggestedPrice, 58.88);
   assert.equal(snapshot.profitMargin, 20);
-  assert.equal(snapshot.calculationData.pricingSchemaVersion, 6);
+  assert.equal(snapshot.calculationData.pricingSchemaVersion, 7);
   assert.equal(snapshot.calculationData.pricingResult.technicalPrice, snapshot.suggestedPrice);
   assert.deepEqual(snapshot.calculationData.pricingResult.presentation, calculatePricing(inputs).presentation);
 });

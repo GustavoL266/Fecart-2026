@@ -8,7 +8,7 @@ const [html, dashboard, main, styles] = await Promise.all([
 
 test("mercado mantém Google Shopping opcional e distingue regras de referência", () => {
   assert.match(html, /Pesquisa de preços/);
-  assert.match(html, /Preço médio local dos concorrentes/);
+  assert.match(html, /Preço médio de produtos equivalentes dos concorrentes/);
   assert.match(html, /Produto individual selecionado/);
   assert.match(html, /Média da pesquisa Google Shopping/);
   assert.match(html, /Mediana da pesquisa Google Shopping/);

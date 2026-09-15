@@ -47,8 +47,8 @@ function escapeHtml(value) {
 
 // Esta regra é deliberadamente independente do DOM e do banco. O navegador e
 // o servidor importam este mesmo módulo: não existe uma segunda fórmula no API.
-const PRICING_SCHEMA_VERSION = 6;
-const FORMULA_VERSION = "technical-pricing-v2";
+const PRICING_SCHEMA_VERSION = 7;
+const FORMULA_VERSION = "transparent-pricing-v3";
 
 class PricingValidationError extends Error {
   constructor(errors) {
@@ -61,29 +61,54 @@ class PricingValidationError extends Error {
 }
 
 const requiredNumbers = Object.freeze({
-  materialCost: { min: 0, label: "O custo da matéria-prima" },
-  wasteRate: { min: 0, maxExclusive: 1, label: "O desperdício" },
+  materialCost: { min: 0, label: "O custo dos insumos e da matéria-prima" },
+  wasteRate: { min: 0, maxExclusive: 1, label: "A perda e o desperdício" },
   packagingCost: { min: 0, label: "O custo de embalagem" },
-  deliveryCost: { min: 0, label: "O frete ou entrega" },
-  monthlyPayroll: { min: 0, label: "A folha salarial mensal" },
+  averageOrderFreight: { min: 0, label: "O frete médio do pedido" },
+  averageOrderUnits: { minExclusive: 0, label: "A quantidade média de unidades por pedido" },
+  productionTimeMinutes: { min: 0, label: "O tempo médio para produzir uma unidade" },
   monthlyFixedCosts: { min: 0, label: "Os custos fixos mensais" },
-  expectedMonthlyUnits: { minExclusive: 0, label: "A quantidade mensal prevista" },
-  taxRate: { min: 0, maxExclusive: 1, label: "A carga tributária estimada manualmente" },
-  paymentFeeRate: { min: 0, maxExclusive: 1, label: "A taxa de pagamento" },
-  commissionRate: { min: 0, maxExclusive: 1, label: "A comissão" },
-  desiredNetMargin: { min: 0, maxExclusive: 1, label: "A margem líquida desejada" },
-  inventoryDays: { min: 0, label: "O prazo de estoque/produção" },
-  receivingDays: { min: 0, label: "O prazo de recebimento" },
-  paymentDays: { min: 0, label: "O prazo de pagamento" },
-  monthlyCapitalRate: { min: 0, label: "O custo mensal do capital" },
+  expectedMonthlyUnits: { minExclusive: 0, label: "A quantidade mensal esperada" },
+  taxRate: { min: 0, maxExclusive: 1, label: "O percentual efetivo de impostos sobre a venda" },
+  desiredNetMargin: { min: 0, maxExclusive: 1, label: "A margem de lucro desejada" },
+  inventoryDays: { min: 0, label: "O prazo entre comprar ou produzir e vender" },
+  receivingDays: { min: 0, label: "O prazo para receber do cliente" },
+  paymentDays: { min: 0, label: "O prazo para pagar fornecedores" },
 });
 
 const optionalNumbers = Object.freeze({
-  insuranceCost: { min: 0, label: "O seguro" },
-  otherDirectExpenses: { min: 0, label: "As outras despesas diretas" },
-  discountRate: { min: 0, maxExclusive: 1, label: "O desconto percentual" },
-  fixedDiscountAmount: { min: 0, label: "O desconto fixo" },
-  marketPrice: { minExclusive: 0, label: "A referência de mercado" },
+  companyFreightShare: { defaultValue: null, min: 0, maxInclusive: 1, label: "O percentual do frete pago pela empresa" },
+  otherVariableCost: { defaultValue: 0, min: 0, label: "Os outros custos variáveis de produção" },
+  otherDirectExpenses: { defaultValue: 0, min: 0, label: "As outras despesas diretas" },
+  monthlyLaborCost: { defaultValue: null, min: 0, label: "O custo mensal da mão de obra de produção" },
+  monthlyProductiveHours: { defaultValue: null, minExclusive: 0, label: "As horas produtivas totais da equipe" },
+  laborHourlyCost: { defaultValue: null, min: 0, label: "O custo da mão de obra por hora" },
+  allocationLaborHours: { defaultValue: null, minExclusive: 0, label: "As horas totais de mão de obra para rateio" },
+  machineTimeMinutes: { defaultValue: null, min: 0, label: "O tempo de máquina por unidade" },
+  monthlyMachineHours: { defaultValue: null, minExclusive: 0, label: "As horas totais de máquina no mês" },
+  monthlyBusinessRevenue: { defaultValue: null, minExclusive: 0, label: "O faturamento mensal total da empresa" },
+  monthlyProductRevenue: { defaultValue: null, min: 0, label: "O faturamento mensal esperado deste produto" },
+  equipmentValue: { defaultValue: 0, min: 0, label: "O valor total dos equipamentos" },
+  equipmentUsefulLifeMonths: { defaultValue: null, minExclusive: 0, label: "A vida útil estimada dos equipamentos" },
+  equipmentMaintenanceMonthly: { defaultValue: 0, min: 0, label: "A manutenção média mensal" },
+  paymentFeeRate: { defaultValue: 0, min: 0, maxExclusive: 1, label: "A taxa de pagamento ou cartão" },
+  commissionRate: { defaultValue: 0, min: 0, maxExclusive: 1, label: "A comissão" },
+  marketplaceFeeRate: { defaultValue: 0, min: 0, maxExclusive: 1, label: "A taxa de marketplace ou plataforma" },
+  fixedFeePerOrder: { defaultValue: 0, min: 0, label: "A taxa fixa por pedido" },
+  postSaleLossRate: { defaultValue: 0, min: 0, maxExclusive: 1, label: "As perdas pós-venda" },
+  minimumMargin: { defaultValue: null, min: 0, maxExclusive: 1, label: "A margem mínima" },
+  monthlyCapitalRate: { defaultValue: null, min: 0, maxExclusive: 1, label: "O custo mensal do capital" },
+  discountRate: { defaultValue: 0, min: 0, maxExclusive: 1, label: "O desconto planejado" },
+  fixedDiscountAmount: { defaultValue: 0, min: 0, label: "O desconto planejado" },
+  marketPrice: { defaultValue: null, minExclusive: 0, label: "A referência de mercado" },
+});
+
+const optionRules = Object.freeze({
+  laborCostMode: ["automatic", "manual"],
+  freightPayer: ["company", "customer", "shared"],
+  allocationMethod: ["quantity", "labor-hours", "machine-hours", "revenue"],
+  capitalRateSource: ["informed", "zero", "estimated"],
+  discountType: ["none", "percentage", "fixed"],
 });
 
 function numericIssue(value, rule) {
@@ -91,6 +116,7 @@ function numericIssue(value, rule) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "invalid";
   if (rule.min !== undefined && value < rule.min) return "min";
   if (rule.minExclusive !== undefined && value <= rule.minExclusive) return "minExclusive";
+  if (rule.maxInclusive !== undefined && value > rule.maxInclusive) return "maxInclusive";
   if (rule.maxExclusive !== undefined && value >= rule.maxExclusive) return "maxExclusive";
   return null;
 }
@@ -100,12 +126,46 @@ function numberMessage(rule, issue, optional = false) {
   if (issue === "invalid") return `${rule.label} deve ser um número finito.`;
   if (issue === "min") return `${rule.label} não pode ser negativo.`;
   if (issue === "minExclusive") return `${rule.label} deve ser maior que zero.`;
+  if (issue === "maxInclusive") return `${rule.label} não pode ser maior que 100%.`;
   if (issue === "maxExclusive") return `${rule.label} deve ser menor que 100%.`;
   return "Dados inválidos.";
 }
 
 function optionalValue(value) {
   return value === null || value === undefined || value === "" ? null : value;
+}
+
+function isLegacyInput(input) {
+  return !Object.hasOwn(input, "averageOrderFreight")
+    && ["deliveryCost", "monthlyPayroll", "insuranceCost"].some((key) => Object.hasOwn(input, key));
+}
+
+// Registros v6 continuam reproduzindo o resultado histórico quando são abertos.
+// O fluxo v7 nunca cria estes campos de compatibilidade.
+function normalizedInputShape(input) {
+  if (input._legacyV6 === true) return { ...input, _legacyV6: true };
+  if (!isLegacyInput(input)) return { ...input, _legacyV6: false };
+  return {
+    ...input,
+    _legacyV6: true,
+    averageOrderFreight: input.deliveryCost,
+    averageOrderUnits: 1,
+    freightPayer: "company",
+    companyFreightShare: 1,
+    otherVariableCost: 0,
+    laborCostMode: "manual",
+    laborHourlyCost: 0,
+    productionTimeMinutes: 0,
+    allocationMethod: "quantity",
+    marketplaceFeeRate: 0,
+    fixedFeePerOrder: 0,
+    postSaleLossRate: 0,
+    minimumMargin: null,
+    capitalRateSource: "informed",
+    discountType: input.discountRate > 0 ? "percentage" : input.fixedDiscountAmount > 0 ? "fixed" : "none",
+    legacyInsuranceCost: input.insuranceCost || 0,
+    legacyMonthlyPayroll: input.monthlyPayroll || 0,
+  };
 }
 
 function normalizedCapacity(input, errors) {
@@ -115,17 +175,15 @@ function normalizedCapacity(input, errors) {
   const supplied = keys.filter((key) => optionalValue(capacity[key]) !== null);
   if (supplied.length === 0) return null;
   if (supplied.length !== keys.length) {
-    errors.productionCapacity = "Preencha todos os campos da capacidade produtiva ou deixe-os vazios.";
+    errors.productionCapacity = "Os dados históricos de capacidade estão incompletos.";
     return null;
   }
   const normalized = {};
   for (const key of keys) {
     const value = capacity[key];
     if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-      errors[`productionCapacity.${key}`] = "A capacidade produtiva aceita apenas números não negativos.";
-    } else {
-      normalized[key] = value;
-    }
+      errors[`productionCapacity.${key}`] = "A capacidade histórica aceita apenas números não negativos.";
+    } else normalized[key] = value;
   }
   return Object.keys(normalized).length === keys.length ? {
     ...normalized,
@@ -133,9 +191,15 @@ function normalizedCapacity(input, errors) {
   } : null;
 }
 
+function requireConditionalNumber(normalized, errors, key, rule) {
+  const issue = numericIssue(normalized[key], rule);
+  if (issue) errors[key] = numberMessage(rule, issue);
+}
+
 /** Validate normalized, typed domain inputs. Rates are fractions, never percentages. */
-function validatePricingInputs(input = {}) {
-  input = input && typeof input === "object" ? input : {};
+function validatePricingInputs(rawInput = {}) {
+  rawInput = rawInput && typeof rawInput === "object" ? rawInput : {};
+  const input = normalizedInputShape(rawInput);
   const errors = {};
   const normalized = {};
 
@@ -144,29 +208,93 @@ function validatePricingInputs(input = {}) {
     if (issue) errors[key] = numberMessage(rule, issue);
     else normalized[key] = input[key];
   }
-
   for (const [key, rule] of Object.entries(optionalNumbers)) {
     const value = optionalValue(input[key]);
     if (value === null) {
-      normalized[key] = key === "marketPrice" ? null : 0;
+      normalized[key] = rule.defaultValue;
       continue;
     }
     const issue = numericIssue(value, rule);
     if (issue) errors[key] = numberMessage(rule, issue, true);
     else normalized[key] = value;
   }
+  for (const [key, options] of Object.entries(optionRules)) {
+    if (!options.includes(input[key])) errors[key] = "Selecione uma opção válida.";
+    else normalized[key] = input[key];
+  }
 
+  normalized._legacyV6 = input._legacyV6;
+  normalized.legacyInsuranceCost = input._legacyV6 ? input.legacyInsuranceCost : 0;
+  normalized.legacyMonthlyPayroll = input._legacyV6 ? input.legacyMonthlyPayroll : 0;
   normalized.productionCapacity = normalizedCapacity(input, errors);
   normalized.fiscalContext = input.fiscalContext && typeof input.fiscalContext === "object" ? input.fiscalContext : {};
 
-  const rateKeys = ["taxRate", "paymentFeeRate", "commissionRate", "desiredNetMargin"];
-  if (rateKeys.every((key) => typeof normalized[key] === "number")) {
-    const denominator = 1 - normalized.taxRate - normalized.paymentFeeRate - normalized.commissionRate - normalized.desiredNetMargin;
-    if (!(denominator > 1e-12)) errors.desiredNetMargin = "A soma de tributos, taxas, comissão e margem deve ser menor que 100%.";
+  if (normalized.freightPayer === "shared") {
+    requireConditionalNumber(normalized, errors, "companyFreightShare", optionalNumbers.companyFreightShare);
+  } else if (normalized.freightPayer === "company") normalized.companyFreightShare = 1;
+  else if (normalized.freightPayer === "customer") normalized.companyFreightShare = 0;
+
+  if (normalized.laborCostMode === "automatic") {
+    requireConditionalNumber(normalized, errors, "monthlyLaborCost", optionalNumbers.monthlyLaborCost);
+    requireConditionalNumber(normalized, errors, "monthlyProductiveHours", optionalNumbers.monthlyProductiveHours);
+  } else if (normalized.laborCostMode === "manual") {
+    requireConditionalNumber(normalized, errors, "laborHourlyCost", optionalNumbers.laborHourlyCost);
   }
-  if (normalized.discountRate > 0 && normalized.fixedDiscountAmount > 0) {
-    errors.discountRate = "Escolha desconto percentual ou valor fixo, não os dois.";
-    errors.fixedDiscountAmount = "Escolha desconto percentual ou valor fixo, não os dois.";
+
+  if (normalized.allocationMethod === "labor-hours") {
+    if (normalized.laborCostMode !== "automatic") requireConditionalNumber(normalized, errors, "allocationLaborHours", optionalNumbers.allocationLaborHours);
+    const available = normalized.laborCostMode === "automatic" ? normalized.monthlyProductiveHours : normalized.allocationLaborHours;
+    const required = normalized.productionTimeMinutes * normalized.expectedMonthlyUnits / 60;
+    if (typeof available === "number" && typeof required === "number" && required > available + 1e-12) {
+      const field = normalized.laborCostMode === "automatic" ? "monthlyProductiveHours" : "allocationLaborHours";
+      errors[field] = "As horas usadas por este produto no mês ultrapassam as horas totais informadas para o rateio.";
+    }
+  }
+  if (normalized.allocationMethod === "machine-hours") {
+    requireConditionalNumber(normalized, errors, "machineTimeMinutes", { ...optionalNumbers.machineTimeMinutes, minExclusive: 0 });
+    requireConditionalNumber(normalized, errors, "monthlyMachineHours", optionalNumbers.monthlyMachineHours);
+    const required = normalized.machineTimeMinutes * normalized.expectedMonthlyUnits / 60;
+    if (typeof normalized.monthlyMachineHours === "number" && typeof required === "number" && required > normalized.monthlyMachineHours + 1e-12) {
+      errors.monthlyMachineHours = "As horas de máquina usadas por este produto ultrapassam o total mensal informado.";
+    }
+  }
+  if (normalized.allocationMethod === "revenue") {
+    requireConditionalNumber(normalized, errors, "monthlyBusinessRevenue", optionalNumbers.monthlyBusinessRevenue);
+    requireConditionalNumber(normalized, errors, "monthlyProductRevenue", { ...optionalNumbers.monthlyProductRevenue, minExclusive: 0 });
+    if (typeof normalized.monthlyBusinessRevenue === "number" && typeof normalized.monthlyProductRevenue === "number"
+      && normalized.monthlyProductRevenue > normalized.monthlyBusinessRevenue) {
+      errors.monthlyProductRevenue = "O faturamento mensal deste produto não pode superar o faturamento mensal total da empresa.";
+    }
+  }
+  if (normalized.equipmentValue > 0) requireConditionalNumber(normalized, errors, "equipmentUsefulLifeMonths", optionalNumbers.equipmentUsefulLifeMonths);
+
+  if (normalized.capitalRateSource === "zero") normalized.monthlyCapitalRate = 0;
+  else requireConditionalNumber(normalized, errors, "monthlyCapitalRate", optionalNumbers.monthlyCapitalRate);
+
+  if (normalized.discountType === "none") {
+    if (normalized.discountRate > 0 || normalized.fixedDiscountAmount > 0) errors.discountType = "Selecione o tipo de desconto correspondente ao valor informado.";
+  } else if (normalized.discountType === "percentage") {
+    requireConditionalNumber(normalized, errors, "discountRate", { ...optionalNumbers.discountRate, minExclusive: 0 });
+    if (normalized.fixedDiscountAmount > 0) errors.fixedDiscountAmount = "Use apenas o desconto percentual selecionado.";
+  } else if (normalized.discountType === "fixed") {
+    requireConditionalNumber(normalized, errors, "fixedDiscountAmount", { ...optionalNumbers.fixedDiscountAmount, minExclusive: 0 });
+    if (normalized.discountRate > 0) errors.discountRate = "Use apenas o desconto fixo selecionado.";
+  }
+
+  const saleRateKeys = ["taxRate", "paymentFeeRate", "commissionRate", "marketplaceFeeRate", "postSaleLossRate"];
+  if (saleRateKeys.every((key) => typeof normalized[key] === "number")) {
+    const saleRate = saleRateKeys.reduce((sum, key) => sum + normalized[key], 0);
+    if (saleRate >= 1 - 1e-12) errors.taxRate = "A soma de impostos, taxas, comissão e perdas pós-venda deve ser menor que 100%.";
+    if (typeof normalized.desiredNetMargin === "number" && saleRate + normalized.desiredNetMargin >= 1 - 1e-12) {
+      errors.desiredNetMargin = "A soma de impostos, taxas, comissão, perdas pós-venda e margem desejada deve ser menor que 100%.";
+    }
+    if (typeof normalized.minimumMargin === "number" && saleRate + normalized.minimumMargin >= 1 - 1e-12) {
+      errors.minimumMargin = "A soma de despesas percentuais e margem mínima deve ser menor que 100%.";
+    }
+  }
+  if (typeof normalized.minimumMargin === "number" && typeof normalized.desiredNetMargin === "number"
+    && normalized.minimumMargin > normalized.desiredNetMargin) {
+    errors.minimumMargin = "A margem mínima não pode ser maior que a margem desejada.";
   }
 
   return { isValid: Object.keys(errors).length === 0, errors, value: Object.keys(errors).length === 0 ? normalized : null };
@@ -182,133 +310,170 @@ function calculateAdjustedMaterialCost(materialCost, wasteRate) {
   return materialCost / (1 - wasteRate);
 }
 
-function calculateDirectCost(inputs) {
-  return inputs.adjustedMaterialCost + inputs.packagingCost + inputs.deliveryCost + inputs.insuranceCost + inputs.otherDirectExpenses;
+function calculateWorkingCapital(operatingCost, inventoryDays, receivingDays, paymentDays, monthlyCapitalRate) {
+  const financedDays = Math.max(inventoryDays + receivingDays - paymentDays, 0);
+  const periodCapitalRate = (1 + monthlyCapitalRate) ** (financedDays / 30) - 1;
+  return { financedDays, financedBase: operatingCost, periodCapitalRate, financialCost: financedDays === 0 ? 0 : operatingCost * periodCapitalRate };
+}
+
+function calculateTechnicalPrice(totalUnitCost, saleExpenseRate, desiredNetMargin) {
+  const priceDenominator = 1 - saleExpenseRate - desiredNetMargin;
+  if (!(priceDenominator > 1e-12)) throw new PricingValidationError({ desiredNetMargin: "A soma das despesas sobre a venda e da margem deve ser menor que 100%." });
+  const technicalPriceRaw = totalUnitCost / priceDenominator;
+  return { priceDenominator, technicalPriceRaw, technicalPrice: Math.ceil(technicalPriceRaw * 100) / 100 };
+}
+
+function allocationFactor(inputs) {
+  if (inputs.allocationMethod === "labor-hours") {
+    const totalHours = inputs.laborCostMode === "automatic" ? inputs.monthlyProductiveHours : inputs.allocationLaborHours;
+    return (inputs.productionTimeMinutes / 60) / totalHours;
+  }
+  if (inputs.allocationMethod === "machine-hours") return (inputs.machineTimeMinutes / 60) / inputs.monthlyMachineHours;
+  if (inputs.allocationMethod === "revenue") return (inputs.monthlyProductRevenue / inputs.monthlyBusinessRevenue) / inputs.expectedMonthlyUnits;
+  return 1 / inputs.expectedMonthlyUnits;
 }
 
 function calculateIndirectCost(monthlyPayroll, monthlyFixedCosts, expectedMonthlyUnits) {
   return (monthlyPayroll + monthlyFixedCosts) / expectedMonthlyUnits;
 }
 
-function calculateWorkingCapital(operatingCost, inventoryDays, receivingDays, paymentDays, monthlyCapitalRate) {
-  const financedDays = Math.max(inventoryDays + receivingDays - paymentDays, 0);
-  const periodCapitalRate = (1 + monthlyCapitalRate) ** (financedDays / 30) - 1;
-  return {
-    financedDays,
-    financedBase: operatingCost,
-    periodCapitalRate,
-    financialCost: financedDays === 0 ? 0 : operatingCost * periodCapitalRate,
-  };
-}
-
-function calculateTechnicalPrice(totalUnitCost, saleExpenseRate, desiredNetMargin) {
-  const priceDenominator = 1 - saleExpenseRate - desiredNetMargin;
-  if (!(priceDenominator > 1e-12)) throw new PricingValidationError({ desiredNetMargin: "A soma de tributos, taxas, comissão e margem deve ser menor que 100%." });
-  const technicalPriceRaw = totalUnitCost / priceDenominator;
-  return { priceDenominator, technicalPriceRaw, technicalPrice: Math.ceil(technicalPriceRaw * 100) / 100 };
-}
-
-function calculateDiscountStrategy(technicalPrice, discountRate = 0, fixedDiscountAmount = 0) {
-  if (discountRate > 0) {
+function calculateDiscountStrategy(technicalPrice, discountType = "none", discountRate = 0, fixedDiscountAmount = 0) {
+  if (discountType === "percentage") {
     const advertisedPriceRaw = technicalPrice / (1 - discountRate);
-    return { type: "percentage", rate: discountRate, fixedAmount: 0, advertisedPriceRaw, advertisedPrice: Math.ceil(advertisedPriceRaw * 100) / 100, discountAmount: advertisedPriceRaw - technicalPrice, postDiscountPrice: technicalPrice, preservesTechnicalPrice: true };
+    const advertisedPrice = Math.ceil(advertisedPriceRaw * 100) / 100;
+    return { type: "percentage", rate: discountRate, fixedAmount: 0, advertisedPriceRaw, advertisedPrice, discountAmount: advertisedPrice - technicalPrice, postDiscountPrice: technicalPrice, preservesTechnicalPrice: true };
   }
-  if (fixedDiscountAmount > 0) {
+  if (discountType === "fixed") {
     const advertisedPriceRaw = technicalPrice + fixedDiscountAmount;
-    return { type: "fixed", rate: 0, fixedAmount: fixedDiscountAmount, advertisedPriceRaw, advertisedPrice: Math.ceil(advertisedPriceRaw * 100) / 100, discountAmount: fixedDiscountAmount, postDiscountPrice: technicalPrice, preservesTechnicalPrice: true };
+    const advertisedPrice = Math.ceil(advertisedPriceRaw * 100) / 100;
+    return { type: "fixed", rate: 0, fixedAmount: fixedDiscountAmount, advertisedPriceRaw, advertisedPrice, discountAmount: fixedDiscountAmount, postDiscountPrice: technicalPrice, preservesTechnicalPrice: true };
   }
   return { type: "none", rate: 0, fixedAmount: 0, advertisedPriceRaw: technicalPrice, advertisedPrice: technicalPrice, discountAmount: 0, postDiscountPrice: technicalPrice, preservesTechnicalPrice: true };
 }
 
 function calculateMarketComparison(marketReference, technicalPrice) {
   const price = marketReference?.price;
-  if (typeof price !== "number" || !Number.isFinite(price) || price <= 0) {
-    return { price: null, source: null, rule: null, difference: null, differenceRate: null, reference: null };
-  }
+  if (typeof price !== "number" || !Number.isFinite(price) || price <= 0) return { price: null, source: null, rule: null, difference: null, differenceRate: null, reference: null };
   return { price, source: marketReference.source || "manual", rule: marketReference.rule || "manual", difference: price - technicalPrice, differenceRate: (price - technicalPrice) / price, reference: marketReference };
 }
 
 function presentation(result) {
   const asMoney = (value) => Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
-  return Object.fromEntries(["adjustedMaterialCost", "directCost", "indirectCost", "operatingCost", "financedBase", "financialCost", "totalUnitCost", "technicalPriceRaw", "technicalPrice", "taxAmount", "paymentFeeAmount", "commissionAmount", "profitAmount"].map((key) => [key, asMoney(result[key])]));
+  const keys = [
+    "materialCost", "wasteCost", "adjustedMaterialCost", "packagingCost", "freightCostPerUnit", "directLaborCost",
+    "otherVariableCost", "otherDirectExpenses", "directCost", "fixedCostPerUnit", "equipmentCostPerUnit", "indirectCost",
+    "fixedSaleFeePerUnit", "operatingCost", "financedBase", "financialCost", "totalUnitCost", "breakEvenPrice",
+    "minimumMarginPrice", "technicalPriceRaw", "technicalPrice", "taxAmount", "paymentFeeAmount", "commissionAmount",
+    "marketplaceFeeAmount", "postSaleLossAmount", "profitAmount",
+  ];
+  return Object.fromEntries(keys.map((key) => [key, asMoney(result[key])]));
 }
+
+const allocationLabels = Object.freeze({
+  quantity: "custos mensais ÷ quantidade mensal",
+  "labor-hours": "custos mensais × horas de mão de obra da unidade ÷ horas totais",
+  "machine-hours": "custos mensais × horas de máquina da unidade ÷ horas totais",
+  revenue: "custos mensais × participação no faturamento ÷ quantidade mensal",
+});
 
 function canonicalBreakdown(result) {
   const items = [
-    { group: "Custo direto", key: "adjustedMaterialCost", label: "Matéria-prima ajustada por desperdício", value: result.adjustedMaterialCost, basis: "matéria-prima ÷ (1 − desperdício)", source: "Usuário" },
-    { group: "Custo direto", key: "packagingCost", label: "Embalagem e rotulagem", value: result.inputs.packagingCost, basis: "Por unidade/venda", source: "Usuário" },
-    { group: "Custo direto", key: "deliveryCost", label: "Frete e entrega", value: result.inputs.deliveryCost, basis: "Por unidade/venda", source: "Usuário" },
-    { group: "Custo direto", key: "insuranceCost", label: "Seguro", value: result.inputs.insuranceCost, basis: "Por unidade/venda", source: "Usuário" },
-    { group: "Custo direto", key: "otherDirectExpenses", label: "Outras despesas diretas", value: result.inputs.otherDirectExpenses, basis: "Por unidade/venda", source: "Usuário" },
-    { group: "Custo indireto", key: "indirectCost", label: "Rateio da folha e custos fixos", value: result.indirectCost, basis: "(folha + custos fixos) ÷ quantidade mensal", source: "Usuário" },
-    { group: "Capital de giro", key: "financialCost", label: "Custo financeiro", value: result.financialCost, basis: "custo operacional × taxa do período", source: "Regra técnica" },
-    { group: "Venda", key: "taxAmount", label: "Carga tributária estimada manualmente", value: result.taxAmount, basis: "preço técnico × carga manual", source: "Usuário" },
-    { group: "Venda", key: "paymentFeeAmount", label: "Taxa de pagamento", value: result.paymentFeeAmount, basis: "preço técnico × taxa", source: "Usuário" },
-    { group: "Venda", key: "commissionAmount", label: "Comissão", value: result.commissionAmount, basis: "preço técnico × comissão", source: "Usuário" },
-    { group: "Resultado", key: "profitAmount", label: "Lucro líquido", value: result.profitAmount, basis: "preço técnico − custos − despesas", source: "Regra técnica" },
-    { group: "Resultado", key: "technicalPrice", label: "Preço técnico recomendado", value: result.technicalPrice, basis: "custo total ÷ denominador, arredondado para cima ao centavo", source: "Regra técnica" },
+    { group: "Custo do produto", key: "materialCost", label: "Insumos e matéria-prima", value: result.inputs.materialCost, basis: "Por unidade", source: "Usuário" },
+    { group: "Custo do produto", key: "wasteCost", label: "Perdas e desperdício", value: result.wasteCost, basis: "insumos ÷ (1 − perda) − insumos", source: "Regra técnica" },
+    { group: "Custo do produto", key: "packagingCost", label: "Embalagem e rotulagem", value: result.inputs.packagingCost, basis: "Por unidade", source: "Usuário" },
+    { group: "Custo do produto", key: "freightCostPerUnit", label: "Frete pago pela empresa", value: result.freightCostPerUnit, basis: "frete do pedido × participação da empresa ÷ unidades do pedido", source: "Usuário" },
+    { group: "Custo do produto", key: "directLaborCost", label: "Mão de obra direta", value: result.directLaborCost, basis: "custo por hora × tempo da unidade", source: "Usuário" },
+    { group: "Custo do produto", key: "otherVariableCost", label: "Custos variáveis adicionais", value: result.inputs.otherVariableCost, basis: "Por unidade", source: "Usuário" },
+    { group: "Custo do produto", key: "otherDirectExpenses", label: "Outras despesas diretas", value: result.inputs.otherDirectExpenses + result.inputs.legacyInsuranceCost, basis: "Por unidade", source: "Usuário" },
+    { group: "Custos mensais", key: "fixedCostPerUnit", label: "Custos fixos rateados", value: result.fixedCostPerUnit, basis: allocationLabels[result.inputs.allocationMethod], source: "Usuário" },
+    { group: "Custos mensais", key: "equipmentCostPerUnit", label: "Depreciação e manutenção rateadas", value: result.equipmentCostPerUnit, basis: allocationLabels[result.inputs.allocationMethod], source: "Usuário" },
+    { group: "Taxas da venda", key: "fixedSaleFeePerUnit", label: "Taxa fixa por pedido", value: result.fixedSaleFeePerUnit, basis: "taxa fixa ÷ unidades do pedido", source: "Usuário" },
+    { group: "Capital de giro", key: "financialCost", label: "Custo financeiro", value: result.financialCost, basis: "custo operacional × taxa do período", source: result.inputs.capitalRateSource === "estimated" ? "Estimativa informada" : "Regra técnica" },
+    { group: "Venda", key: "taxAmount", label: "Impostos efetivos", value: result.taxAmount, basis: "preço recomendado × percentual informado", source: "Usuário" },
+    { group: "Venda", key: "paymentFeeAmount", label: "Taxa de pagamento/cartão", value: result.paymentFeeAmount, basis: "preço recomendado × taxa", source: "Usuário" },
+    { group: "Venda", key: "commissionAmount", label: "Comissão", value: result.commissionAmount, basis: "preço recomendado × comissão", source: "Usuário" },
+    { group: "Venda", key: "marketplaceFeeAmount", label: "Marketplace/plataforma", value: result.marketplaceFeeAmount, basis: "preço recomendado × taxa", source: "Usuário" },
+    { group: "Venda", key: "postSaleLossAmount", label: "Perdas pós-venda", value: result.postSaleLossAmount, basis: "preço recomendado × percentual", source: "Usuário" },
+    { group: "Resultado", key: "profitAmount", label: "Lucro", value: result.profitAmount, basis: "preço recomendado − custos − despesas", source: "Regra técnica" },
+    { group: "Resultado", key: "breakEvenPrice", label: "Preço de equilíbrio", value: result.breakEvenPrice, basis: "custo completo ÷ (1 − despesas percentuais)", source: "Regra técnica" },
   ];
+  if (result.minimumMarginPrice !== null) items.push({ group: "Resultado", key: "minimumMarginPrice", label: "Preço com margem mínima", value: result.minimumMarginPrice, basis: "custo completo ÷ (1 − despesas − margem mínima)", source: "Regra técnica" });
+  items.push({ group: "Resultado", key: "technicalPrice", label: "Preço com margem desejada", value: result.technicalPrice, basis: "custo completo ÷ (1 − despesas − margem desejada)", source: "Regra técnica" });
   if (result.discount.type !== "none") {
     items.push(
-      { group: "Estratégia comercial", key: "advertisedPrice", label: "Preço anunciado", value: result.discount.advertisedPrice, basis: "Preço técnico acrescido do desconto planejado", source: "Usuário" },
-      { group: "Estratégia comercial", key: "postDiscountPrice", label: "Preço após desconto", value: result.discount.postDiscountPrice, basis: "Mantém o preço técnico mínimo", source: "Regra técnica" },
+      { group: "Estratégia comercial", key: "advertisedPrice", label: "Preço anunciado para permitir desconto", value: result.discount.advertisedPrice, basis: result.discount.type === "percentage" ? "preço necessário ÷ (1 − desconto)" : "preço necessário + desconto fixo", source: "Regra técnica" },
+      { group: "Estratégia comercial", key: "postDiscountPrice", label: "Preço após desconto", value: result.discount.postDiscountPrice, basis: "Preserva o preço com margem desejada", source: "Regra técnica" },
     );
   }
   return items;
 }
 
 function canonicalExplanation(result) {
+  const laborBasis = result.inputs.laborCostMode === "automatic"
+    ? `R$ ${result.inputs.monthlyLaborCost.toFixed(2)} ÷ ${result.inputs.monthlyProductiveHours} h/mês`
+    : "custo/hora informado manualmente";
   return [
-    { key: "material", value: result.adjustedMaterialCost, detail: "A matéria-prima foi ajustada pelo rendimento usando desperdício." },
-    { key: "direct", value: result.directCost, detail: "O custo direto soma matéria-prima ajustada, embalagem, entrega, seguro e outras despesas diretas." },
-    { key: "indirect", value: result.indirectCost, detail: "A folha e os custos fixos foram rateados somente pela quantidade mensal prevista." },
-    { key: "workingCapital", value: result.financialCost, detail: "O ciclo financeiro aplica juros compostos somente sobre o custo operacional." },
-    { key: "price", value: result.technicalPrice, detail: "O preço técnico cobre custo total, despesas percentuais e margem desejada; somente ele é arredondado para cima ao centavo." },
+    { key: "material", value: result.wasteCost, detail: "As perdas foram incorporadas pelo rendimento: insumos ÷ (1 − percentual de perda)." },
+    { key: "freight", value: result.freightCostPerUnit, detail: "O frete considera somente a parcela paga pela empresa e foi dividido pelas unidades médias do pedido." },
+    { key: "labor", value: result.directLaborCost, detail: `A mão de obra usa ${laborBasis} × ${result.inputs.productionTimeMinutes} minuto(s) por unidade.` },
+    { key: "indirect", value: result.indirectCost, detail: `Custos fixos e equipamentos foram rateados por ${allocationLabels[result.inputs.allocationMethod]}. A mão de obra direta não foi somada novamente.` },
+    { key: "workingCapital", value: result.financialCost, detail: "O ciclo financeiro aplica juros compostos somente ao custo operacional durante os dias efetivamente financiados." },
+    { key: "price", value: result.technicalPrice, detail: "Margem é percentual do preço de venda, não markup: custo completo ÷ (1 − impostos − taxas − comissão − perdas pós-venda − margem)." },
+    { key: "discount", value: result.discount.advertisedPrice, detail: result.discount.type === "none" ? "Nenhum desconto planejado foi aplicado." : "O preço anunciado foi elevado para que o preço após o desconto preserve a margem desejada." },
   ];
 }
 
 function calculatePricing(input, marketReference = null) {
   const inputs = assertPricingInputs(input);
   const adjustedMaterialCost = calculateAdjustedMaterialCost(inputs.materialCost, inputs.wasteRate);
-  const directCost = calculateDirectCost({ ...inputs, adjustedMaterialCost });
-  const indirectCost = calculateIndirectCost(inputs.monthlyPayroll, inputs.monthlyFixedCosts, inputs.expectedMonthlyUnits);
+  const wasteCost = adjustedMaterialCost - inputs.materialCost;
+  const freightCostPerUnit = (inputs.averageOrderFreight * inputs.companyFreightShare) / inputs.averageOrderUnits;
+  const effectiveLaborHourlyCost = inputs.laborCostMode === "automatic" ? inputs.monthlyLaborCost / inputs.monthlyProductiveHours : inputs.laborHourlyCost;
+  const directLaborCost = effectiveLaborHourlyCost * inputs.productionTimeMinutes / 60;
+  const directCost = adjustedMaterialCost + inputs.packagingCost + freightCostPerUnit + directLaborCost
+    + inputs.otherVariableCost + inputs.otherDirectExpenses + inputs.legacyInsuranceCost;
+
+  const equipmentDepreciationMonthly = inputs.equipmentValue > 0 ? inputs.equipmentValue / inputs.equipmentUsefulLifeMonths : 0;
+  const equipmentMonthlyCost = equipmentDepreciationMonthly + inputs.equipmentMaintenanceMonthly;
+  const factor = allocationFactor(inputs);
+  const fixedCostPerUnit = inputs.monthlyFixedCosts * factor + inputs.legacyMonthlyPayroll / inputs.expectedMonthlyUnits;
+  const equipmentCostPerUnit = equipmentMonthlyCost * factor;
+  const indirectCost = fixedCostPerUnit + equipmentCostPerUnit;
   const operatingCost = directCost + indirectCost;
   const workingCapital = calculateWorkingCapital(operatingCost, inputs.inventoryDays, inputs.receivingDays, inputs.paymentDays, inputs.monthlyCapitalRate);
-  const totalUnitCost = operatingCost + workingCapital.financialCost;
-  const saleExpenseRate = inputs.taxRate + inputs.paymentFeeRate + inputs.commissionRate;
+  const fixedSaleFeePerUnit = inputs.fixedFeePerOrder / inputs.averageOrderUnits;
+  const totalUnitCost = operatingCost + workingCapital.financialCost + fixedSaleFeePerUnit;
+  const saleExpenseRate = inputs.taxRate + inputs.paymentFeeRate + inputs.commissionRate + inputs.marketplaceFeeRate + inputs.postSaleLossRate;
+  const breakEven = calculateTechnicalPrice(totalUnitCost, saleExpenseRate, 0);
+  const minimum = inputs.minimumMargin === null ? null : calculateTechnicalPrice(totalUnitCost, saleExpenseRate, inputs.minimumMargin);
   const technical = calculateTechnicalPrice(totalUnitCost, saleExpenseRate, inputs.desiredNetMargin);
+
   const taxAmountRaw = technical.technicalPriceRaw * inputs.taxRate;
   const paymentFeeAmountRaw = technical.technicalPriceRaw * inputs.paymentFeeRate;
   const commissionAmountRaw = technical.technicalPriceRaw * inputs.commissionRate;
+  const marketplaceFeeAmountRaw = technical.technicalPriceRaw * inputs.marketplaceFeeRate;
+  const postSaleLossAmountRaw = technical.technicalPriceRaw * inputs.postSaleLossRate;
   const taxAmount = technical.technicalPrice * inputs.taxRate;
   const paymentFeeAmount = technical.technicalPrice * inputs.paymentFeeRate;
   const commissionAmount = technical.technicalPrice * inputs.commissionRate;
-  const profitAmountRaw = technical.technicalPriceRaw - totalUnitCost - taxAmountRaw - paymentFeeAmountRaw - commissionAmountRaw;
-  const profitAmount = technical.technicalPrice - totalUnitCost - taxAmount - paymentFeeAmount - commissionAmount;
-  const actualNetMargin = profitAmount / technical.technicalPrice;
+  const marketplaceFeeAmount = technical.technicalPrice * inputs.marketplaceFeeRate;
+  const postSaleLossAmount = technical.technicalPrice * inputs.postSaleLossRate;
+  const profitAmountRaw = technical.technicalPriceRaw - totalUnitCost - taxAmountRaw - paymentFeeAmountRaw - commissionAmountRaw - marketplaceFeeAmountRaw - postSaleLossAmountRaw;
+  const profitAmount = technical.technicalPrice - totalUnitCost - taxAmount - paymentFeeAmount - commissionAmount - marketplaceFeeAmount - postSaleLossAmount;
+  const actualNetMargin = technical.technicalPrice === 0 ? 0 : profitAmount / technical.technicalPrice;
   const result = {
-    pricingSchemaVersion: PRICING_SCHEMA_VERSION,
-    formulaVersion: FORMULA_VERSION,
-    inputs,
-    adjustedMaterialCost,
-    directCost,
-    indirectCost,
-    operatingCost,
-    ...workingCapital,
-    totalUnitCost,
-    saleExpenseRate,
-    ...technical,
-    taxAmountRaw,
-    paymentFeeAmountRaw,
-    commissionAmountRaw,
-    profitAmountRaw,
-    taxAmount,
-    paymentFeeAmount,
-    commissionAmount,
-    profitAmount,
-    desiredNetMargin: inputs.desiredNetMargin,
-    actualNetMargin,
-    discount: calculateDiscountStrategy(technical.technicalPrice, inputs.discountRate, inputs.fixedDiscountAmount),
+    pricingSchemaVersion: PRICING_SCHEMA_VERSION, formulaVersion: FORMULA_VERSION, inputs,
+    materialCost: inputs.materialCost, adjustedMaterialCost, wasteCost, packagingCost: inputs.packagingCost,
+    freightCostPerUnit, effectiveLaborHourlyCost, directLaborCost, otherVariableCost: inputs.otherVariableCost,
+    otherDirectExpenses: inputs.otherDirectExpenses + inputs.legacyInsuranceCost, directCost, allocationFactor: factor,
+    equipmentDepreciationMonthly, equipmentMonthlyCost, fixedCostPerUnit, equipmentCostPerUnit, indirectCost, operatingCost,
+    ...workingCapital, fixedSaleFeePerUnit, totalUnitCost, saleExpenseRate,
+    breakEvenPriceRaw: breakEven.technicalPriceRaw, breakEvenPrice: breakEven.technicalPrice,
+    minimumMarginPriceRaw: minimum?.technicalPriceRaw ?? null, minimumMarginPrice: minimum?.technicalPrice ?? null,
+    ...technical, taxAmountRaw, paymentFeeAmountRaw, commissionAmountRaw, marketplaceFeeAmountRaw, postSaleLossAmountRaw,
+    profitAmountRaw, taxAmount, paymentFeeAmount, commissionAmount, marketplaceFeeAmount, postSaleLossAmount, profitAmount,
+    desiredNetMargin: inputs.desiredNetMargin, minimumMargin: inputs.minimumMargin, actualNetMargin,
+    discount: calculateDiscountStrategy(technical.technicalPrice, inputs.discountType, inputs.discountRate, inputs.fixedDiscountAmount),
     market: calculateMarketComparison(marketReference || (inputs.marketPrice ? { price: inputs.marketPrice, source: "manual", rule: "manual" } : null), technical.technicalPrice),
   };
   result.presentation = presentation(result);
@@ -352,12 +517,12 @@ class ConfiguredTaxRuleEngine extends TaxRuleEngine {
       ncmValidation: ncmVerified ? {
         status: "success", source: "Focus NFe", environment: focusState.environment || "não informado", checkedAt: focusState.checkedAt || new Date().toISOString(), code,
       } : { status: "unverified", source: code ? "Usuário" : null, environment: null, checkedAt: null, code: code || null },
-      taxes: [{ key: "aggregate", label: "Carga tributária estimada manualmente", rate: inputs.taxRate, source: "Usuário" }],
+      taxes: [{ key: "aggregate", label: "Percentual efetivo de impostos sobre a venda", rate: inputs.taxRate, source: "Usuário" }],
       unresolvedTaxes: TAXES_REQUIRING_EXTERNAL_RULES,
       warnings: [
         "A Focus NFe confirma somente a classificação NCM; ela não calcula os tributos desta venda.",
         "O NCM isolado não determina a tributação aplicável.",
-        "A carga tributária estimada manualmente deve ser validada por contador ou especialista fiscal.",
+        "O percentual efetivo informado deve ser validado por contador ou especialista fiscal.",
       ],
     };
   }
@@ -789,51 +954,85 @@ function clearMarketReference(storage) {
 
 
 const PERCENTAGE_FIELDS = new Set([
-  "wasteRate", "taxRate", "paymentFeeRate", "commissionRate", "desiredNetMargin", "monthlyCapitalRate", "discountRate",
+  "wasteRate", "companyFreightShare", "taxRate", "paymentFeeRate", "commissionRate", "marketplaceFeeRate",
+  "postSaleLossRate", "minimumMargin", "desiredNetMargin", "monthlyCapitalRate", "discountRate",
 ]);
-const ASSISTANT_COMBINED_RATE_FIELDS = Object.freeze(["taxRate", "paymentFeeRate", "commissionRate", "desiredNetMargin"]);
+const ASSISTANT_COMBINED_RATE_FIELDS = Object.freeze([
+  "taxRate", "paymentFeeRate", "commissionRate", "marketplaceFeeRate", "postSaleLossRate", "desiredNetMargin",
+]);
 
 const FIELD_RULES = Object.freeze({
-  materialCost: { required: "Informe o custo da matéria-prima." },
-  wasteRate: { required: "Informe o desperdício." },
-  packagingCost: { required: "Informe o custo de embalagem." },
-  deliveryCost: { required: "Informe o frete ou entrega." },
-  insuranceCost: { optional: true },
+  materialCost: { required: "Informe o custo dos insumos e da matéria-prima." },
+  wasteRate: { required: "Informe a perda ou use 0%." },
+  packagingCost: { required: "Informe o custo de embalagem ou use R$ 0." },
+  averageOrderFreight: { required: "Informe o frete médio do pedido ou use R$ 0." },
+  companyFreightShare: { optional: true, nullWhenEmpty: true },
+  averageOrderUnits: { required: "Informe a quantidade média de unidades por pedido." },
+  otherVariableCost: { optional: true },
   otherDirectExpenses: { optional: true },
-  monthlyPayroll: { required: "Informe a folha salarial mensal." },
-  monthlyFixedCosts: { required: "Informe os custos fixos mensais." },
-  expectedMonthlyUnits: { required: "Informe a quantidade prevista por mês." },
-  taxRate: { required: "Informe a carga tributária estimada manualmente." },
-  paymentFeeRate: { required: "Informe a taxa de pagamento." },
-  commissionRate: { required: "Informe a comissão." },
-  desiredNetMargin: { required: "Informe a margem líquida desejada." },
-  inventoryDays: { required: "Informe o prazo de estoque/produção." },
-  receivingDays: { required: "Informe o prazo de recebimento." },
-  paymentDays: { required: "Informe o prazo de pagamento." },
-  monthlyCapitalRate: { required: "Informe o custo do capital ao mês." },
+  monthlyLaborCost: { optional: true, nullWhenEmpty: true },
+  monthlyProductiveHours: { optional: true, nullWhenEmpty: true },
+  laborHourlyCost: { optional: true, nullWhenEmpty: true },
+  productionTimeMinutes: { required: "Informe o tempo médio para produzir uma unidade." },
+  monthlyFixedCosts: { required: "Informe os custos fixos mensais ou use R$ 0." },
+  expectedMonthlyUnits: { required: "Informe a quantidade que espera produzir ou vender por mês." },
+  allocationLaborHours: { optional: true, nullWhenEmpty: true },
+  machineTimeMinutes: { optional: true, nullWhenEmpty: true },
+  monthlyMachineHours: { optional: true, nullWhenEmpty: true },
+  monthlyBusinessRevenue: { optional: true, nullWhenEmpty: true },
+  monthlyProductRevenue: { optional: true, nullWhenEmpty: true },
+  equipmentValue: { optional: true },
+  equipmentUsefulLifeMonths: { optional: true, nullWhenEmpty: true },
+  equipmentMaintenanceMonthly: { optional: true },
+  taxRate: { required: "Informe o percentual efetivo de impostos ou use 0%." },
+  paymentFeeRate: { optional: true },
+  commissionRate: { optional: true },
+  marketplaceFeeRate: { optional: true },
+  fixedFeePerOrder: { optional: true },
+  postSaleLossRate: { optional: true },
+  minimumMargin: { optional: true, nullWhenEmpty: true },
+  desiredNetMargin: { required: "Informe a margem de lucro desejada." },
+  inventoryDays: { required: "Informe os dias entre comprar ou produzir e vender." },
+  receivingDays: { required: "Informe o prazo para receber do cliente." },
+  paymentDays: { required: "Informe o prazo para pagar fornecedores." },
+  monthlyCapitalRate: { optional: true, nullWhenEmpty: true },
   discountRate: { optional: true },
   fixedDiscountAmount: { optional: true },
-  marketPrice: { optional: true },
+  marketPrice: { optional: true, nullWhenEmpty: true },
 });
 
 const PRICING_FIELD_IDS = Object.freeze(Object.keys(FIELD_RULES));
 const REQUIRED_PRICING_FIELD_IDS = Object.freeze(Object.entries(FIELD_RULES)
   .filter(([, rule]) => !rule.optional)
   .map(([fieldId]) => fieldId));
-const CAPACITY_FIELD_IDS = Object.freeze(["workerCount", "productiveHoursPerWorkerMonth", "unitsPerWorkerHour"]);
+const FORM_OPTION_FIELD_IDS = Object.freeze(["laborCostMode", "freightPayer", "allocationMethod", "capitalRateSource", "discountType"]);
+
+const OPTION_DEFAULTS = Object.freeze({
+  laborCostMode: "automatic",
+  freightPayer: "company",
+  allocationMethod: "quantity",
+  capitalRateSource: "informed",
+  discountType: "none",
+});
 
 const ASSISTANT_TEXT_FIELDS = Object.freeze({
   productName: 160, productDescription: 2000, marketQuery: 160,
   taxRegime: 30, customerType: 30, operationPurpose: 30, cfop: 4, taxSituation: 4,
   productOrigin: 20, originState: 2, destinationState: 2, countryOfOrigin: 80,
+  ...Object.fromEntries(FORM_OPTION_FIELD_IDS.map((fieldId) => [fieldId, 30])),
 });
-const ASSISTANT_NUMERIC_FIELDS = new Set([...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]);
+const ASSISTANT_NUMERIC_FIELDS = new Set(PRICING_FIELD_IDS);
 const ASSISTANT_DAY_FIELDS = new Set(["inventoryDays", "receivingDays", "paymentDays"]);
 const ASSISTANT_OPTIONS = Object.freeze({
   taxRegime: ["simples-nacional", "lucro-presumido", "lucro-real", "mei", "outro"],
   customerType: ["contribuinte", "nao-contribuinte", "consumidor-final"],
   operationPurpose: ["venda", "revenda", "industrializacao", "consumo", "ativo", "outra"],
   productOrigin: ["nacional", "importado"],
+  laborCostMode: ["automatic", "manual"],
+  freightPayer: ["company", "customer", "shared"],
+  allocationMethod: ["quantity", "labor-hours", "machine-hours", "revenue"],
+  capitalRateSource: ["informed", "zero", "estimated"],
+  discountType: ["none", "percentage", "fixed"],
 });
 const ASSISTANT_STATES = new Set(["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"]);
 const assistantNumberFormatter = new Intl.NumberFormat("pt-BR", { useGrouping: false, maximumSignificantDigits: 21 });
@@ -845,19 +1044,17 @@ function validateAssistantFields(fields) {
   for (const [fieldId, value] of Object.entries(fields)) {
     const numeric = ASSISTANT_NUMERIC_FIELDS.has(fieldId);
     if (!numeric && !Object.hasOwn(ASSISTANT_TEXT_FIELDS, fieldId)) throw new Error("AI_INVALID_RESPONSE");
-    // Absence never clears an existing value. An explicit zero does.
     if (value === null || value === undefined) continue;
     if (numeric) {
       if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1_000_000_000) throw new Error("AI_INVALID_RESPONSE");
-      if (PERCENTAGE_FIELDS.has(fieldId) && value >= 100) throw new Error("AI_INVALID_RESPONSE");
+      if (PERCENTAGE_FIELDS.has(fieldId) && value >= 100 && fieldId !== "companyFreightShare") throw new Error("AI_INVALID_RESPONSE");
+      if (fieldId === "companyFreightShare" && value > 100) throw new Error("AI_INVALID_RESPONSE");
       if (ASSISTANT_DAY_FIELDS.has(fieldId) && value > 3650) throw new Error("AI_INVALID_RESPONSE");
-      if (fieldId === "workerCount" && (!Number.isInteger(value) || value > 1_000_000)) throw new Error("AI_INVALID_RESPONSE");
-      if (fieldId === "productiveHoursPerWorkerMonth" && value > 744) throw new Error("AI_INVALID_RESPONSE");
-      if (["marketPrice", "expectedMonthlyUnits"].includes(fieldId) && value === 0) throw new Error("AI_INVALID_RESPONSE");
+      if (["marketPrice", "expectedMonthlyUnits", "averageOrderUnits", "monthlyProductiveHours", "allocationLaborHours",
+        "monthlyMachineHours", "monthlyBusinessRevenue", "monthlyProductRevenue", "equipmentUsefulLifeMonths"].includes(fieldId)
+        && value === 0) throw new Error("AI_INVALID_RESPONSE");
     } else if (typeof value !== "string" || !value.trim() || value.length > ASSISTANT_TEXT_FIELDS[fieldId]
-      || /[\u0000-\u001f<>]/u.test(value)) {
-      throw new Error("AI_INVALID_RESPONSE");
-    }
+      || /[\u0000-\u001f<>]/u.test(value)) throw new Error("AI_INVALID_RESPONSE");
     if (ASSISTANT_OPTIONS[fieldId] && !ASSISTANT_OPTIONS[fieldId].includes(value)) throw new Error("AI_INVALID_RESPONSE");
     if (["originState", "destinationState"].includes(fieldId) && !ASSISTANT_STATES.has(value)) throw new Error("AI_INVALID_RESPONSE");
     if (fieldId === "cfop" && !/^[1-7]\d{3}$/.test(value)) throw new Error("AI_INVALID_RESPONSE");
@@ -865,24 +1062,18 @@ function validateAssistantFields(fields) {
     patch[fieldId] = value;
   }
   if ((patch.discountRate || 0) > 0 && (patch.fixedDiscountAmount || 0) > 0) throw new Error("AI_INVALID_RESPONSE");
-  const rates = ["taxRate", "paymentFeeRate", "commissionRate", "desiredNetMargin"];
+  const rates = ["taxRate", "paymentFeeRate", "commissionRate", "marketplaceFeeRate", "postSaleLossRate", "desiredNetMargin"];
   if (rates.reduce((sum, fieldId) => sum + (patch[fieldId] || 0), 0) >= 100) throw new Error("AI_INVALID_RESPONSE");
   return patch;
 }
 
-/** Applies a partial update through the same real form controller used by saved inputs. */
 function applyAssistantFields(fields, elements) {
   const patch = validateAssistantFields(fields);
-  // Check every target before changing any field, including select options.
   for (const [fieldId, value] of Object.entries(patch)) {
     const control = elements[fieldId];
-    if (!control || (control.options && !Array.from(control.options).some((option) => option.value === value))) {
-      throw new Error("AI_INVALID_RESPONSE");
-    }
+    if (!control || (control.options && !Array.from(control.options).some((option) => option.value === value))) throw new Error("AI_INVALID_RESPONSE");
   }
-  for (const [fieldId, value] of Object.entries(patch)) {
-    elements[fieldId].value = typeof value === "number" ? assistantNumberFormatter.format(value) : value;
-  }
+  for (const [fieldId, value] of Object.entries(patch)) elements[fieldId].value = typeof value === "number" ? assistantNumberFormatter.format(value) : value;
   return Object.keys(patch);
 }
 
@@ -896,7 +1087,6 @@ function parseBrazilianNumber(rawValue) {
   return Number.isFinite(numeric) ? { status: "valid", value: numeric } : { status: "invalid", value: null };
 }
 
-/** Only denominator rates are returned; this context is validated locally and never sent to Gemini. */
 function readAssistantRateContext(elements) {
   return Object.fromEntries(ASSISTANT_COMBINED_RATE_FIELDS.flatMap((fieldId) => {
     const parsed = parseBrazilianNumber(elements[fieldId]?.value);
@@ -911,16 +1101,17 @@ function readAssistantFieldContext(elements) {
     if (fieldId === "marketPrice") continue;
     const parsed = parseBrazilianNumber(elements[fieldId]?.value);
     if (parsed.status !== "valid") continue;
-    try {
-      Object.assign(context, validateAssistantFields({ [fieldId]: parsed.value }));
-    } catch { /* Invalid form values remain visible locally but are not sent as trusted context. */ }
+    try { Object.assign(context, validateAssistantFields({ [fieldId]: parsed.value })); } catch { /* permanece local */ }
   }
   for (const fieldId of ["productName", "productDescription"]) {
     const value = String(elements[fieldId]?.value || "").trim();
     if (!value) continue;
-    try {
-      Object.assign(context, validateAssistantFields({ [fieldId]: value }));
-    } catch { /* The normal form validation remains responsible for invalid local text. */ }
+    try { Object.assign(context, validateAssistantFields({ [fieldId]: value })); } catch { /* validação normal assume */ }
+  }
+  for (const fieldId of FORM_OPTION_FIELD_IDS) {
+    const value = String(elements[fieldId]?.value || "");
+    if (!value) continue;
+    try { Object.assign(context, validateAssistantFields({ [fieldId]: value })); } catch { /* permanece local */ }
   }
   return context;
 }
@@ -938,25 +1129,6 @@ function readFiscalContext(elements) {
   };
 }
 
-function readCapacity(elements, errors) {
-  const capacity = {};
-  let provided = 0;
-  for (const fieldId of CAPACITY_FIELD_IDS) {
-    const parsed = parseBrazilianNumber(elements[fieldId]?.value);
-    if (parsed.status === "invalid") errors[fieldId] = "Informe um número válido.";
-    if (parsed.status === "valid") {
-      capacity[fieldId] = parsed.value;
-      provided += 1;
-    }
-  }
-  if (provided > 0 && provided < CAPACITY_FIELD_IDS.length) {
-    for (const fieldId of CAPACITY_FIELD_IDS) {
-      if (!(fieldId in capacity) && !errors[fieldId]) errors[fieldId] = "Complete a capacidade produtiva ou deixe a seção vazia.";
-    }
-  }
-  return provided === CAPACITY_FIELD_IDS.length ? capacity : null;
-}
-
 function validatePricingForm(elements) {
   const errors = {};
   const rawInputs = {};
@@ -965,7 +1137,7 @@ function validatePricingForm(elements) {
     const parsed = parseBrazilianNumber(elements[fieldId]?.value);
     if (parsed.status === "empty") {
       if (rule.optional) {
-        rawInputs[fieldId] = fieldId === "marketPrice" ? null : 0;
+        rawInputs[fieldId] = rule.nullWhenEmpty ? null : 0;
         emptyOptionalFields.push(fieldId);
       } else errors[fieldId] = rule.required;
       continue;
@@ -976,21 +1148,35 @@ function validatePricingForm(elements) {
     }
     rawInputs[fieldId] = PERCENTAGE_FIELDS.has(fieldId) ? parsed.value / 100 : parsed.value;
   }
-  rawInputs.productionCapacity = readCapacity(elements, errors);
+  for (const fieldId of FORM_OPTION_FIELD_IDS) rawInputs[fieldId] = String(elements[fieldId]?.value || "");
+  if (rawInputs.freightPayer !== "shared") rawInputs.companyFreightShare = null;
+  if (rawInputs.laborCostMode === "automatic") rawInputs.laborHourlyCost = null;
+  if (rawInputs.laborCostMode === "manual") {
+    rawInputs.monthlyLaborCost = null;
+    rawInputs.monthlyProductiveHours = null;
+  }
+  if (rawInputs.allocationMethod !== "labor-hours") rawInputs.allocationLaborHours = null;
+  if (rawInputs.allocationMethod !== "machine-hours") {
+    rawInputs.machineTimeMinutes = null;
+    rawInputs.monthlyMachineHours = null;
+  }
+  if (rawInputs.allocationMethod !== "revenue") {
+    rawInputs.monthlyBusinessRevenue = null;
+    rawInputs.monthlyProductRevenue = null;
+  }
+  if (rawInputs.capitalRateSource === "zero") rawInputs.monthlyCapitalRate = null;
+  if (rawInputs.discountType !== "percentage") rawInputs.discountRate = 0;
+  if (rawInputs.discountType !== "fixed") rawInputs.fixedDiscountAmount = 0;
+  rawInputs.productionCapacity = null;
   rawInputs.fiscalContext = readFiscalContext(elements);
   if (Object.keys(errors).length > 0) return { isValid: false, errors, inputs: null, emptyOptionalFields };
 
   const domainValidation = validatePricingInputs(rawInputs);
-  return {
-    isValid: domainValidation.isValid,
-    errors: domainValidation.errors,
-    inputs: domainValidation.isValid ? domainValidation.value : null,
-    emptyOptionalFields,
-  };
+  return { isValid: domainValidation.isValid, errors: domainValidation.errors, inputs: domainValidation.isValid ? domainValidation.value : null, emptyOptionalFields };
 }
 
 function renderPricingErrors(elements, errors, visibleFieldIds = null) {
-  for (const fieldId of [...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]) {
+  for (const fieldId of [...PRICING_FIELD_IDS, ...FORM_OPTION_FIELD_IDS]) {
     const field = elements[fieldId];
     if (!field) continue;
     const error = errors[fieldId] || "";
@@ -1012,10 +1198,7 @@ function renderPricingErrors(elements, errors, visibleFieldIds = null) {
       describedBy.add(errorId);
       field.setAttribute("aria-describedby", [...describedBy].join(" "));
     }
-    if (errorElement) {
-      errorElement.textContent = visible ? error : "";
-      errorElement.hidden = !visible;
-    }
+    if (errorElement) { errorElement.textContent = visible ? error : ""; errorElement.hidden = !visible; }
   }
 }
 
@@ -1025,9 +1208,8 @@ function displayNumber(value, percentage = false) {
 }
 
 function clearPricingInputs(elements) {
-  for (const fieldId of [...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]) {
-    if (elements[fieldId]) elements[fieldId].value = "";
-  }
+  for (const fieldId of PRICING_FIELD_IDS) if (elements[fieldId]) elements[fieldId].value = "";
+  for (const [fieldId, value] of Object.entries(OPTION_DEFAULTS)) if (elements[fieldId]) elements[fieldId].value = value;
   ["ncmCode", "taxRegime", "originState", "destinationState", "cfop", "taxSituation", "customerType", "operationPurpose"].forEach((fieldId) => {
     if (elements[fieldId]) elements[fieldId].value = "";
   });
@@ -1041,9 +1223,9 @@ function applySavedInputs(savedInputs, elements, emptyOptionalFields = []) {
     const value = savedInputs[fieldId];
     if (typeof value === "number" && Number.isFinite(value)) elements[fieldId].value = displayNumber(value, PERCENTAGE_FIELDS.has(fieldId));
   }
-  for (const fieldId of CAPACITY_FIELD_IDS) {
-    const value = savedInputs.productionCapacity?.[fieldId];
-    if (elements[fieldId] && typeof value === "number" && Number.isFinite(value)) elements[fieldId].value = displayNumber(value);
+  for (const fieldId of FORM_OPTION_FIELD_IDS) {
+    const value = savedInputs[fieldId];
+    if (elements[fieldId] && typeof value === "string") elements[fieldId].value = value;
   }
   Object.entries(savedInputs.fiscalContext || {}).forEach(([fieldId, value]) => {
     if (elements[fieldId] && typeof value === "string") elements[fieldId].value = value;
@@ -1051,32 +1233,63 @@ function applySavedInputs(savedInputs, elements, emptyOptionalFields = []) {
   return true;
 }
 
-/** Maps only semantically equivalent v5 values. Missing inventory days deliberately stay empty. */
-function migrateLegacyV5Inputs(legacy = {}) {
-  const rate = (value) => typeof value === "number" && Number.isFinite(value) ? value : undefined;
+/** Somente equivalências seguras são migradas; mão de obra precisa ser confirmada no novo fluxo. */
+function migrateLegacyV6Inputs(legacy = {}) {
   return {
+    materialCost: legacy.materialCost,
+    wasteRate: legacy.wasteRate,
+    packagingCost: legacy.packagingCost,
+    averageOrderFreight: legacy.deliveryCost,
+    freightPayer: "company",
+    companyFreightShare: 1,
+    averageOrderUnits: 1,
+    otherVariableCost: 0,
+    otherDirectExpenses: (legacy.otherDirectExpenses || 0) + (legacy.insuranceCost || 0),
+    laborCostMode: "automatic",
+    monthlyFixedCosts: legacy.monthlyFixedCosts,
+    expectedMonthlyUnits: legacy.expectedMonthlyUnits,
+    allocationMethod: "quantity",
+    taxRate: legacy.taxRate,
+    paymentFeeRate: legacy.paymentFeeRate,
+    commissionRate: legacy.commissionRate,
+    marketplaceFeeRate: 0,
+    fixedFeePerOrder: 0,
+    postSaleLossRate: 0,
+    minimumMargin: null,
+    desiredNetMargin: legacy.desiredNetMargin,
+    inventoryDays: legacy.inventoryDays,
+    receivingDays: legacy.receivingDays,
+    paymentDays: legacy.paymentDays,
+    capitalRateSource: "informed",
+    monthlyCapitalRate: legacy.monthlyCapitalRate,
+    discountType: legacy.discountRate > 0 ? "percentage" : legacy.fixedDiscountAmount > 0 ? "fixed" : "none",
+    discountRate: legacy.discountRate || 0,
+    fixedDiscountAmount: legacy.fixedDiscountAmount || 0,
+    marketPrice: legacy.marketPrice,
+    fiscalContext: legacy.fiscalContext || {},
+  };
+}
+
+/** Maps only semantically equivalent v5 values. Missing production/labor data deliberately stay empty. */
+function migrateLegacyV5Inputs(legacy = {}) {
+  return migrateLegacyV6Inputs({
     materialCost: legacy.materialsCost,
-    wasteRate: rate(legacy.waste),
+    wasteRate: legacy.waste,
     packagingCost: legacy.packagingCost,
     deliveryCost: legacy.deliveryCost,
     insuranceCost: legacy.insuranceCost,
     otherDirectExpenses: legacy.otherExpenses,
-    monthlyPayroll: legacy.totalPayroll,
     monthlyFixedCosts: legacy.monthlyFixedCosts,
     expectedMonthlyUnits: legacy.monthlyVolume,
-    taxRate: rate(legacy.taxRate),
-    paymentFeeRate: rate(legacy.paymentFeeRate),
-    commissionRate: rate(legacy.commissionRate),
-    desiredNetMargin: rate(legacy.margin),
+    taxRate: legacy.taxRate,
+    paymentFeeRate: legacy.paymentFeeRate,
+    commissionRate: legacy.commissionRate,
+    desiredNetMargin: legacy.margin,
     receivingDays: legacy.receiveDays,
     paymentDays: legacy.payDays,
-    monthlyCapitalRate: rate(legacy.capitalRate),
-    // inventoryDays and discount strategy have no safe v5 equivalent.
-    productionCapacity: legacy.workerCount !== undefined || legacy.outputPerWorkerHour !== undefined
-      ? { workerCount: legacy.workerCount, productiveHoursPerWorkerMonth: 176, unitsPerWorkerHour: legacy.outputPerWorkerHour }
-      : null,
+    monthlyCapitalRate: legacy.capitalRate,
     fiscalContext: legacy.fiscalContext || {},
-  };
+  });
 }
 
 
@@ -1562,7 +1775,8 @@ function priceCompositionFrom(result) {
     { label: "Custo direto", value: result.directCost },
     { label: "Custo indireto", value: result.indirectCost },
     { label: "Custo financeiro", value: result.financialCost },
-    { label: "Tributos, taxa e comissão", value: result.taxAmount + result.paymentFeeAmount + result.commissionAmount },
+    { label: "Taxa fixa por pedido", value: result.fixedSaleFeePerUnit },
+    { label: "Impostos, taxas, comissão e perdas", value: result.taxAmount + result.paymentFeeAmount + result.commissionAmount + result.marketplaceFeeAmount + result.postSaleLossAmount },
     { label: "Lucro líquido", value: result.profitAmount },
   ].filter((item) => item.value > 0);
 }
@@ -1580,6 +1794,16 @@ function renderComposition(document, result) {
 
 function renderPriceDetails(document, result, alertCount) {
   setFinancialValue(document.querySelector("#detailSuggestedPrice"), money(result.technicalPrice));
+  setFinancialValue(document.querySelector("#detailBreakEvenPrice"), money(result.breakEvenPrice));
+  setFinancialValue(document.querySelector("#detailDesiredMarginPrice"), money(result.technicalPrice));
+  const minimumCard = document.querySelector("#detailMinimumMarginCard");
+  minimumCard.hidden = result.minimumMarginPrice === null;
+  setFinancialValue(document.querySelector("#detailMinimumMarginPrice"), money(result.minimumMarginPrice));
+  const hasDiscount = result.discount.type !== "none";
+  document.querySelector("#detailAdvertisedPriceCard").hidden = !hasDiscount;
+  document.querySelector("#detailPostDiscountPriceCard").hidden = !hasDiscount;
+  setFinancialValue(document.querySelector("#detailAdvertisedPrice"), money(result.discount.advertisedPrice));
+  setFinancialValue(document.querySelector("#detailPostDiscountPrice"), money(result.discount.postDiscountPrice));
   setFinancialValue(document.querySelector("#detailDonutPrice"), money(result.technicalPrice));
   setFinancialValue(document.querySelector("#detailBaseCost"), money(result.totalUnitCost));
   document.querySelector("#detailSalesRate").textContent = percent(result.saleExpenseRate);
@@ -1589,16 +1813,17 @@ function renderPriceDetails(document, result, alertCount) {
   setFinancialValue(document.querySelector("#detailMarketCostLimit"), money(result.market.difference));
   document.querySelector("#detailAlertCount").textContent = `${alertCount} ${alertCount === 1 ? "ponto de atenção" : "pontos de atenção"}`;
   document.querySelector("#detailMarketNarrative").textContent = result.market.price
-    ? `Referência ${result.market.rule}: ${money(result.market.price)}. Diferença para o preço técnico: ${money(result.market.difference)} (${percent(result.market.differenceRate)}).`
-    : "Não há referência de mercado. Isso não bloqueia o preço técnico.";
+    ? `Referência ${result.market.rule}: ${money(result.market.price)}. Diferença para o preço recomendado: ${money(result.market.difference)} (${percent(result.market.differenceRate)}).`
+    : "Não há referência de mercado. Isso não bloqueia o cálculo do preço recomendado.";
   document.querySelector("#priceComparisonBars").innerHTML = [
-    ["Custo total", result.totalUnitCost], ["Preço técnico", result.technicalPrice], ["Mercado", result.market.price],
+    ["Custo total", result.totalUnitCost], ["Preço com margem desejada", result.technicalPrice], ["Mercado", result.market.price],
   ].filter(([, value]) => value !== null).map(([label, value]) => `<li><div><span>${label}</span><strong class="financial-value" data-financial-size="${financialValueSize(money(value))}">${money(value)}</strong></div></li>`).join("");
   renderComposition(document, result);
 }
 
 function renderPriceDetailsUnavailable(document, invalidCount) {
-  ["detailSuggestedPrice", "detailDonutPrice", "detailBaseCost", "detailSalesRate", "detailProfit", "detailMargin", "detailMarketPrice", "detailMarketCostLimit"].forEach((id) => { document.querySelector(`#${id}`).textContent = "—"; });
+  ["detailSuggestedPrice", "detailBreakEvenPrice", "detailMinimumMarginPrice", "detailDesiredMarginPrice", "detailAdvertisedPrice", "detailPostDiscountPrice", "detailDonutPrice", "detailBaseCost", "detailSalesRate", "detailProfit", "detailMargin", "detailMarketPrice", "detailMarketCostLimit"].forEach((id) => { document.querySelector(`#${id}`).textContent = "—"; });
+  ["detailMinimumMarginCard", "detailAdvertisedPriceCard", "detailPostDiscountPriceCard"].forEach((id) => { document.querySelector(`#${id}`).hidden = true; });
   document.querySelector("#detailAlertCount").textContent = `${invalidCount} ${invalidCount === 1 ? "campo pendente" : "campos pendentes"}`;
   document.querySelector("#priceDonutSegments").innerHTML = "";
   document.querySelector("#priceCompositionLegend").innerHTML = "<li>Preencha os campos obrigatórios.</li>";
@@ -1621,12 +1846,14 @@ function marketLabel(market) {
 
 function renderExplanation(document, result) {
   const explanations = [
-    `Matéria-prima ajustada: ${dashboardMoney(result.adjustedMaterialCost)} (${percent(result.inputs.wasteRate)} de desperdício).`,
-    `Custo direto: ${dashboardMoney(result.directCost)}; custo indireto: ${dashboardMoney(result.indirectCost)}, rateado por ${result.inputs.expectedMonthlyUnits.toLocaleString("pt-BR")} unidade(s)/mês.`,
+    `Insumos: ${dashboardMoney(result.inputs.materialCost)}; perdas e desperdício: ${dashboardMoney(result.wasteCost)} (${percent(result.inputs.wasteRate)}).`,
+    `Frete da empresa por unidade: ${dashboardMoney(result.freightCostPerUnit)}; mão de obra direta: ${dashboardMoney(result.directLaborCost)}; taxa fixa por unidade: ${dashboardMoney(result.fixedSaleFeePerUnit)}.`,
+    `Custo direto: ${dashboardMoney(result.directCost)}; custos mensais rateados: ${dashboardMoney(result.indirectCost)} pelo método ${result.inputs.allocationMethod}.`,
     `Ciclo financeiro: ${result.financedDays.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} dia(s); base financiada: ${dashboardMoney(result.financedBase)}; taxa do período: ${percent(result.periodCapitalRate)}; custo financeiro: ${dashboardMoney(result.financialCost)}.`,
-    `Despesas percentuais: ${percent(result.saleExpenseRate)}; margem desejada: ${percent(result.desiredNetMargin)}; preço bruto: ${dashboardMoney(result.technicalPriceRaw)}; preço técnico arredondado para cima: ${dashboardMoney(result.technicalPrice)}.`,
+    `Preço de equilíbrio: ${dashboardMoney(result.breakEvenPrice)}. Despesas percentuais: ${percent(result.saleExpenseRate)}; margem desejada: ${percent(result.desiredNetMargin)}; preço recomendado: ${dashboardMoney(result.technicalPrice)}. Fórmula: custo completo ÷ (1 − despesas − margem).`,
   ];
-  if (result.market.price) explanations.push(`${marketLabel(result.market)}: ${dashboardMoney(result.market.price)}; diferença para o preço técnico: ${dashboardMoney(result.market.difference)} (${percent(result.market.differenceRate)}).`);
+  if (result.minimumMarginPrice !== null) explanations.push(`Margem mínima: ${percent(result.minimumMargin)}; preço mínimo comercial: ${dashboardMoney(result.minimumMarginPrice)}. Este valor não é o preço de equilíbrio.`);
+  if (result.market.price) explanations.push(`${marketLabel(result.market)}: ${dashboardMoney(result.market.price)}; diferença para o preço recomendado: ${dashboardMoney(result.market.difference)} (${percent(result.market.differenceRate)}). Essa referência não alterou o cálculo.`);
   if (result.discount.type !== "none") explanations.push(`Estratégia de desconto ${result.discount.type === "percentage" ? "percentual" : "fixo"}: preço anunciado ${dashboardMoney(result.discount.advertisedPrice)}, desconto ${dashboardMoney(result.discount.discountAmount)} e preço após desconto ${dashboardMoney(result.discount.postDiscountPrice)}.`);
   document.querySelector("#explanationList").innerHTML = explanations.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
 }
@@ -1639,10 +1866,11 @@ function renderCostTable(document, result) {
 function renderAlerts(document, result, assessment) {
   const alerts = [];
   if (result.financedDays > 0) alerts.push(["warning", `O ciclo financeiro acrescenta ${dashboardMoney(result.financialCost)} por unidade.`]);
-  if (result.inputs.productionCapacity && result.inputs.productionCapacity.monthlyCapacity < result.inputs.expectedMonthlyUnits) alerts.push(["warning", "A capacidade produtiva informada é menor que a quantidade mensal usada no rateio. O preço não foi alterado por isso."]);
-  if (result.market.price && result.market.difference < 0) alerts.push(["risk", `O preço técnico está ${dashboardMoney(Math.abs(result.market.difference))} acima da referência de mercado. A referência não altera o preço técnico.`]);
+  if (result.inputs.capitalRateSource === "estimated") alerts.push(["warning", "O custo mensal do capital foi informado como estimativa. Revise-o quando tiver um valor validado."]);
+  if (result.inputs.capitalRateSource === "zero") alerts.push(["warning", "O custo mensal do capital está em 0% porque você informou que não sabe o percentual."]);
+  if (result.market.price && result.market.difference < 0) alerts.push(["risk", `O preço recomendado está ${dashboardMoney(Math.abs(result.market.difference))} acima da referência de mercado. A referência não altera o cálculo.`]);
   if (assessment.focusUnavailable) alerts.push(["warning", "A Focus NFe está indisponível; a carga tributária continua manual e não foi alterada."]);
-  alerts.push(["warning", "A carga tributária é estimada manualmente. A Focus NFe valida NCM, mas não calcula alíquotas."]);
+  alerts.push(["warning", "O percentual efetivo de impostos foi informado manualmente. A Focus NFe valida NCM, mas não calcula essa alíquota."]);
   document.querySelector("#alerts").innerHTML = alerts.map(([type, text]) => `<div class="${type}">${escapeHtml(text)}</div>`).join("");
   document.querySelector("#alertCount").textContent = `${alerts.length} ${alerts.length === 1 ? "ponto de atenção" : "pontos de atenção"}`;
   document.querySelector("#alertSummary").textContent = alerts[0][1];
@@ -1652,7 +1880,7 @@ function renderAlerts(document, result, assessment) {
 function renderFiscalSummary(document, assessment) {
   const ncm = assessment.ncm?.codigo || "não informado";
   const status = assessment.ncmValidation.status === "success" ? `validado pela Focus NFe em ${assessment.ncmValidation.environment}` : "não validado nesta simulação";
-  document.querySelector("#fiscalSummary").innerHTML = `<p><strong>NCM:</strong> ${escapeHtml(ncm)} (${escapeHtml(status)})</p><p><strong>Carga usada:</strong> estimada manualmente; a Focus NFe não calculou qualquer alíquota.</p><p><strong>Tributos ainda dependentes de regra externa:</strong> ${escapeHtml(assessment.unresolvedTaxes.join(", "))}.</p>`;
+  document.querySelector("#fiscalSummary").innerHTML = `<p><strong>NCM:</strong> ${escapeHtml(ncm)} (${escapeHtml(status)})</p><p><strong>Percentual efetivo usado:</strong> informado manualmente, sem alteração silenciosa. A Focus NFe não calculou qualquer alíquota.</p><p><strong>Tributos ainda dependentes de regra externa:</strong> ${escapeHtml(assessment.unresolvedTaxes.join(", "))}.</p>`;
 }
 
 function maximumMarketItemForDisplay(marketState) {
@@ -1858,7 +2086,8 @@ function renderMarketPanel(document, marketState) {
 
 function renderIncompleteDashboard(document, marketState, errors) {
   const count = Object.keys(errors).length;
-  ["baseCost", "marketReferencePrice", "suggestedPrice", "profitPerSale", "estimatedMargin", "detailSuggestedPrice", "detailBaseCost", "detailSalesRate", "detailProfit", "detailMargin"].forEach((id) => { const node = document.querySelector(`#${id}`); if (node) node.textContent = "—"; });
+  ["baseCost", "marketReferencePrice", "suggestedPrice", "profitPerSale", "estimatedMargin", "breakEvenPrice", "minimumMarginPrice", "desiredMarginPrice", "advertisedPrice", "postDiscountPrice", "detailSuggestedPrice", "detailBreakEvenPrice", "detailMinimumMarginPrice", "detailDesiredMarginPrice", "detailAdvertisedPrice", "detailPostDiscountPrice", "detailBaseCost", "detailSalesRate", "detailProfit", "detailMargin"].forEach((id) => { const node = document.querySelector(`#${id}`); if (node) node.textContent = "—"; });
+  ["minimumMarginPriceRow", "advertisedPriceRow", "postDiscountPriceRow", "detailMinimumMarginCard", "detailAdvertisedPriceCard", "detailPostDiscountPriceCard"].forEach((id) => { const node = document.querySelector(`#${id}`); if (node) node.hidden = true; });
   document.querySelector("#priceStatus").textContent = "Aguardando dados válidos";
   document.querySelector("#recommendationText").textContent = "Corrija os campos indicados para calcular e salvar.";
   document.querySelector("#marketStatus").textContent = "Mercado é opcional e será comparado quando houver referência válida.";
@@ -1887,6 +2116,16 @@ function renderDashboard(document, result, marketState, fiscalAssessment) {
     : "Referência opcional não informada";
   document.querySelector("#marketPriceLabel").textContent = marketLabel(market);
   setFinancialValue(document.querySelector("#suggestedPrice"), dashboardMoney(result.technicalPrice));
+  setFinancialValue(document.querySelector("#breakEvenPrice"), dashboardMoney(result.breakEvenPrice));
+  setFinancialValue(document.querySelector("#desiredMarginPrice"), dashboardMoney(result.technicalPrice));
+  const minimumRow = document.querySelector("#minimumMarginPriceRow");
+  minimumRow.hidden = result.minimumMarginPrice === null;
+  setFinancialValue(document.querySelector("#minimumMarginPrice"), dashboardMoney(result.minimumMarginPrice));
+  const hasDiscount = result.discount.type !== "none";
+  document.querySelector("#advertisedPriceRow").hidden = !hasDiscount;
+  document.querySelector("#postDiscountPriceRow").hidden = !hasDiscount;
+  setFinancialValue(document.querySelector("#advertisedPrice"), dashboardMoney(result.discount.advertisedPrice));
+  setFinancialValue(document.querySelector("#postDiscountPrice"), dashboardMoney(result.discount.postDiscountPrice));
   setFinancialValue(document.querySelector("#profitPerSale"), dashboardMoney(result.profitAmount));
   document.querySelector("#estimatedMargin").textContent = percent(result.actualNetMargin);
   const primaryMarketValue = document.querySelector("#primaryMarketValue");
@@ -1898,8 +2137,8 @@ function renderDashboard(document, result, marketState, fiscalAssessment) {
       ? `${selectedReference.title} · Loja: ${selectedReference.seller || selectedReference.source} · Google Shopping`
       : `${marketLabel(market)} · ${market.source || "Google Shopping"}`
     : "Sem referência de mercado";
-  document.querySelector("#priceStatus").textContent = "Preço técnico";
-  document.querySelector("#recommendationText").textContent = "Preço mínimo sustentável, calculado sem usar mercado ou desconto como custo.";
+  document.querySelector("#priceStatus").textContent = "Preço recomendado";
+  document.querySelector("#recommendationText").textContent = "Margem tratada como percentual do preço de venda. Mercado e desconto não entram como custo.";
   document.querySelector("#marketStatus").textContent = market.price ? `Diferença: ${dashboardMoney(market.difference)} (${percent(market.differenceRate)}).` : "Sem referência de mercado; o cálculo técnico não é bloqueado.";
   const meter = document.querySelector("#marketMeter");
   meter.value = market.price ? Math.min((result.technicalPrice / market.price) * 100, 100) : 0;
@@ -1995,7 +2234,7 @@ function renderProductDetails(container, product) {
       ${detail(canonical ? "Custo direto unitário" : "Preço de custo", currency.format(canonical?.directCost ?? product.costPrice))}
       ${detail(canonical ? "Custo indireto + financeiro" : "Custos adicionais", currency.format(canonical ? canonical.indirectCost + canonical.financialCost : product.additionalCosts))}
       ${detail("Margem desejada", `${Number(product.profitMargin).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`)}
-      ${detail(canonical ? "Preço técnico recomendado" : "Preço sugerido", currency.format(product.suggestedPrice))}
+      ${detail(canonical ? "Preço recomendado" : "Preço sugerido", currency.format(product.suggestedPrice))}
       ${canonical ? `${detail("Custo total unitário", currency.format(canonical.totalUnitCost))}${detail("Margem efetiva", `${(canonical.actualNetMargin * 100).toLocaleString("pt-BR", { maximumFractionDigits: 4 })}%`)}` : ""}
       ${isLegacy ? detail("Memória", "Cálculo legado v5 preservado; não foi recalculado.") : ""}
       ${market ? `${detail("Produto de mercado", market.productTitle)}${detail("Mercado na data", currency.format(market.price))}${detail("Diferença", market.difference)}${detail("Fonte de mercado", market.source)}` : ""}
@@ -2353,12 +2592,12 @@ function createProfileSettings({
 const sectionFields = Object.freeze({
   product: ["productName"],
   fiscal: ["taxRegime", "originState", "destinationState", "customerType"],
-  direct: ["materialCost", "wasteRate", "packagingCost", "deliveryCost"],
-  indirect: ["monthlyPayroll", "monthlyFixedCosts"],
-  production: ["expectedMonthlyUnits"],
-  sales: ["taxRate", "paymentFeeRate", "commissionRate"],
-  market: ["desiredNetMargin"],
-  terms: ["inventoryDays", "receivingDays", "paymentDays", "monthlyCapitalRate"],
+  direct: ["materialCost", "wasteRate", "packagingCost", "averageOrderFreight", "averageOrderUnits"],
+  indirect: ["monthlyFixedCosts"],
+  production: ["expectedMonthlyUnits", "productionTimeMinutes", "laborCostMode"],
+  sales: ["taxRate", "desiredNetMargin"],
+  market: [],
+  terms: ["inventoryDays", "receivingDays", "paymentDays", "capitalRateSource"],
 });
 
 function fieldHasValidValue(field) {
@@ -2647,7 +2886,7 @@ const formFieldIds = [
   "operationPurpose",
   "marketReferenceRule",
   ...PRICING_FIELD_IDS,
-  ...CAPACITY_FIELD_IDS,
+  ...FORM_OPTION_FIELD_IDS,
 ];
 const elements = Object.fromEntries(formFieldIds.map((id) => [id, $(`#${id}`)]));
 const pricingTabs = createPricingTabs($(".pricing-sidebar"));
@@ -2865,6 +3104,23 @@ function currentPricingValidation() {
   return validation;
 }
 
+function renderPricingConditionalFields() {
+  const laborAutomatic = elements.laborCostMode.value === "automatic";
+  const allocationMethod = elements.allocationMethod.value;
+  const discountType = elements.discountType.value;
+  const capitalSource = elements.capitalRateSource.value;
+  $("#companyFreightShareField").hidden = elements.freightPayer.value !== "shared";
+  $("#automaticLaborFields").hidden = !laborAutomatic;
+  $("#manualLaborFields").hidden = laborAutomatic;
+  $("#allocationLaborHoursField").hidden = allocationMethod !== "labor-hours" || laborAutomatic;
+  $("#machineAllocationFields").hidden = allocationMethod !== "machine-hours";
+  $("#revenueAllocationFields").hidden = allocationMethod !== "revenue";
+  $("#monthlyCapitalRateField").hidden = capitalSource === "zero";
+  $("#capitalRateEstimateNotice").hidden = capitalSource !== "estimated";
+  $("#percentageDiscountField").hidden = discountType !== "percentage";
+  $("#fixedDiscountField").hidden = discountType !== "fixed";
+}
+
 function emptyMarketTaxState(overrides = {}) {
   return { status: "idle", mode: "", expanded: false, result: null, calculations: null, suggestions: [], code: "", message: "", shortMessage: "", ...overrides };
 }
@@ -3015,6 +3271,7 @@ function marketReferenceFromState(inputs) {
 
 function render() {
   renderProductOriginFields();
+  renderPricingConditionalFields();
   const validation = currentPricingValidation();
   const viewMarketState = marketStateForRender();
   if (validation.isValid) {
@@ -3526,6 +3783,7 @@ function resetCurrentProductForm() {
   $("#ncmProductQuery").value = "";
   elements.marketReferenceRule.value = "manual";
   document.querySelector(".fiscal-advanced-fields")?.removeAttribute("open");
+  document.querySelectorAll(".advanced-pricing-options").forEach((details) => details.removeAttribute("open"));
   focusState = emptyFocusState();
   ncmSearchState = emptyNcmSearchState();
   marketState = emptyMarketState();
@@ -3670,8 +3928,10 @@ function reuseProduct(product) {
   $("#productName").value = "";
   $("#productDescription").value = "";
   const data = product.calculationData || {};
-  const isLegacy = data.version === 5 || data.pricingSchemaVersion === 5;
-  const savedInputs = isLegacy ? migrateLegacyV5Inputs(data.inputs) : data.inputs;
+  const isLegacyV5 = data.version === 5 || data.pricingSchemaVersion === 5;
+  const isLegacyV6 = data.pricingSchemaVersion === 6;
+  const isLegacy = isLegacyV5 || isLegacyV6;
+  const savedInputs = isLegacyV5 ? migrateLegacyV5Inputs(data.inputs) : isLegacyV6 ? migrateLegacyV6Inputs(data.inputs) : data.inputs;
   if (!applySavedInputs(savedInputs, elements, product.calculationData?.emptyOptionalFields)) {
     setMessage($("#historyMessage"), "Esta consulta não possui os dados necessários para ser reutilizada.");
     return;
@@ -3710,7 +3970,7 @@ function reuseProduct(product) {
   $("#productDialog").close();
   render();
   navigate("assistant");
-  setMessage($("#saveProductStatus"), isLegacy ? "Cálculo legado carregado: confirme estoque/produção e revise os campos antes de salvar uma nova versão." : "Consulta carregada. Ajuste os inputs e salve uma nova versão.", true);
+  setMessage($("#saveProductStatus"), isLegacy ? "Cálculo legado carregado: o frete e o seguro foram migrados com segurança; informe a nova mão de obra e revise os campos antes de salvar." : "Consulta carregada. Ajuste os inputs e salve uma nova versão.", true);
 }
 
 async function deleteProduct(id) {
@@ -3851,12 +4111,19 @@ async function submitRegistration(event) {
   }
 }
 
- [...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]
+ [...PRICING_FIELD_IDS]
   .filter((fieldId) => fieldId !== "marketPrice")
   .forEach((fieldId) => elements[fieldId].addEventListener("input", () => {
     touchedPricingFields.add(fieldId);
     render();
   }));
+
+FORM_OPTION_FIELD_IDS.forEach((fieldId) => {
+  elements[fieldId].addEventListener("change", () => {
+    touchedPricingFields.add(fieldId);
+    render();
+  });
+});
 
 [
   elements.taxRegime,

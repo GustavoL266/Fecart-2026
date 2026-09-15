@@ -30,12 +30,12 @@ export class ConfiguredTaxRuleEngine extends TaxRuleEngine {
       ncmValidation: ncmVerified ? {
         status: "success", source: "Focus NFe", environment: focusState.environment || "não informado", checkedAt: focusState.checkedAt || new Date().toISOString(), code,
       } : { status: "unverified", source: code ? "Usuário" : null, environment: null, checkedAt: null, code: code || null },
-      taxes: [{ key: "aggregate", label: "Carga tributária estimada manualmente", rate: inputs.taxRate, source: "Usuário" }],
+      taxes: [{ key: "aggregate", label: "Percentual efetivo de impostos sobre a venda", rate: inputs.taxRate, source: "Usuário" }],
       unresolvedTaxes: TAXES_REQUIRING_EXTERNAL_RULES,
       warnings: [
         "A Focus NFe confirma somente a classificação NCM; ela não calcula os tributos desta venda.",
         "O NCM isolado não determina a tributação aplicável.",
-        "A carga tributária estimada manualmente deve ser validada por contador ou especialista fiscal.",
+        "O percentual efetivo informado deve ser validado por contador ou especialista fiscal.",
       ],
     };
   }

@@ -86,10 +86,9 @@ function createFixture() {
   const goToMarket = new FakeElement({ dataset: { pricingGo: "market" } });
   const fieldIds = [
     "productName", "ncmCode", "taxRegime", "originState", "destinationState", "cfop", "taxSituation", "customerType", "operationPurpose",
-    "materialsCost", "waste", "packagingCost", "deliveryCost", "insuranceCost", "discountAmount", "otherExpenses",
-    "totalPayroll", "monthlyFixedCosts", "workerCount", "outputPerWorkerHour", "monthlyVolume",
-    "taxRate", "paymentFeeRate", "commissionRate", "margin", "competitorAverage",
-    "receiveDays", "payDays", "capitalRate",
+    "materialCost", "wasteRate", "packagingCost", "averageOrderFreight", "averageOrderUnits",
+    "monthlyFixedCosts", "expectedMonthlyUnits", "productionTimeMinutes", "laborCostMode",
+    "taxRate", "desiredNetMargin", "inventoryDays", "receivingDays", "paymentDays", "capitalRateSource",
   ];
   const fields = Object.fromEntries(fieldIds.map((id) => [id, new FakeElement({ value: id === "productName" ? "" : "1" })]));
   const tabList = new FakeElement();
@@ -144,12 +143,12 @@ test("trocar de aba mantém valores e exibe somente o painel ativo", () => {
   assert.equal(fixture.panels[0].hidden, false);
   assert.equal(fixture.panels.filter((panel) => panel.hidden).length, 7);
 
-  fixture.fields.materialsCost.value = "37.5";
+  fixture.fields.materialCost.value = "37.5";
   controller.activate("direct");
   controller.activate("market");
   controller.activate("direct");
 
-  assert.equal(fixture.fields.materialsCost.value, "37.5");
+  assert.equal(fixture.fields.materialCost.value, "37.5");
   assert.equal(fixture.panels[2].hidden, false);
   assert.equal(fixture.panels.filter((panel) => panel.hidden).length, 7);
   assert.equal(fixture.root.scrollTop, 0);
@@ -215,7 +214,7 @@ test("navegação percorre a nova sequência nos dois sentidos e preserva os dad
   const fixture = createFixture();
   const controller = createPricingTabs(fixture.root);
   const expectedOrder = ["product", "fiscal", "direct", "indirect", "production", "sales", "terms", "market"];
-  fixture.fields.materialsCost.value = "37.5";
+  fixture.fields.materialCost.value = "37.5";
 
   for (let index = 0; index < expectedOrder.length - 1; index += 1) {
     fixture.tabs[index].emit("keydown", { key: "ArrowRight", preventDefault() {} });
@@ -230,5 +229,5 @@ test("navegação percorre a nova sequência nos dois sentidos e preserva os dad
   assert.equal(fixture.mobileStep.textContent, "Etapa 7 de 8");
   fixture.tabs[6].emit("keydown", { key: "ArrowLeft", preventDefault() {} });
   assert.equal(controller.getActiveSection(), "sales");
-  assert.equal(fixture.fields.materialsCost.value, "37.5");
+  assert.equal(fixture.fields.materialCost.value, "37.5");
 });

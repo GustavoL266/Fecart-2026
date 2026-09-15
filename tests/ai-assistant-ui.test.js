@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createAiAssistant, validateAssistantResponse } from "../js/ui/ai-assistant.js";
-import { applyAssistantFields, CAPACITY_FIELD_IDS, PRICING_FIELD_IDS, readAssistantFieldContext, readAssistantRateContext, validateAssistantFields, validatePricingForm } from "../js/ui/form.js";
+import { applyAssistantFields, FORM_OPTION_FIELD_IDS, PRICING_FIELD_IDS, readAssistantFieldContext, readAssistantRateContext, validateAssistantFields, validatePricingForm } from "../js/ui/form.js";
 import { calculatePricing } from "../js/domain/pricing-calculator.js";
 import { parsePricingMessage } from "../lib/ai-form-assistant.js";
 
 function controls(values = {}) {
-  const ids = [...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS, "productName", "productDescription", "marketQuery", "taxRegime", "originState", "destinationState", "cfop", "taxSituation", "customerType", "operationPurpose", "productOrigin", "countryOfOrigin", "ncmCode"];
-  return Object.fromEntries(ids.map((id) => [id, { value: values[id] ?? "" }]));
+  const defaults = { laborCostMode: "automatic", freightPayer: "company", allocationMethod: "quantity", capitalRateSource: "informed", discountType: "none" };
+  const ids = [...PRICING_FIELD_IDS, ...FORM_OPTION_FIELD_IDS, "productName", "productDescription", "marketQuery", "taxRegime", "originState", "destinationState", "cfop", "taxSituation", "customerType", "operationPurpose", "productOrigin", "countryOfOrigin", "ncmCode"];
+  return Object.fromEntries(ids.map((id) => [id, { value: values[id] ?? defaults[id] ?? "" }]));
 }
 
 function response(fields, pending = [], sourceOverrides = {}, skipped = {}) {
@@ -106,14 +107,16 @@ function pending() {
 }
 
 test("patch com vários campos mantém frete e dados ausentes e usa a fórmula existente", () => {
-  const fields = controls(Object.fromEntries(PRICING_FIELD_IDS.map((id) => [id, "0"])));
-  fields.expectedMonthlyUnits.value = "100";
-  fields.marketPrice.value = "";
-  fields.deliveryCost.value = "5";
-  const patch = { productName: "Bolo de chocolate", materialCost: 18, packagingCost: 3, wasteRate: 10, desiredNetMargin: 25, deliveryCost: null };
+  const fields = controls({
+    materialCost: "0", wasteRate: "0", packagingCost: "0", averageOrderFreight: "5", averageOrderUnits: "1",
+    monthlyLaborCost: "0", monthlyProductiveHours: "160", productionTimeMinutes: "0", monthlyFixedCosts: "0",
+    expectedMonthlyUnits: "100", taxRate: "0", desiredNetMargin: "0", inventoryDays: "0", receivingDays: "0",
+    paymentDays: "0", monthlyCapitalRate: "0",
+  });
+  const patch = { productName: "Bolo de chocolate", materialCost: 18, packagingCost: 3, wasteRate: 10, desiredNetMargin: 25, averageOrderFreight: null };
   const changed = applyAssistantFields(patch, fields);
   assert.deepEqual(changed, ["productName", "materialCost", "packagingCost", "wasteRate", "desiredNetMargin"]);
-  assert.equal(fields.deliveryCost.value, "5");
+  assert.equal(fields.averageOrderFreight.value, "5");
   const validation = validatePricingForm(fields);
   assert.equal(validation.isValid, true);
   assert.equal(validation.inputs.desiredNetMargin, 0.25);
@@ -121,15 +124,15 @@ test("patch com vários campos mantém frete e dados ausentes e usa a fórmula e
 });
 
 test("comando de edição altera um campo sem apagar valores ausentes; zero remove desconto", () => {
-  const fields = controls({ materialCost: "18,50", deliveryCost: "5", desiredNetMargin: "25", fixedDiscountAmount: "4", discountRate: "" });
+  const fields = controls({ materialCost: "18,50", averageOrderFreight: "5", desiredNetMargin: "25", fixedDiscountAmount: "4", discountRate: "" });
   applyAssistantFields({ desiredNetMargin: 22, materialCost: null }, fields);
   assert.equal(fields.desiredNetMargin.value, "22");
   assert.equal(fields.materialCost.value, "18,50");
-  assert.equal(fields.deliveryCost.value, "5");
+  assert.equal(fields.averageOrderFreight.value, "5");
   applyAssistantFields({ discountRate: 0, fixedDiscountAmount: 0 }, fields);
   assert.equal(fields.discountRate.value, "0");
   assert.equal(fields.fixedDiscountAmount.value, "0");
-  assert.deepEqual(applyAssistantFields({ deliveryCost: undefined }, fields), []);
+  assert.deepEqual(applyAssistantFields({ averageOrderFreight: undefined }, fields), []);
 });
 
 test("decimais brasileiros, percentuais e custos pequenos não viram notação científica", () => {
@@ -140,19 +143,19 @@ test("decimais brasileiros, percentuais e custos pequenos não viram notação c
   assert.equal(fields.packagingCost.value, "0,00000001");
 });
 
-test("capacidade parcial preenche só os dois dados informados, sem inventar horas mensais", () => {
+test("mão de obra parcial preenche só os dados informados, sem inventar horas produtivas", () => {
   const fields = controls();
-  applyAssistantFields({ workerCount: 4, unitsPerWorkerHour: 10 }, fields);
-  assert.equal(fields.workerCount.value, "4");
-  assert.equal(fields.unitsPerWorkerHour.value, "10");
-  assert.equal(fields.productiveHoursPerWorkerMonth.value, "");
+  applyAssistantFields({ monthlyLaborCost: 4000, productionTimeMinutes: 10 }, fields);
+  assert.equal(fields.monthlyLaborCost.value, "4000");
+  assert.equal(fields.productionTimeMinutes.value, "10");
+  assert.equal(fields.monthlyProductiveHours.value, "");
 });
 
 test("validação rejeita valores fora dos limites e campos desconhecidos antes de qualquer alteração", () => {
   const invalid = [
     { materialCost: -1 }, { materialCost: "20" }, { materialCost: Infinity }, { materialCost: NaN }, { materialCost: 1_000_000_001 },
-    { wasteRate: 100 }, { desiredNetMargin: 100 }, { receivingDays: 3651 }, { workerCount: 4.5 }, { workerCount: 1_000_001 },
-    { productiveHoursPerWorkerMonth: 745 }, { expectedMonthlyUnits: 0 }, { marketPrice: 0 }, { finalPrice: 100 }, { ncmCode: "19059090" },
+    { wasteRate: 100 }, { desiredNetMargin: 100 }, { receivingDays: 3651 }, { monthlyProductiveHours: 0 },
+    { averageOrderUnits: 0 }, { expectedMonthlyUnits: 0 }, { marketPrice: 0 }, { finalPrice: 100 }, { ncmCode: "19059090" },
     { icms: 18 }, { apiKey: "secret" }, { productName: "<script>alert(1)</script>" }, { marketQuery: "x".repeat(161) },
     { cfop: "9999" }, { taxSituation: "abc" }, { taxRegime: "inventado" }, { originState: "XX" },
     { discountRate: 10, fixedDiscountAmount: 4 }, { taxRate: 80, desiredNetMargin: 20 },
@@ -180,7 +183,7 @@ test("resposta exige prévia de cada campo válido e não aceita saída vazia ou
   assert.deepEqual(validateAssistantFields({ materialCost: null }), {});
   for (const raw of [null, [], { fields: [] }, { fields: {} }, { fields: { materialCost: 20 }, summary: [] },
     { fields: { materialCost: 20 }, sources: { materialCost: "user_provided" }, summary: [{ field: "desiredNetMargin", label: "Margem", value: "20%", source: "user_provided" }] },
-    { ...response({}, [], {}, { deliveryCost: { value: null, source: "skipped" } }), summary: [{ field: "deliveryCost", label: "Frete", value: "Não informado", source: undefined }] },
+    { ...response({}, [], {}, { averageOrderFreight: { value: null, source: "skipped" } }), summary: [{ field: "averageOrderFreight", label: "Frete", value: "Não informado", source: undefined }] },
     { fields: { materialCost: 20, packagingCost: 1 }, summary: [response({ materialCost: 20 }).summary[0], response({ materialCost: 20 }).summary[0]] }]) {
     assert.throws(() => validateAssistantResponse(raw));
   }
@@ -347,7 +350,7 @@ test("diagnósticos de configuração, provedor e timeout são seguros e não ap
 
 test("brigadeiros: prévia de lote preserva pendências e só confirmação altera controles", async () => {
   const message = "quero vender brigadeiros. gasto R$ 40 em ingredientes para produzir 100 unidades, R$ 10 em embalagens e quero margem de 30%";
-  const fields = controls({ deliveryCost: "5" });
+  const fields = controls({ averageOrderFreight: "5" });
   const entry = (field, value, evidence, batchUnits = null, batchEvidence = null) => ({
     field, value, source: "user_provided", evidence,
     basis: ["materialCost", "packagingCost"].includes(field) ? "batch-total" : "not-applicable",
@@ -372,8 +375,8 @@ test("brigadeiros: prévia de lote preserva pendências e só confirmação alte
   assert.equal(fields.materialCost.value, "0,4");
   assert.equal(fields.packagingCost.value, "0,1");
   assert.equal(fields.desiredNetMargin.value, "30");
-  assert.equal(fields.deliveryCost.value, "5");
-  for (const id of ["monthlyPayroll", "expectedMonthlyUnits", "wasteRate", "taxRate"]) assert.equal(fields[id].value, "");
+  assert.equal(fields.averageOrderFreight.value, "5");
+  for (const id of ["monthlyLaborCost", "expectedMonthlyUnits", "wasteRate", "taxRate"]) assert.equal(fields[id].value, "");
   assert.equal(validatePricingForm(fields).isValid, false);
 });
 
@@ -392,18 +395,18 @@ test("sessão encerrada impede abrir, aplicar e aceitar resposta pendente", asyn
   assert.deepEqual(ui.applied, []);
 });
 
-test("contexto do assistente contém somente quatro percentuais válidos exibidos", () => {
-  const fields = controls({ taxRate: "6,5", paymentFeeRate: "2.8", commissionRate: "", desiredNetMargin: "25", materialCost: "999", deliveryCost: "7" });
+test("contexto do assistente contém somente percentuais válidos exibidos", () => {
+  const fields = controls({ taxRate: "6,5", paymentFeeRate: "2.8", commissionRate: "", desiredNetMargin: "25", materialCost: "999", averageOrderFreight: "7" });
   assert.deepEqual(readAssistantRateContext(fields), { taxRate: 6.5, paymentFeeRate: 2.8, desiredNetMargin: 25 });
   fields.taxRate.value = "100";
   fields.paymentFeeRate.value = "inválido";
   assert.deepEqual(readAssistantRateContext(fields), { desiredNetMargin: 25 });
 });
 
-test("contexto completo preserva inputs manuais válidos sem enviar mercado ou capacidade", () => {
+test("contexto completo preserva inputs manuais válidos e opções, sem enviar mercado", () => {
   const fields = controls({
     productName: "Bolo", productDescription: "Chocolate", materialCost: "15,50", packagingCost: "2",
-    desiredNetMargin: "10", marketPrice: "99", workerCount: "3", wasteRate: "inválido",
+    desiredNetMargin: "10", marketPrice: "99", wasteRate: "inválido",
   });
   assert.deepEqual(readAssistantFieldContext(fields), {
     materialCost: 15.5,
@@ -411,14 +414,19 @@ test("contexto completo preserva inputs manuais válidos sem enviar mercado ou c
     desiredNetMargin: 10,
     productName: "Bolo",
     productDescription: "Chocolate",
+    laborCostMode: "automatic",
+    freightPayer: "company",
+    allocationMethod: "quantity",
+    capitalRateSource: "informed",
+    discountType: "none",
   });
 });
 
 test("prévia separa origens, mostra aviso e Ajustar dados não aplica valores", async () => {
   const ui = fixture({ parse: async () => response(
-    { productName: "bolo", materialCost: 15, deliveryCost: 0, packagingCost: 2 },
+    { productName: "bolo", materialCost: 15, averageOrderFreight: 0, packagingCost: 2 },
     [],
-    { deliveryCost: "inferred", packagingCost: "estimated" },
+    { averageOrderFreight: "inferred", packagingCost: "estimated" },
   ) });
   const message = "Quero vender bolo e gasto R$ 15 por unidade.";
   await ui.enter(message);
@@ -633,7 +641,7 @@ test("campo ignorado permanece skipped e não volta após informar outra pendên
 });
 
 test("campo opcional ignorado não bloqueia a aplicação nem mostra aviso obrigatório", async () => {
-  const issue = { code: "AI_CONFIRM_FIELD", field: "insuranceCost", message: "Não consegui determinar o seguro por unidade." };
+  const issue = { code: "AI_CONFIRM_FIELD", field: "otherDirectExpenses", message: "Não consegui determinar outras despesas diretas." };
   const ui = fixture({ parse: async () => response({ desiredNetMargin: 20 }, [issue]) });
   await ui.enter();
   await ui.elements.form.emit("submit");
@@ -681,7 +689,7 @@ test("estimativa disponível pode ser substituída por valor informado", async (
 
 test("estimativa disponível pode ficar em branco sem aplicar zero", async () => {
   const ui = fixture({ parse: async () => response(
-    { desiredNetMargin: 20, insuranceCost: 2 }, [], { insuranceCost: "estimated" },
+    { desiredNetMargin: 20, otherDirectExpenses: 2 }, [], { otherDirectExpenses: "estimated" },
   ) });
   await ui.enter();
   await ui.elements.form.emit("submit");
@@ -694,7 +702,7 @@ test("estimativa disponível pode ficar em branco sem aplicar zero", async () =>
 test("vários campos faltando aparecem juntos em uma lista compacta", async () => {
   const issues = [
     { code: "AI_REQUIRED_FIELD_MISSING", field: "expectedMonthlyUnits", message: "Não consegui determinar a quantidade mensal prevista." },
-    { code: "AI_REQUIRED_FIELD_MISSING", field: "deliveryCost", message: "Não consegui determinar o frete." },
+    { code: "AI_REQUIRED_FIELD_MISSING", field: "averageOrderFreight", message: "Não consegui determinar o frete médio do pedido." },
     { code: "AI_REQUIRED_FIELD_MISSING", field: "receivingDays", message: "Não consegui determinar o prazo de recebimento." },
   ];
   const ui = fixture({ parse: async () => response({ productName: "bolo" }, issues) });

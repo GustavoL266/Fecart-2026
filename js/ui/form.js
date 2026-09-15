@@ -1,51 +1,85 @@
 import { validatePricingInputs } from "../domain/pricing-calculator.js";
 
 export const PERCENTAGE_FIELDS = new Set([
-  "wasteRate", "taxRate", "paymentFeeRate", "commissionRate", "desiredNetMargin", "monthlyCapitalRate", "discountRate",
+  "wasteRate", "companyFreightShare", "taxRate", "paymentFeeRate", "commissionRate", "marketplaceFeeRate",
+  "postSaleLossRate", "minimumMargin", "desiredNetMargin", "monthlyCapitalRate", "discountRate",
 ]);
-export const ASSISTANT_COMBINED_RATE_FIELDS = Object.freeze(["taxRate", "paymentFeeRate", "commissionRate", "desiredNetMargin"]);
+export const ASSISTANT_COMBINED_RATE_FIELDS = Object.freeze([
+  "taxRate", "paymentFeeRate", "commissionRate", "marketplaceFeeRate", "postSaleLossRate", "desiredNetMargin",
+]);
 
 const FIELD_RULES = Object.freeze({
-  materialCost: { required: "Informe o custo da matéria-prima." },
-  wasteRate: { required: "Informe o desperdício." },
-  packagingCost: { required: "Informe o custo de embalagem." },
-  deliveryCost: { required: "Informe o frete ou entrega." },
-  insuranceCost: { optional: true },
+  materialCost: { required: "Informe o custo dos insumos e da matéria-prima." },
+  wasteRate: { required: "Informe a perda ou use 0%." },
+  packagingCost: { required: "Informe o custo de embalagem ou use R$ 0." },
+  averageOrderFreight: { required: "Informe o frete médio do pedido ou use R$ 0." },
+  companyFreightShare: { optional: true, nullWhenEmpty: true },
+  averageOrderUnits: { required: "Informe a quantidade média de unidades por pedido." },
+  otherVariableCost: { optional: true },
   otherDirectExpenses: { optional: true },
-  monthlyPayroll: { required: "Informe a folha salarial mensal." },
-  monthlyFixedCosts: { required: "Informe os custos fixos mensais." },
-  expectedMonthlyUnits: { required: "Informe a quantidade prevista por mês." },
-  taxRate: { required: "Informe a carga tributária estimada manualmente." },
-  paymentFeeRate: { required: "Informe a taxa de pagamento." },
-  commissionRate: { required: "Informe a comissão." },
-  desiredNetMargin: { required: "Informe a margem líquida desejada." },
-  inventoryDays: { required: "Informe o prazo de estoque/produção." },
-  receivingDays: { required: "Informe o prazo de recebimento." },
-  paymentDays: { required: "Informe o prazo de pagamento." },
-  monthlyCapitalRate: { required: "Informe o custo do capital ao mês." },
+  monthlyLaborCost: { optional: true, nullWhenEmpty: true },
+  monthlyProductiveHours: { optional: true, nullWhenEmpty: true },
+  laborHourlyCost: { optional: true, nullWhenEmpty: true },
+  productionTimeMinutes: { required: "Informe o tempo médio para produzir uma unidade." },
+  monthlyFixedCosts: { required: "Informe os custos fixos mensais ou use R$ 0." },
+  expectedMonthlyUnits: { required: "Informe a quantidade que espera produzir ou vender por mês." },
+  allocationLaborHours: { optional: true, nullWhenEmpty: true },
+  machineTimeMinutes: { optional: true, nullWhenEmpty: true },
+  monthlyMachineHours: { optional: true, nullWhenEmpty: true },
+  monthlyBusinessRevenue: { optional: true, nullWhenEmpty: true },
+  monthlyProductRevenue: { optional: true, nullWhenEmpty: true },
+  equipmentValue: { optional: true },
+  equipmentUsefulLifeMonths: { optional: true, nullWhenEmpty: true },
+  equipmentMaintenanceMonthly: { optional: true },
+  taxRate: { required: "Informe o percentual efetivo de impostos ou use 0%." },
+  paymentFeeRate: { optional: true },
+  commissionRate: { optional: true },
+  marketplaceFeeRate: { optional: true },
+  fixedFeePerOrder: { optional: true },
+  postSaleLossRate: { optional: true },
+  minimumMargin: { optional: true, nullWhenEmpty: true },
+  desiredNetMargin: { required: "Informe a margem de lucro desejada." },
+  inventoryDays: { required: "Informe os dias entre comprar ou produzir e vender." },
+  receivingDays: { required: "Informe o prazo para receber do cliente." },
+  paymentDays: { required: "Informe o prazo para pagar fornecedores." },
+  monthlyCapitalRate: { optional: true, nullWhenEmpty: true },
   discountRate: { optional: true },
   fixedDiscountAmount: { optional: true },
-  marketPrice: { optional: true },
+  marketPrice: { optional: true, nullWhenEmpty: true },
 });
 
 export const PRICING_FIELD_IDS = Object.freeze(Object.keys(FIELD_RULES));
 export const REQUIRED_PRICING_FIELD_IDS = Object.freeze(Object.entries(FIELD_RULES)
   .filter(([, rule]) => !rule.optional)
   .map(([fieldId]) => fieldId));
-export const CAPACITY_FIELD_IDS = Object.freeze(["workerCount", "productiveHoursPerWorkerMonth", "unitsPerWorkerHour"]);
+export const FORM_OPTION_FIELD_IDS = Object.freeze(["laborCostMode", "freightPayer", "allocationMethod", "capitalRateSource", "discountType"]);
+
+const OPTION_DEFAULTS = Object.freeze({
+  laborCostMode: "automatic",
+  freightPayer: "company",
+  allocationMethod: "quantity",
+  capitalRateSource: "informed",
+  discountType: "none",
+});
 
 const ASSISTANT_TEXT_FIELDS = Object.freeze({
   productName: 160, productDescription: 2000, marketQuery: 160,
   taxRegime: 30, customerType: 30, operationPurpose: 30, cfop: 4, taxSituation: 4,
   productOrigin: 20, originState: 2, destinationState: 2, countryOfOrigin: 80,
+  ...Object.fromEntries(FORM_OPTION_FIELD_IDS.map((fieldId) => [fieldId, 30])),
 });
-const ASSISTANT_NUMERIC_FIELDS = new Set([...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]);
+const ASSISTANT_NUMERIC_FIELDS = new Set(PRICING_FIELD_IDS);
 const ASSISTANT_DAY_FIELDS = new Set(["inventoryDays", "receivingDays", "paymentDays"]);
 const ASSISTANT_OPTIONS = Object.freeze({
   taxRegime: ["simples-nacional", "lucro-presumido", "lucro-real", "mei", "outro"],
   customerType: ["contribuinte", "nao-contribuinte", "consumidor-final"],
   operationPurpose: ["venda", "revenda", "industrializacao", "consumo", "ativo", "outra"],
   productOrigin: ["nacional", "importado"],
+  laborCostMode: ["automatic", "manual"],
+  freightPayer: ["company", "customer", "shared"],
+  allocationMethod: ["quantity", "labor-hours", "machine-hours", "revenue"],
+  capitalRateSource: ["informed", "zero", "estimated"],
+  discountType: ["none", "percentage", "fixed"],
 });
 const ASSISTANT_STATES = new Set(["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"]);
 const assistantNumberFormatter = new Intl.NumberFormat("pt-BR", { useGrouping: false, maximumSignificantDigits: 21 });
@@ -57,19 +91,17 @@ export function validateAssistantFields(fields) {
   for (const [fieldId, value] of Object.entries(fields)) {
     const numeric = ASSISTANT_NUMERIC_FIELDS.has(fieldId);
     if (!numeric && !Object.hasOwn(ASSISTANT_TEXT_FIELDS, fieldId)) throw new Error("AI_INVALID_RESPONSE");
-    // Absence never clears an existing value. An explicit zero does.
     if (value === null || value === undefined) continue;
     if (numeric) {
       if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1_000_000_000) throw new Error("AI_INVALID_RESPONSE");
-      if (PERCENTAGE_FIELDS.has(fieldId) && value >= 100) throw new Error("AI_INVALID_RESPONSE");
+      if (PERCENTAGE_FIELDS.has(fieldId) && value >= 100 && fieldId !== "companyFreightShare") throw new Error("AI_INVALID_RESPONSE");
+      if (fieldId === "companyFreightShare" && value > 100) throw new Error("AI_INVALID_RESPONSE");
       if (ASSISTANT_DAY_FIELDS.has(fieldId) && value > 3650) throw new Error("AI_INVALID_RESPONSE");
-      if (fieldId === "workerCount" && (!Number.isInteger(value) || value > 1_000_000)) throw new Error("AI_INVALID_RESPONSE");
-      if (fieldId === "productiveHoursPerWorkerMonth" && value > 744) throw new Error("AI_INVALID_RESPONSE");
-      if (["marketPrice", "expectedMonthlyUnits"].includes(fieldId) && value === 0) throw new Error("AI_INVALID_RESPONSE");
+      if (["marketPrice", "expectedMonthlyUnits", "averageOrderUnits", "monthlyProductiveHours", "allocationLaborHours",
+        "monthlyMachineHours", "monthlyBusinessRevenue", "monthlyProductRevenue", "equipmentUsefulLifeMonths"].includes(fieldId)
+        && value === 0) throw new Error("AI_INVALID_RESPONSE");
     } else if (typeof value !== "string" || !value.trim() || value.length > ASSISTANT_TEXT_FIELDS[fieldId]
-      || /[\u0000-\u001f<>]/u.test(value)) {
-      throw new Error("AI_INVALID_RESPONSE");
-    }
+      || /[\u0000-\u001f<>]/u.test(value)) throw new Error("AI_INVALID_RESPONSE");
     if (ASSISTANT_OPTIONS[fieldId] && !ASSISTANT_OPTIONS[fieldId].includes(value)) throw new Error("AI_INVALID_RESPONSE");
     if (["originState", "destinationState"].includes(fieldId) && !ASSISTANT_STATES.has(value)) throw new Error("AI_INVALID_RESPONSE");
     if (fieldId === "cfop" && !/^[1-7]\d{3}$/.test(value)) throw new Error("AI_INVALID_RESPONSE");
@@ -77,24 +109,18 @@ export function validateAssistantFields(fields) {
     patch[fieldId] = value;
   }
   if ((patch.discountRate || 0) > 0 && (patch.fixedDiscountAmount || 0) > 0) throw new Error("AI_INVALID_RESPONSE");
-  const rates = ["taxRate", "paymentFeeRate", "commissionRate", "desiredNetMargin"];
+  const rates = ["taxRate", "paymentFeeRate", "commissionRate", "marketplaceFeeRate", "postSaleLossRate", "desiredNetMargin"];
   if (rates.reduce((sum, fieldId) => sum + (patch[fieldId] || 0), 0) >= 100) throw new Error("AI_INVALID_RESPONSE");
   return patch;
 }
 
-/** Applies a partial update through the same real form controller used by saved inputs. */
 export function applyAssistantFields(fields, elements) {
   const patch = validateAssistantFields(fields);
-  // Check every target before changing any field, including select options.
   for (const [fieldId, value] of Object.entries(patch)) {
     const control = elements[fieldId];
-    if (!control || (control.options && !Array.from(control.options).some((option) => option.value === value))) {
-      throw new Error("AI_INVALID_RESPONSE");
-    }
+    if (!control || (control.options && !Array.from(control.options).some((option) => option.value === value))) throw new Error("AI_INVALID_RESPONSE");
   }
-  for (const [fieldId, value] of Object.entries(patch)) {
-    elements[fieldId].value = typeof value === "number" ? assistantNumberFormatter.format(value) : value;
-  }
+  for (const [fieldId, value] of Object.entries(patch)) elements[fieldId].value = typeof value === "number" ? assistantNumberFormatter.format(value) : value;
   return Object.keys(patch);
 }
 
@@ -108,7 +134,6 @@ export function parseBrazilianNumber(rawValue) {
   return Number.isFinite(numeric) ? { status: "valid", value: numeric } : { status: "invalid", value: null };
 }
 
-/** Only denominator rates are returned; this context is validated locally and never sent to Gemini. */
 export function readAssistantRateContext(elements) {
   return Object.fromEntries(ASSISTANT_COMBINED_RATE_FIELDS.flatMap((fieldId) => {
     const parsed = parseBrazilianNumber(elements[fieldId]?.value);
@@ -123,16 +148,17 @@ export function readAssistantFieldContext(elements) {
     if (fieldId === "marketPrice") continue;
     const parsed = parseBrazilianNumber(elements[fieldId]?.value);
     if (parsed.status !== "valid") continue;
-    try {
-      Object.assign(context, validateAssistantFields({ [fieldId]: parsed.value }));
-    } catch { /* Invalid form values remain visible locally but are not sent as trusted context. */ }
+    try { Object.assign(context, validateAssistantFields({ [fieldId]: parsed.value })); } catch { /* permanece local */ }
   }
   for (const fieldId of ["productName", "productDescription"]) {
     const value = String(elements[fieldId]?.value || "").trim();
     if (!value) continue;
-    try {
-      Object.assign(context, validateAssistantFields({ [fieldId]: value }));
-    } catch { /* The normal form validation remains responsible for invalid local text. */ }
+    try { Object.assign(context, validateAssistantFields({ [fieldId]: value })); } catch { /* validação normal assume */ }
+  }
+  for (const fieldId of FORM_OPTION_FIELD_IDS) {
+    const value = String(elements[fieldId]?.value || "");
+    if (!value) continue;
+    try { Object.assign(context, validateAssistantFields({ [fieldId]: value })); } catch { /* permanece local */ }
   }
   return context;
 }
@@ -150,25 +176,6 @@ function readFiscalContext(elements) {
   };
 }
 
-function readCapacity(elements, errors) {
-  const capacity = {};
-  let provided = 0;
-  for (const fieldId of CAPACITY_FIELD_IDS) {
-    const parsed = parseBrazilianNumber(elements[fieldId]?.value);
-    if (parsed.status === "invalid") errors[fieldId] = "Informe um número válido.";
-    if (parsed.status === "valid") {
-      capacity[fieldId] = parsed.value;
-      provided += 1;
-    }
-  }
-  if (provided > 0 && provided < CAPACITY_FIELD_IDS.length) {
-    for (const fieldId of CAPACITY_FIELD_IDS) {
-      if (!(fieldId in capacity) && !errors[fieldId]) errors[fieldId] = "Complete a capacidade produtiva ou deixe a seção vazia.";
-    }
-  }
-  return provided === CAPACITY_FIELD_IDS.length ? capacity : null;
-}
-
 export function validatePricingForm(elements) {
   const errors = {};
   const rawInputs = {};
@@ -177,7 +184,7 @@ export function validatePricingForm(elements) {
     const parsed = parseBrazilianNumber(elements[fieldId]?.value);
     if (parsed.status === "empty") {
       if (rule.optional) {
-        rawInputs[fieldId] = fieldId === "marketPrice" ? null : 0;
+        rawInputs[fieldId] = rule.nullWhenEmpty ? null : 0;
         emptyOptionalFields.push(fieldId);
       } else errors[fieldId] = rule.required;
       continue;
@@ -188,21 +195,35 @@ export function validatePricingForm(elements) {
     }
     rawInputs[fieldId] = PERCENTAGE_FIELDS.has(fieldId) ? parsed.value / 100 : parsed.value;
   }
-  rawInputs.productionCapacity = readCapacity(elements, errors);
+  for (const fieldId of FORM_OPTION_FIELD_IDS) rawInputs[fieldId] = String(elements[fieldId]?.value || "");
+  if (rawInputs.freightPayer !== "shared") rawInputs.companyFreightShare = null;
+  if (rawInputs.laborCostMode === "automatic") rawInputs.laborHourlyCost = null;
+  if (rawInputs.laborCostMode === "manual") {
+    rawInputs.monthlyLaborCost = null;
+    rawInputs.monthlyProductiveHours = null;
+  }
+  if (rawInputs.allocationMethod !== "labor-hours") rawInputs.allocationLaborHours = null;
+  if (rawInputs.allocationMethod !== "machine-hours") {
+    rawInputs.machineTimeMinutes = null;
+    rawInputs.monthlyMachineHours = null;
+  }
+  if (rawInputs.allocationMethod !== "revenue") {
+    rawInputs.monthlyBusinessRevenue = null;
+    rawInputs.monthlyProductRevenue = null;
+  }
+  if (rawInputs.capitalRateSource === "zero") rawInputs.monthlyCapitalRate = null;
+  if (rawInputs.discountType !== "percentage") rawInputs.discountRate = 0;
+  if (rawInputs.discountType !== "fixed") rawInputs.fixedDiscountAmount = 0;
+  rawInputs.productionCapacity = null;
   rawInputs.fiscalContext = readFiscalContext(elements);
   if (Object.keys(errors).length > 0) return { isValid: false, errors, inputs: null, emptyOptionalFields };
 
   const domainValidation = validatePricingInputs(rawInputs);
-  return {
-    isValid: domainValidation.isValid,
-    errors: domainValidation.errors,
-    inputs: domainValidation.isValid ? domainValidation.value : null,
-    emptyOptionalFields,
-  };
+  return { isValid: domainValidation.isValid, errors: domainValidation.errors, inputs: domainValidation.isValid ? domainValidation.value : null, emptyOptionalFields };
 }
 
 export function renderPricingErrors(elements, errors, visibleFieldIds = null) {
-  for (const fieldId of [...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]) {
+  for (const fieldId of [...PRICING_FIELD_IDS, ...FORM_OPTION_FIELD_IDS]) {
     const field = elements[fieldId];
     if (!field) continue;
     const error = errors[fieldId] || "";
@@ -224,10 +245,7 @@ export function renderPricingErrors(elements, errors, visibleFieldIds = null) {
       describedBy.add(errorId);
       field.setAttribute("aria-describedby", [...describedBy].join(" "));
     }
-    if (errorElement) {
-      errorElement.textContent = visible ? error : "";
-      errorElement.hidden = !visible;
-    }
+    if (errorElement) { errorElement.textContent = visible ? error : ""; errorElement.hidden = !visible; }
   }
 }
 
@@ -237,9 +255,8 @@ function displayNumber(value, percentage = false) {
 }
 
 export function clearPricingInputs(elements) {
-  for (const fieldId of [...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS]) {
-    if (elements[fieldId]) elements[fieldId].value = "";
-  }
+  for (const fieldId of PRICING_FIELD_IDS) if (elements[fieldId]) elements[fieldId].value = "";
+  for (const [fieldId, value] of Object.entries(OPTION_DEFAULTS)) if (elements[fieldId]) elements[fieldId].value = value;
   ["ncmCode", "taxRegime", "originState", "destinationState", "cfop", "taxSituation", "customerType", "operationPurpose"].forEach((fieldId) => {
     if (elements[fieldId]) elements[fieldId].value = "";
   });
@@ -253,9 +270,9 @@ export function applySavedInputs(savedInputs, elements, emptyOptionalFields = []
     const value = savedInputs[fieldId];
     if (typeof value === "number" && Number.isFinite(value)) elements[fieldId].value = displayNumber(value, PERCENTAGE_FIELDS.has(fieldId));
   }
-  for (const fieldId of CAPACITY_FIELD_IDS) {
-    const value = savedInputs.productionCapacity?.[fieldId];
-    if (elements[fieldId] && typeof value === "number" && Number.isFinite(value)) elements[fieldId].value = displayNumber(value);
+  for (const fieldId of FORM_OPTION_FIELD_IDS) {
+    const value = savedInputs[fieldId];
+    if (elements[fieldId] && typeof value === "string") elements[fieldId].value = value;
   }
   Object.entries(savedInputs.fiscalContext || {}).forEach(([fieldId, value]) => {
     if (elements[fieldId] && typeof value === "string") elements[fieldId].value = value;
@@ -263,30 +280,61 @@ export function applySavedInputs(savedInputs, elements, emptyOptionalFields = []
   return true;
 }
 
-/** Maps only semantically equivalent v5 values. Missing inventory days deliberately stay empty. */
-export function migrateLegacyV5Inputs(legacy = {}) {
-  const rate = (value) => typeof value === "number" && Number.isFinite(value) ? value : undefined;
+/** Somente equivalências seguras são migradas; mão de obra precisa ser confirmada no novo fluxo. */
+export function migrateLegacyV6Inputs(legacy = {}) {
   return {
+    materialCost: legacy.materialCost,
+    wasteRate: legacy.wasteRate,
+    packagingCost: legacy.packagingCost,
+    averageOrderFreight: legacy.deliveryCost,
+    freightPayer: "company",
+    companyFreightShare: 1,
+    averageOrderUnits: 1,
+    otherVariableCost: 0,
+    otherDirectExpenses: (legacy.otherDirectExpenses || 0) + (legacy.insuranceCost || 0),
+    laborCostMode: "automatic",
+    monthlyFixedCosts: legacy.monthlyFixedCosts,
+    expectedMonthlyUnits: legacy.expectedMonthlyUnits,
+    allocationMethod: "quantity",
+    taxRate: legacy.taxRate,
+    paymentFeeRate: legacy.paymentFeeRate,
+    commissionRate: legacy.commissionRate,
+    marketplaceFeeRate: 0,
+    fixedFeePerOrder: 0,
+    postSaleLossRate: 0,
+    minimumMargin: null,
+    desiredNetMargin: legacy.desiredNetMargin,
+    inventoryDays: legacy.inventoryDays,
+    receivingDays: legacy.receivingDays,
+    paymentDays: legacy.paymentDays,
+    capitalRateSource: "informed",
+    monthlyCapitalRate: legacy.monthlyCapitalRate,
+    discountType: legacy.discountRate > 0 ? "percentage" : legacy.fixedDiscountAmount > 0 ? "fixed" : "none",
+    discountRate: legacy.discountRate || 0,
+    fixedDiscountAmount: legacy.fixedDiscountAmount || 0,
+    marketPrice: legacy.marketPrice,
+    fiscalContext: legacy.fiscalContext || {},
+  };
+}
+
+/** Maps only semantically equivalent v5 values. Missing production/labor data deliberately stay empty. */
+export function migrateLegacyV5Inputs(legacy = {}) {
+  return migrateLegacyV6Inputs({
     materialCost: legacy.materialsCost,
-    wasteRate: rate(legacy.waste),
+    wasteRate: legacy.waste,
     packagingCost: legacy.packagingCost,
     deliveryCost: legacy.deliveryCost,
     insuranceCost: legacy.insuranceCost,
     otherDirectExpenses: legacy.otherExpenses,
-    monthlyPayroll: legacy.totalPayroll,
     monthlyFixedCosts: legacy.monthlyFixedCosts,
     expectedMonthlyUnits: legacy.monthlyVolume,
-    taxRate: rate(legacy.taxRate),
-    paymentFeeRate: rate(legacy.paymentFeeRate),
-    commissionRate: rate(legacy.commissionRate),
-    desiredNetMargin: rate(legacy.margin),
+    taxRate: legacy.taxRate,
+    paymentFeeRate: legacy.paymentFeeRate,
+    commissionRate: legacy.commissionRate,
+    desiredNetMargin: legacy.margin,
     receivingDays: legacy.receiveDays,
     paymentDays: legacy.payDays,
-    monthlyCapitalRate: rate(legacy.capitalRate),
-    // inventoryDays and discount strategy have no safe v5 equivalent.
-    productionCapacity: legacy.workerCount !== undefined || legacy.outputPerWorkerHour !== undefined
-      ? { workerCount: legacy.workerCount, productiveHoursPerWorkerMonth: 176, unitsPerWorkerHour: legacy.outputPerWorkerHour }
-      : null,
+    monthlyCapitalRate: legacy.capitalRate,
     fiscalContext: legacy.fiscalContext || {},
-  };
+  });
 }

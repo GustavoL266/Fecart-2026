@@ -8,8 +8,8 @@ import { createAiFormProvider } from "../lib/ai-form-assistant.js";
 import { getAiAssistantConfig } from "../lib/config.js";
 import { createGeminiFormProvider } from "../lib/gemini-form-provider.js";
 
-const extraction = { entries: [{ field: "deliveryCost", value: 7, source: "user_provided", evidence: "frete de 7 reais", basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null }] };
-const input = { message: "Coloque frete de 7 reais." };
+const extraction = { entries: [{ field: "averageOrderFreight", value: 7, source: "user_provided", evidence: "frete médio do pedido de 7 reais", basis: "not-applicable", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null }] };
+const input = { message: "Coloque frete médio do pedido de 7 reais." };
 
 async function serverFor(t, provider, rateLimitOptions = {}, { trustProxy = false, logger = { warn() {} }, sessionError } = {}) {
   const app = express();
@@ -55,8 +55,8 @@ test("rota HTTP retorna patch e prévia validados, sem prompts ou extração bru
   } });
   const result = await request();
   assert.equal(result.status, 200);
-  assert.deepEqual(result.body.fields, { deliveryCost: 7 });
-  assert.equal(result.body.summary[0].field, "deliveryCost");
+  assert.deepEqual(result.body.fields, { averageOrderFreight: 7 });
+  assert.equal(result.body.summary[0].field, "averageOrderFreight");
   assert.deepEqual(Object.keys(result.body), ["fields", "sources", "skipped", "summary", "pending", "needsClarification", "calculationReady"]);
   assert.deepEqual(result.body.skipped, {});
   assert.deepEqual(result.body.pending, []);
@@ -120,12 +120,12 @@ test("rota conclui esclarecimento parcial, preserva análise anterior e registra
 
 test("rota conclui quantidade mensal com resposta curta e mantém os campos anteriores", async (t) => {
   const fields = {
-    productName: "bolo", materialCost: 15, wasteRate: 5, packagingCost: 2, deliveryCost: 0,
-    monthlyPayroll: 0, monthlyFixedCosts: 0, taxRate: 0, paymentFeeRate: 0, commissionRate: 0,
+    productName: "bolo", materialCost: 15, wasteRate: 5, packagingCost: 2, averageOrderFreight: 0, averageOrderUnits: 1,
+    monthlyLaborCost: 0, monthlyProductiveHours: 160, productionTimeMinutes: 0, monthlyFixedCosts: 0, taxRate: 0,
     desiredNetMargin: 10, inventoryDays: 0, receivingDays: 0, paymentDays: 0, monthlyCapitalRate: 0,
   };
   const sources = Object.fromEntries(Object.keys(fields).map((field) => [
-    field, ["productName", "materialCost", "desiredNetMargin"].includes(field) ? "user_provided" : "estimated",
+    field, ["wasteRate", "packagingCost"].includes(field) ? "estimated" : "user_provided",
   ]));
   const provider = {
     fillMode: "complete",
@@ -246,12 +246,12 @@ test("chave ausente reproduz 503 antes de qualquer chamada à Gemini", async (t)
 
 test("rota preserva null/ausência como não alterar e mantém zero explícito", async (t) => {
   const request = await serverFor(t, { extract: async () => ({ entries: [
-    { field: "deliveryCost", value: 0, source: "user_provided", evidence: "frete de 0 reais", basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
+    { field: "averageOrderFreight", value: 0, source: "user_provided", evidence: "frete médio do pedido de 0 reais", basis: "not-applicable", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
     { field: "packagingCost", value: null, source: "user_provided", evidence: "", basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
   ] }) });
-  const result = await request({ message: "Coloque frete de 0 reais." });
+  const result = await request({ message: "Coloque frete médio do pedido de 0 reais." });
   assert.equal(result.status, 200);
-  assert.deepEqual(result.body.fields, { deliveryCost: 0 });
+  assert.deepEqual(result.body.fields, { averageOrderFreight: 0 });
   assert.equal(result.body.summary.length, 1);
 });
 
@@ -277,17 +277,17 @@ test("inputs manuais válidos prevalecem sobre estimativas sem serem enviados à
   const provider = { fillMode: "complete", extract: async (...args) => {
     providerArguments = args;
     return { entries: [{
-      field: "deliveryCost", value: 0, source: "estimated", evidence: "", basis: "unit",
+      field: "otherDirectExpenses", value: 0, source: "estimated", evidence: "", basis: "unit",
       certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null,
     }] };
   } };
   const request = await serverFor(t, provider);
-  const result = await request({ message: "Quero revisar meus custos.", currentFields: { deliveryCost: 7 } });
+  const result = await request({ message: "Quero revisar meus custos.", currentFields: { averageOrderFreight: 7 } });
   assert.equal(result.status, 200);
   assert.deepEqual(providerArguments, ["Quero revisar meus custos."]);
-  assert.equal(result.body.fields.deliveryCost, 7);
-  assert.equal(result.body.sources.deliveryCost, "user_provided");
-  assert.equal(result.body.pending.some(({ field }) => field === "deliveryCost"), false);
+  assert.equal(result.body.fields.averageOrderFreight, 7);
+  assert.equal(result.body.sources.averageOrderFreight, "user_provided");
+  assert.equal(result.body.pending.some(({ field }) => field === "averageOrderFreight"), false);
 });
 
 test("contexto percentual inválido é rejeitado antes da chamada paga", async (t) => {

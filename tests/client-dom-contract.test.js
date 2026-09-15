@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { CAPACITY_FIELD_IDS, PRICING_FIELD_IDS } from "../js/ui/form.js";
+import { FORM_OPTION_FIELD_IDS, PRICING_FIELD_IDS } from "../js/ui/form.js";
 
 const indexUrl = new URL("../index.html", import.meta.url);
 const mainUrl = new URL("../js/main.js", import.meta.url);
@@ -17,14 +17,14 @@ test("todos os campos usados na precificação existem no HTML e no mapa de elem
     readFile(mainUrl, "utf8"),
   ]);
   const ids = htmlIds(html);
-  const requiredFieldIds = [...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS];
+  const requiredFieldIds = [...PRICING_FIELD_IDS, ...FORM_OPTION_FIELD_IDS];
   const fieldMap = main.match(/const formFieldIds = \[([\s\S]*?)\n\];/)?.[1] || "";
 
   for (const fieldId of requiredFieldIds) {
     assert.ok(ids.has(fieldId), `Campo obrigatório ausente no HTML: #${fieldId}`);
   }
   assert.match(fieldMap, /\.\.\.PRICING_FIELD_IDS/);
-  assert.match(fieldMap, /\.\.\.CAPACITY_FIELD_IDS/);
+  assert.match(fieldMap, /\.\.\.FORM_OPTION_FIELD_IDS/);
 });
 
 test("seletores de ID obrigatórios do módulo principal existem no HTML", async () => {
