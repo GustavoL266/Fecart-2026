@@ -6,12 +6,14 @@ import { changeOwnPassword, findOwnProfile, ProfileAccountError, updateOwnProfil
 import { userForClient } from "../lib/models.js";
 import { changePasswordSchema, profileUpdateSchema, validate } from "../lib/validation.js";
 
-test("perfil normaliza nome e e-mail e rejeita campos de identidade enviados pelo navegador", () => {
-  const profile = validate(profileUpdateSchema, { name: "  Ana Souza  ", email: " ANA@EXEMPLO.COM " });
-  assert.deepEqual(profile, { name: "Ana Souza", email: "ana@exemplo.com" });
-  assert.equal(profileUpdateSchema.safeParse({ name: " ", email: "ana@exemplo.com" }).success, false);
-  assert.equal(profileUpdateSchema.safeParse({ name: "Ana Souza", email: "inválido" }).success, false);
-  assert.equal(profileUpdateSchema.safeParse({ name: "Ana Souza", email: "ana@exemplo.com", userId: "outro" }).success, false);
+test("perfil normaliza somente o nome e rejeita e-mail e campos de identidade enviados pelo navegador", () => {
+  const profile = validate(profileUpdateSchema, { name: "  Ana Souza  " });
+  assert.deepEqual(profile, { name: "Ana Souza" });
+  assert.equal(profileUpdateSchema.safeParse({ name: " " }).success, false);
+  assert.equal(profileUpdateSchema.safeParse({ name: "Ana Souza", userId: "outro" }).success, false);
+  for (const email of ["novo@exemplo.com", "", null, { injected: true }]) {
+    assert.throws(() => validate(profileUpdateSchema, { name: "Ana Souza", email }), { status: 400 });
+  }
 });
 
 test("troca de senha exige senha forte e confirmação correspondente", () => {
@@ -35,34 +37,30 @@ test("consulta de perfil agrega somente produtos do usuário autenticado", async
   assert.match(calls[0].sql, /WHERE users\.id = \$1/);
 });
 
-test("atualização usa o ID autenticado, normaliza a resposta pública e trata e-mail duplicado", async () => {
+test("atualização usa o ID autenticado e preserva o e-mail mesmo com campo manual", async () => {
   const calls = [];
   const database = {
     query: async (sql, values) => {
       calls.push({ sql, values });
-      return { rows: [{ id: values[0], name: values[1], email: values[2], saved_products_count: "3" }] };
+      return { rows: [{ id: values[0], name: values[1], email: "original@exemplo.com", saved_products_count: "3" }] };
     },
   };
   const row = await updateOwnProfile(database, "authenticated-user", { name: "Nome novo", email: "novo@exemplo.com", userId: "ignored" });
   assert.equal(row.id, "authenticated-user");
-  assert.deepEqual(calls[0].values, ["authenticated-user", "Nome novo", "novo@exemplo.com"]);
+  assert.deepEqual(calls[0].values, ["authenticated-user", "Nome novo"]);
   assert.match(calls[0].sql, /WHERE id = \$1/);
+  assert.doesNotMatch(calls[0].sql, /SET[^]*email\s*=/);
   assert.deepEqual(userForClient(row), {
     id: "authenticated-user",
     name: "Nome novo",
-    email: "novo@exemplo.com",
+    email: "original@exemplo.com",
     createdAt: undefined,
     updatedAt: undefined,
     savedProductsCount: 3,
   });
 
-  const duplicate = { query: async () => { const error = new Error("duplicate"); error.code = "23505"; throw error; } };
-  await assert.rejects(updateOwnProfile(duplicate, "user-a", { name: "Ana", email: "usado@exemplo.com" }), (error) => {
-    assert.ok(error instanceof ProfileAccountError);
-    assert.equal(error.status, 409);
-    assert.equal(error.code, "PROFILE_EMAIL_IN_USE");
-    return true;
-  });
+  const failure = new Error("database unavailable");
+  await assert.rejects(updateOwnProfile({ query: async () => { throw failure; } }, "user-a", { name: "Ana" }), failure);
 });
 
 test("troca de senha valida o hash atual e nunca grava texto puro", async () => {

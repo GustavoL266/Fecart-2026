@@ -1815,6 +1815,17 @@ tr:last-child td {
   margin: 0;
 }
 
+.profile-dialog .profile-email-info:disabled {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+  opacity: 1;
+  cursor: default;
+  pointer-events: none;
+  padding-inline: 0;
+}
+
 .profile-dialog {
   width: min(760px, calc(100% - 32px));
 }

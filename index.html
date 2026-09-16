@@ -861,8 +861,8 @@
             </div>
             <div class="profile-field">
               <label for="profileEmail">E-mail</label>
-              <input id="profileEmail" name="email" form="profileForm" type="email" autocomplete="email" required maxlength="320" aria-describedby="profileEmailError" />
-              <p id="profileEmailError" class="field-error" role="alert" hidden></p>
+              <input id="profileEmail" class="profile-email-info" type="email" readonly disabled tabindex="-1" aria-describedby="profileEmailHint" />
+              <p id="profileEmailHint" class="helper-text">O e-mail da conta é apenas informativo e não pode ser alterado.</p>
             </div>
           </div>
         </section>

@@ -7,24 +7,17 @@ export function profileInitials(name) {
   return letters.toLocaleUpperCase("pt-BR");
 }
 
-export function validateProfileDraft({ name, email }) {
+export function validateProfileDraft({ name }) {
   const normalized = {
     name: String(name || "").trim(),
-    email: String(email || "").trim().toLowerCase(),
   };
-  const errors = { name: "", email: "" };
+  const errors = { name: "" };
 
   if (!normalized.name) errors.name = "O nome não pode ficar vazio.";
   else if (normalized.name.length < 2) errors.name = "Informe um nome com pelo menos 2 caracteres.";
   else if (normalized.name.length > 120) errors.name = "O nome deve ter no máximo 120 caracteres.";
 
-  if (!normalized.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized.email)) {
-    errors.email = "Informe um e-mail válido.";
-  } else if (normalized.email.length > 320) {
-    errors.email = "O e-mail deve ter no máximo 320 caracteres.";
-  }
-
-  return { normalized, errors, isValid: !errors.name && !errors.email };
+  return { normalized, errors, isValid: !errors.name };
 }
 
 export function validateProfilePasswordDraft({ currentPassword, newPassword, newPasswordConfirmation }) {
@@ -78,7 +71,7 @@ export function createProfileSettings({
 }) {
   const {
     avatar, displayName, displayEmail, productCount, profileForm, nameInput, nameError,
-    emailInput, emailError, status, saveButton, cancelButton, productsButton,
+    emailInput, status, saveButton, cancelButton, productsButton,
     changePasswordButton, passwordPanel, passwordForm, currentPasswordInput,
     currentPasswordError, newPasswordInput, newPasswordError,
     newPasswordConfirmationInput, newPasswordConfirmationError, passwordSaveButton,
@@ -89,7 +82,6 @@ export function createProfileSettings({
   let savingPassword = false;
   let openRevision = 0;
   let returnFocus = null;
-  let rejectedEmail = "";
   let currentPasswordRejected = false;
 
   function renderProductCount(user) {
@@ -100,43 +92,32 @@ export function createProfileSettings({
 
   function updateIdentityPreview() {
     const name = nameInput.value.trim() || original.name;
-    const email = emailInput.value.trim() || original.email;
     avatar.textContent = profileInitials(name);
     displayName.textContent = name;
-    displayEmail.textContent = email;
+    displayEmail.textContent = original.email;
   }
 
   function currentProfileValidation() {
-    const validation = validateProfileDraft({ name: nameInput.value, email: emailInput.value });
-    if (rejectedEmail && validation.normalized.email === rejectedEmail) {
-      validation.errors.email = "Este e-mail já está sendo utilizado.";
-      validation.isValid = false;
-    } else if (rejectedEmail) {
-      rejectedEmail = "";
-    }
-    return validation;
+    return validateProfileDraft({ name: nameInput.value });
   }
 
   function isProfileDirty(validation = currentProfileValidation()) {
-    return validation.normalized.name !== original.name || validation.normalized.email !== original.email;
+    return validation.normalized.name !== original.name;
   }
 
   function updateSaveState({ showErrors = false } = {}) {
     const validation = currentProfileValidation();
     if (showErrors || nameInput.getAttribute("aria-invalid") === "true") setProfileFieldError(nameInput, nameError, validation.errors.name);
-    if (showErrors || emailInput.getAttribute("aria-invalid") === "true") setProfileFieldError(emailInput, emailError, validation.errors.email);
     saveButton.disabled = savingProfile || !validation.isValid || !isProfileDirty(validation);
     return validation;
   }
 
   function setUser(user, { replaceDraft = true } = {}) {
     if (replaceDraft) {
-      rejectedEmail = "";
       original = { name: String(user.name || ""), email: String(user.email || "").toLowerCase() };
       nameInput.value = original.name;
       emailInput.value = original.email;
       setProfileFieldError(nameInput, nameError);
-      setProfileFieldError(emailInput, emailError);
     }
     renderProductCount(user);
     updateIdentityPreview();
@@ -171,7 +152,6 @@ export function createProfileSettings({
     nameInput.value = original.name;
     emailInput.value = original.email;
     setProfileFieldError(nameInput, nameError);
-    setProfileFieldError(emailInput, emailError);
     updateIdentityPreview();
     updateSaveState();
     resetPasswordForm();
@@ -238,11 +218,7 @@ export function createProfileSettings({
       setUser(response.user);
       setProfileStatus(status, "Perfil atualizado com sucesso.", true);
     } catch (error) {
-      if (error?.code === "PROFILE_EMAIL_IN_USE") {
-        rejectedEmail = validation.normalized.email;
-        setProfileFieldError(emailInput, emailError, "Este e-mail já está sendo utilizado.");
-        emailInput.focus();
-      } else if (error?.code !== "SESSION_REQUIRED") {
+      if (error?.code !== "SESSION_REQUIRED") {
         setProfileStatus(status, error?.message || "Não foi possível atualizar o perfil.");
       }
     } finally {
@@ -283,14 +259,8 @@ export function createProfileSettings({
   }
 
   nameInput.addEventListener("input", () => { updateIdentityPreview(); updateSaveState(); });
-  emailInput.addEventListener("input", () => { updateIdentityPreview(); updateSaveState(); });
   nameInput.addEventListener("blur", () => {
     nameInput.value = nameInput.value.trim();
-    updateIdentityPreview();
-    updateSaveState({ showErrors: true });
-  });
-  emailInput.addEventListener("blur", () => {
-    emailInput.value = emailInput.value.trim().toLowerCase();
     updateIdentityPreview();
     updateSaveState({ showErrors: true });
   });

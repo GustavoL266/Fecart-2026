@@ -1204,7 +1204,6 @@ const profileSettings = createProfileSettings({
     nameInput: $("#profileName"),
     nameError: $("#profileNameError"),
     emailInput: $("#profileEmail"),
-    emailError: $("#profileEmailError"),
     status: $("#profileStatus"),
     saveButton: $("#profileSaveButton"),
     cancelButton: $("#profileCancelButton"),

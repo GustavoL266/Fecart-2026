@@ -95,7 +95,7 @@ test("iniciais e validações do perfil respeitam normalização e senha forte",
   assert.equal(profileInitials("Lucca Rodrigues Frazili"), "LR");
   assert.equal(profileInitials("Lucca"), "LU");
   assert.equal(validateProfileDraft({ name: " ", email: "x" }).errors.name, "O nome não pode ficar vazio.");
-  assert.deepEqual(validateProfileDraft({ name: " Ana ", email: " ANA@EXEMPLO.COM " }).normalized, { name: "Ana", email: "ana@exemplo.com" });
+  assert.deepEqual(validateProfileDraft({ name: " Ana ", email: " ANA@EXEMPLO.COM " }).normalized, { name: "Ana" });
   assert.equal(validateProfilePasswordDraft({ currentPassword: "atual-123", newPassword: "nova-456", newPasswordConfirmation: "diferente-789" }).errors.newPasswordConfirmation, "As senhas não coincidem.");
 });
 
@@ -116,7 +116,7 @@ test("perfil carrega a conta, salva sem fechar e restaura o foco ao cancelar", a
   assert.deepEqual(app.requests.at(-1), {
     method: "PATCH",
     path: "/auth/me",
-    body: { name: "Lucca Frazili", email: "lucca@example.com" },
+    body: { name: "Lucca Frazili" },
   });
   assert.equal(app.updatedUsers.at(-1).name, "Lucca Frazili");
   assert.equal(app.elements.status.textContent, "Perfil atualizado com sucesso.");
@@ -130,10 +130,8 @@ test("perfil carrega a conta, salva sem fechar e restaura o foco ao cancelar", a
   assert.equal(trigger.focused, true);
 });
 
-test("perfil mostra validação local e duplicidade próximas ao campo", async () => {
-  const duplicate = new Error("duplicado");
-  duplicate.code = "PROFILE_EMAIL_IN_USE";
-  const app = fixture({ patchError: duplicate });
+test("perfil valida o nome e ignora adulteração manual do campo informativo de e-mail", async () => {
+  const app = fixture();
   await app.controller.open(new FakeElement());
   app.elements.nameInput.value = " ";
   await app.elements.nameInput.emit("blur");
@@ -143,18 +141,17 @@ test("perfil mostra validação local e duplicidade próximas ao campo", async (
   app.elements.nameInput.value = "Lucca Rodrigues Frazili";
   app.elements.emailInput.value = "outro@example.com";
   await app.elements.emailInput.emit("input");
-  await app.elements.profileForm.emit("submit");
-  assert.equal(app.elements.emailError.textContent, "Este e-mail já está sendo utilizado.");
-  assert.equal(app.elements.emailInput.focused, true);
   assert.equal(app.elements.saveButton.disabled, true);
+  await app.elements.profileForm.emit("submit");
+  assert.equal(app.requests.filter((request) => request.method === "PATCH").length, 0);
   app.elements.nameInput.value = "Outro nome";
   await app.elements.nameInput.emit("input");
-  assert.equal(app.elements.emailError.textContent, "Este e-mail já está sendo utilizado.");
-  assert.equal(app.elements.saveButton.disabled, true);
-  app.elements.emailInput.value = "livre@example.com";
-  await app.elements.emailInput.emit("input");
-  assert.equal(app.elements.emailError.textContent, "");
   assert.equal(app.elements.saveButton.disabled, false);
+  assert.equal(app.elements.displayEmail.textContent, "lucca@example.com");
+  await app.elements.profileForm.emit("submit");
+  assert.deepEqual(app.requests.at(-1).body, { name: "Outro nome" });
+  assert.equal(app.elements.emailInput.value, "lucca@example.com");
+  assert.equal(app.updatedUsers.at(-1).email, "lucca@example.com");
 });
 
 test("alteração de senha exige confirmação e mantém sessão em erro da senha atual", async () => {
@@ -222,6 +219,12 @@ test("HTML mantém labels, descrições e controles acessíveis do perfil", asyn
   assert.match(html, /id="profileAvatar"/);
   assert.match(html, /<label for="profileName">Nome<\/label>/);
   assert.match(html, /<label for="profileEmail">E-mail<\/label>/);
+  const emailInput = html.match(/<input id="profileEmail"[^>]*>/)?.[0];
+  assert.ok(emailInput);
+  assert.match(emailInput, /\breadonly\b/);
+  assert.match(emailInput, /\bdisabled\b/);
+  assert.match(emailInput, /tabindex="-1"/);
+  assert.doesNotMatch(emailInput, /\b(?:name|form)=/);
   assert.match(html, /id="profilePasswordPanel"/);
   assert.match(html, /data-password-toggle="profileCurrentPassword"/);
   assert.match(html, /id="profileProductCount"/);
