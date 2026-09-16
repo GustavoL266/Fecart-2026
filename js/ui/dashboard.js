@@ -85,14 +85,13 @@ function taxMoneyMetric(label, value, total = false) {
 }
 
 function selectedTaxSummary(marketState, calculation) {
-  return `<p class="market-tax-selected-title"><span>Produto selecionado</span><strong>${escapeHtml(marketState.selectedItem?.title || "Produto atual")}</strong></p><div class="market-tax-summary-grid">${taxMoneyMetric("Preço base", calculation.marketPrice)}<div class="market-tax-summary-metric"><span>Carga tributária</span><strong>${taxPercent(calculation.rates.total)}</strong></div>${taxMoneyMetric("Tributos estimados", calculation.estimatedTaxes)}${taxMoneyMetric("Total com tributos", calculation.total, true)}</div>`;
+  return `<p class="market-tax-selected-title"><span>Produto selecionado</span><strong>${escapeHtml(marketState.selectedItem?.title || "Produto atual")}</strong></p><div class="market-tax-summary-grid">${taxMoneyMetric("Preço de venda", calculation.marketPrice)}<div class="market-tax-summary-metric"><span>Carga tributária estimada</span><strong>${taxPercent(calculation.rates.total)}</strong></div>${taxMoneyMetric("Tributos aproximados contidos no preço", calculation.estimatedTaxes)}</div>`;
 }
 
 function extremeTaxScenario(label, item, calculation) {
   const base = dashboardMoney(calculation.marketPrice);
   const taxes = dashboardMoney(calculation.estimatedTaxes);
-  const total = dashboardMoney(calculation.total);
-  return `<article class="market-tax-scenario-card"><div><span>${label}</span><strong>${escapeHtml(item?.title || "Referência da pesquisa")}</strong></div><dl><div><dt>Preço base</dt><dd class="financial-value" data-financial-size="${financialValueSize(base)}">${base}</dd></div><div><dt>Tributos estimados</dt><dd class="financial-value" data-financial-size="${financialValueSize(taxes)}">${taxes}</dd></div><div class="is-total"><dt>Total com tributos</dt><dd class="financial-value" data-financial-size="${financialValueSize(total)}">${total}</dd></div></dl></article>`;
+  return `<article class="market-tax-scenario-card"><div><span>${label}</span><strong>${escapeHtml(item?.title || "Referência da pesquisa")}</strong></div><dl><div><dt>Preço de venda</dt><dd class="financial-value" data-financial-size="${financialValueSize(base)}">${base}</dd></div><div><dt>Tributos aproximados contidos no preço</dt><dd class="financial-value" data-financial-size="${financialValueSize(taxes)}">${taxes}</dd></div></dl></article>`;
 }
 
 function taxAction(label, attribute, secondary = false) {
@@ -126,7 +125,7 @@ function renderMarketTaxStat(marketState) {
     const content = mode === "selected" && calculations.selected
       ? selectedTaxSummary(marketState, calculations.selected)
       : calculations.minimum && calculations.maximum
-        ? `<div class="market-tax-extremes-summary"><div class="market-tax-shared-rate"><span>Carga tributária aplicada aos dois cenários</span><strong>${taxPercent(calculations.maximum.rates.total)}</strong></div><div class="market-tax-scenarios">${extremeTaxScenario("Menor preço + tributos", minimumItem, calculations.minimum)}${extremeTaxScenario("Maior preço + tributos", maximumItem, calculations.maximum)}</div></div>`
+        ? `<div class="market-tax-extremes-summary"><div class="market-tax-shared-rate"><span>Carga tributária estimada nos dois cenários</span><strong>${taxPercent(calculations.maximum.rates.total)}</strong></div><div class="market-tax-scenarios">${extremeTaxScenario("Menor preço (tributos contidos)", minimumItem, calculations.minimum)}${extremeTaxScenario("Maior preço (tributos contidos)", maximumItem, calculations.maximum)}</div></div>`
         : primary ? selectedTaxSummary(marketState, primary) : "";
     return `<div class="market-tax-stat is-success">${heading}${content}<small class="market-tax-source">Fonte: ${escapeHtml(primary.source)} · Versão: ${escapeHtml(primary.version)}</small>${taxAction(tax.expanded ? "Ocultar detalhes" : "Ver detalhes", "data-toggle-market-taxes")}</div>`;
   }
@@ -170,11 +169,11 @@ function renderTaxDetails(marketState) {
   if (mode === "selected" && calculations.selected) {
     const result = calculations.selected;
     const selectedTitle = escapeHtml(marketState.selectedItem?.title || "Produto atual");
-    return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">Baseado no produto selecionado</p><h3 id="market-tax-breakdown-title">${selectedTitle}</h3></div><div class="market-tax-detail-selected">${taxMoneyMetric("Preço base", result.marketPrice)}${taxMoneyMetric("Tributos estimados", result.estimatedTaxes)}${taxMoneyMetric("Total com tributos", result.total, true)}</div>${taxRateDetails(result)}${origin.markup}<p>${origin.summary}</p></section>`;
+    return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">Baseado no produto selecionado</p><h3 id="market-tax-breakdown-title">${selectedTitle}</h3></div><div class="market-tax-detail-selected">${taxMoneyMetric("Preço de venda", result.marketPrice)}${taxMoneyMetric("Tributos aproximados contidos no preço", result.estimatedTaxes)}</div>${taxRateDetails(result)}${origin.markup}<p>${origin.summary}</p></section>`;
   }
   const minimum = calculations.minimum;
   const maximum = calculations.maximum;
-  return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">Baseado nos extremos da pesquisa</p><h3 id="market-tax-breakdown-title">Comparação tributária: menor e maior valor</h3></div>${taxRateDetails(primary)}<div class="market-tax-detail-scenarios">${extremeTaxScenario("Menor preço + tributos", minimumMarketItemForDisplay(marketState), minimum)}${extremeTaxScenario("Maior preço + tributos", maximumMarketItemForDisplay(marketState), maximum)}</div>${origin.markup}<p>${origin.summary}</p></section>`;
+  return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">Baseado nos extremos da pesquisa</p><h3 id="market-tax-breakdown-title">Comparação tributária: menor e maior valor</h3></div>${taxRateDetails(primary)}<div class="market-tax-detail-scenarios">${extremeTaxScenario("Menor preço (tributos contidos)", minimumMarketItemForDisplay(marketState), minimum)}${extremeTaxScenario("Maior preço (tributos contidos)", maximumMarketItemForDisplay(marketState), maximum)}</div>${origin.markup}<p>${origin.summary}</p></section>`;
 }
 
 function renderMarketPanel(document, marketState) {

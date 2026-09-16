@@ -77,5 +77,5 @@ test("cards estreitos reorganizam valores e não dependem de containers sem larg
   assert.match(styles, /\.mobile-price-summary > div\s*{\s*flex: 1 1 0;/);
   assert.match(styles, /\.price-donut > div\s*{\s*width: 64%;/);
   assert.match(styles, /\.market-tax-breakdown dl > div\s*{\s*flex-wrap: wrap;/);
-  assert.match(dashboard, /Tributos estimados<\/dt><dd class="financial-value" data-financial-size=/);
+  assert.match(dashboard, /Tributos aproximados contidos no preço<\/dt><dd class="financial-value" data-financial-size=/);
 });

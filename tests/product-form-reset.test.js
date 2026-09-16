@@ -12,7 +12,7 @@ function sourceBetween(startMarker, endMarker) {
 }
 
 test("resetCurrentProductForm centraliza a limpeza do cálculo atual sem chamadas externas", () => {
-  const reset = sourceBetween("function resetCurrentProductForm()", "function productPayloadFromCalculator()");
+  const reset = sourceBetween("function resetCurrentProductForm(", "function authenticatedRequestIsCurrent(");
 
   assert.match(reset, /clearPricingInputs\(elements\)/);
   assert.match(reset, /clearProductOriginGeography\(\)/);
@@ -25,8 +25,20 @@ test("resetCurrentProductForm centraliza a limpeza do cálculo atual sem chamada
   assert.match(reset, /marketState = emptyMarketState\(\)/);
   assert.match(reset, /clearMarketReference\(window\.sessionStorage\)/);
   assert.match(reset, /pricingTabs\.activate\("product"/);
-  assert.match(reset, /#productName"\)\.focus/);
+  assert.match(reset, /if \(focusProductName\).*#productName"\)\.focus/);
   assert.doesNotMatch(reset, /market\.search|taxService|api\.(get|post|patch|delete)|lookupNcm/);
+});
+
+test("encerramento de sessão limpa formulário, histórico, modal e mensagens locais", () => {
+  const clear = sourceBetween("function clearAuthenticatedState()", "function endSession(");
+  assert.match(clear, /resetCurrentProductForm\(\{ focusProductName: false \}\)/);
+  assert.match(clear, /#productsList/);
+  assert.match(clear, /#productDetails/);
+  assert.match(clear, /#productEditorForm/);
+  assert.match(clear, /#productDialog/);
+  assert.match(clear, /#saveProductStatus/);
+  assert.match(clear, /#historyMessage/);
+  assert.match(clear, /clearTimeout\(productSearchTimer\)/);
 });
 
 test("o reset ocorre somente depois da resposta bem-sucedida de salvar", () => {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { hashPassword, verifyPassword } from "../lib/passwords.js";
-import { productSchema, registerSchema, validate } from "../lib/validation.js";
+import { EMPTY_OPTIONAL_FIELD_IDS, productSchema, registerSchema, validate } from "../lib/validation.js";
 
 test("gera hash bcrypt verificável sem manter a senha em texto puro", async () => {
   const password = "senha-segura-123";
@@ -51,4 +51,21 @@ test("contrato de produto rejeita derivados do navegador e exige o pacote de inp
 
   assert.equal(productSchema.safeParse(baseProduct).success, true);
   assert.equal(productSchema.safeParse({ ...baseProduct, pricing: { inputs: "não é objeto" } }).success, false);
+});
+
+test("contrato aceita todos os opcionais vazios permitidos e rejeita nomes ou duplicatas", () => {
+  const baseProduct = { name: "Produto teste", category: "Outros", pricing: { inputs: {}, market: {} } };
+  assert.equal(EMPTY_OPTIONAL_FIELD_IDS.length, 24);
+  assert.equal(productSchema.safeParse({
+    ...baseProduct,
+    pricing: { ...baseProduct.pricing, emptyOptionalFields: [...EMPTY_OPTIONAL_FIELD_IDS] },
+  }).success, true);
+  assert.equal(productSchema.safeParse({
+    ...baseProduct,
+    pricing: { ...baseProduct.pricing, emptyOptionalFields: [...EMPTY_OPTIONAL_FIELD_IDS, "campoArbitrario"] },
+  }).success, false);
+  assert.equal(productSchema.safeParse({
+    ...baseProduct,
+    pricing: { ...baseProduct.pricing, emptyOptionalFields: ["marketPrice", "marketPrice"] },
+  }).success, false);
 });

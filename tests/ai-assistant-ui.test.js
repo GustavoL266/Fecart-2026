@@ -396,7 +396,7 @@ test("sessão encerrada impede abrir, aplicar e aceitar resposta pendente", asyn
 });
 
 test("contexto do assistente contém somente percentuais válidos exibidos", () => {
-  const fields = controls({ taxRate: "6,5", paymentFeeRate: "2.8", commissionRate: "", desiredNetMargin: "25", materialCost: "999", averageOrderFreight: "7" });
+  const fields = controls({ taxRate: "6,5", paymentFeeRate: "2,8", commissionRate: "", desiredNetMargin: "25", materialCost: "999", averageOrderFreight: "7" });
   assert.deepEqual(readAssistantRateContext(fields), { taxRate: 6.5, paymentFeeRate: 2.8, desiredNetMargin: 25 });
   fields.taxRate.value = "100";
   fields.paymentFeeRate.value = "inválido";

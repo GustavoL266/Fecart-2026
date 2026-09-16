@@ -33,7 +33,13 @@ function elementsFor(overrides = {}) {
 }
 
 test("interpreta número brasileiro e rejeita texto, infinito e notação", () => {
+  assert.deepEqual(parseBrazilianNumber("1500"), { status: "valid", value: 1500 });
+  assert.deepEqual(parseBrazilianNumber("1500,00"), { status: "valid", value: 1500 });
+  assert.deepEqual(parseBrazilianNumber("1.500"), { status: "valid", value: 1500 });
+  assert.deepEqual(parseBrazilianNumber("1.500,00"), { status: "valid", value: 1500 });
   assert.deepEqual(parseBrazilianNumber("1.234,56"), { status: "valid", value: 1234.56 });
+  assert.deepEqual(parseBrazilianNumber("0,50"), { status: "valid", value: 0.5 });
+  assert.deepEqual(parseBrazilianNumber("10.00"), { status: "ambiguous", value: null });
   ["", "abc", "Infinity", "1e3"].forEach((value) => assert.notEqual(parseBrazilianNumber(value).status, "valid"));
 });
 
@@ -46,6 +52,7 @@ test("mantém obrigatórios vazios, opcionais nulos e texto inválido sem trocar
   const invalid = elementsFor({ materialCost: "abc" });
   assert.equal(validatePricingForm(invalid).errors.materialCost, "Informe um número válido, sem notação científica.");
   assert.equal(invalid.materialCost.value, "abc");
+  assert.match(validatePricingForm(elementsFor({ materialCost: "10.00" })).errors.materialCost, /vírgula para centavos/);
 });
 
 test("converte percentuais, opções e vazios para o contrato canônico", () => {
@@ -59,6 +66,15 @@ test("converte percentuais, opções e vazios para o contrato canônico", () => 
   assert.equal(validation.inputs.otherDirectExpenses, 0);
   assert.ok(validation.emptyOptionalFields.includes("marketPrice"));
   assert.ok(validation.emptyOptionalFields.includes("otherDirectExpenses"));
+});
+
+test("formulário válido pode enviar mais de vinte campos opcionais vazios", () => {
+  const validation = validatePricingForm(elementsFor({
+    laborCostMode: "manual", laborHourlyCost: "10", monthlyLaborCost: "", monthlyProductiveHours: "",
+    capitalRateSource: "zero", monthlyCapitalRate: "", paymentFeeRate: "", commissionRate: "",
+  }));
+  assert.equal(validation.isValid, true);
+  assert.equal(validation.emptyOptionalFields.length, 23);
 });
 
 test("valida domínio matemático, margem e campos condicionais", () => {

@@ -119,12 +119,45 @@ test("modo complete mantém Structured Output e instrui estimativas com origem e
   assert.match(instruction, /Nunca estime[\s\S]*quantidade mensal/);
   assert.doesNotMatch(instruction, /expectedMonthlyUnits=1/);
   assert.match(instruction, /NÃO calcule o preço final/);
+  assert.match(instruction, /Mude minha margem de lucro desejada para 30%/);
+  assert.match(instruction, /uma única entry para desiredNetMargin/);
   assert.equal(request.generationConfig.responseMimeType, "application/json");
   assert.equal(request.generationConfig.responseJsonSchema.properties.entries.items.properties.source.type, "string");
   assert.deepEqual(request.generationConfig.responseJsonSchema.properties.entries.items.properties.source.enum,
     ["user_provided", "inferred", "estimated"]);
   assert.equal("responseSchema" in request.generationConfig, false);
   assert.equal("responseFormat" in request.generationConfig, false);
+});
+
+test("comando de margem aceita variação estruturada segura e preserva os demais campos", async () => {
+  const message = "Mude minha margem de lucro desejada para 30%";
+  const provider = { fillMode: "partial", extract: async () => ({ entries: [{
+    field: "desiredNetMargin", value: "30%", source: "user_provided", evidence: message,
+    basis: "not-applicable", certainty: "certain", batchUnits: null, batchEvidence: "", correctionEvidence: message,
+  }] }) };
+  const result = await parsePricingMessage({
+    provider,
+    input: { message, currentFields: { materialCost: 999, desiredNetMargin: 20 } },
+  });
+  assert.equal(result.fields.desiredNetMargin, 30);
+  assert.equal(result.fields.materialCost, 999);
+  assert.equal(result.sources.desiredNetMargin, "user_provided");
+});
+
+test("valor textual não numérico da Gemini continua inválido com diagnóstico seguro", async () => {
+  const message = "Mude minha margem de lucro desejada para trinta";
+  const diagnostics = [];
+  const provider = { fillMode: "partial", extract: async () => ({ entries: [{
+    field: "desiredNetMargin", value: "trinta", source: "user_provided", evidence: message,
+    basis: "not-applicable", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null,
+  }] }) };
+  await assert.rejects(() => parsePricingMessage({ provider, input: { message }, onDiagnostic: (item) => diagnostics.push(item) }), {
+    code: "GEMINI_INVALID_RESPONSE", status: 502,
+  });
+  assert.equal(diagnostics.at(-1).invalidField, "desiredNetMargin.value");
+  assert.equal(diagnostics.at(-1).receivedType, "string");
+  assert.equal(diagnostics.at(-1).validationRule, "invalid_field_value_type");
+  assert.doesNotMatch(JSON.stringify(diagnostics), /trinta|Mude minha margem/);
 });
 
 test("follow-up recebe contexto anterior e usa schema parcial limitado ao campo pendente", async () => {

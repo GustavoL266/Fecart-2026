@@ -41,6 +41,39 @@ test("histórico mostra preço próprio, mercado na data, diferença e fonte sem
   }
 });
 
+test("histórico classifica corretamente preço abaixo, igual e acima do mercado", () => {
+  const scenarios = [
+    { suggestedPrice: 80, difference: 20, differenceRate: 0.2, expected: /20% abaixo/ },
+    { suggestedPrice: 100, difference: 0, differenceRate: 0, expected: /No mesmo nível do mercado/ },
+    { suggestedPrice: 120, difference: -20, differenceRate: -0.2, expected: /20% acima/ },
+  ];
+
+  for (const scenario of scenarios) {
+    const item = {
+      ...product,
+      suggestedPrice: scenario.suggestedPrice,
+      calculationData: {
+        pricingResult: {
+          market: {
+            price: 100,
+            source: "Loja Exemplo",
+            rule: "selected-product",
+            difference: scenario.difference,
+            differenceRate: scenario.differenceRate,
+            reference: { selectedProduct: { title: "Produto Google Shopping" } },
+          },
+        },
+      },
+    };
+    const list = { innerHTML: "" };
+    const details = { innerHTML: "" };
+    renderProductsList(list, [item]);
+    renderProductDetails(details, item);
+    assert.match(list.innerHTML, scenario.expected);
+    assert.match(details.innerHTML, scenario.expected);
+  }
+});
+
 test("modelo preserva consulta market-product e neutraliza fonte antiga não reconhecida", () => {
   const row = {
     id: product.id,

@@ -1080,9 +1080,27 @@ function applyAssistantFields(fields, elements) {
 function parseBrazilianNumber(rawValue) {
   const value = String(rawValue ?? "").trim().replace(/\s/g, "");
   if (value === "") return { status: "empty", value: null };
-  const commaCount = (value.match(/,/g) || []).length;
-  const normalized = commaCount === 1 ? value.replace(/\./g, "").replace(",", ".") : value;
-  if (commaCount > 1 || !/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return { status: "invalid", value: null };
+  const sign = /^[+-]/.test(value) ? value[0] : "";
+  const unsigned = sign ? value.slice(1) : value;
+  if (!unsigned) return { status: "invalid", value: null };
+
+  const commaCount = (unsigned.match(/,/g) || []).length;
+  const dotCount = (unsigned.match(/\./g) || []).length;
+  let normalized;
+  if (commaCount === 1) {
+    const [integerPart, decimalPart] = unsigned.split(",");
+    const validInteger = /^\d+$/.test(integerPart) || /^\d{1,3}(?:\.\d{3})+$/.test(integerPart);
+    if (!validInteger || !/^\d+$/.test(decimalPart)) return { status: "invalid", value: null };
+    normalized = `${sign}${integerPart.replace(/\./g, "")}.${decimalPart}`;
+  } else if (commaCount > 1) {
+    return { status: "invalid", value: null };
+  } else if (dotCount > 0) {
+    if (!/^\d{1,3}(?:\.\d{3})+$/.test(unsigned)) return { status: "ambiguous", value: null };
+    normalized = `${sign}${unsigned.replace(/\./g, "")}`;
+  } else {
+    if (!/^\d+$/.test(unsigned)) return { status: "invalid", value: null };
+    normalized = `${sign}${unsigned}`;
+  }
   const numeric = Number(normalized);
   return Number.isFinite(numeric) ? { status: "valid", value: numeric } : { status: "invalid", value: null };
 }
@@ -1142,8 +1160,10 @@ function validatePricingForm(elements) {
       } else errors[fieldId] = rule.required;
       continue;
     }
-    if (parsed.status === "invalid") {
-      errors[fieldId] = "Informe um número válido, sem notação científica.";
+    if (parsed.status !== "valid") {
+      errors[fieldId] = parsed.status === "ambiguous"
+        ? "Use vírgula para centavos e ponto apenas para milhares. Ex.: 1.500,00."
+        : "Informe um número válido, sem notação científica.";
       continue;
     }
     rawInputs[fieldId] = PERCENTAGE_FIELDS.has(fieldId) ? parsed.value / 100 : parsed.value;
@@ -1916,14 +1936,13 @@ function taxMoneyMetric(label, value, total = false) {
 }
 
 function selectedTaxSummary(marketState, calculation) {
-  return `<p class="market-tax-selected-title"><span>Produto selecionado</span><strong>${escapeHtml(marketState.selectedItem?.title || "Produto atual")}</strong></p><div class="market-tax-summary-grid">${taxMoneyMetric("Preço base", calculation.marketPrice)}<div class="market-tax-summary-metric"><span>Carga tributária</span><strong>${taxPercent(calculation.rates.total)}</strong></div>${taxMoneyMetric("Tributos estimados", calculation.estimatedTaxes)}${taxMoneyMetric("Total com tributos", calculation.total, true)}</div>`;
+  return `<p class="market-tax-selected-title"><span>Produto selecionado</span><strong>${escapeHtml(marketState.selectedItem?.title || "Produto atual")}</strong></p><div class="market-tax-summary-grid">${taxMoneyMetric("Preço de venda", calculation.marketPrice)}<div class="market-tax-summary-metric"><span>Carga tributária estimada</span><strong>${taxPercent(calculation.rates.total)}</strong></div>${taxMoneyMetric("Tributos aproximados contidos no preço", calculation.estimatedTaxes)}</div>`;
 }
 
 function extremeTaxScenario(label, item, calculation) {
   const base = dashboardMoney(calculation.marketPrice);
   const taxes = dashboardMoney(calculation.estimatedTaxes);
-  const total = dashboardMoney(calculation.total);
-  return `<article class="market-tax-scenario-card"><div><span>${label}</span><strong>${escapeHtml(item?.title || "Referência da pesquisa")}</strong></div><dl><div><dt>Preço base</dt><dd class="financial-value" data-financial-size="${financialValueSize(base)}">${base}</dd></div><div><dt>Tributos estimados</dt><dd class="financial-value" data-financial-size="${financialValueSize(taxes)}">${taxes}</dd></div><div class="is-total"><dt>Total com tributos</dt><dd class="financial-value" data-financial-size="${financialValueSize(total)}">${total}</dd></div></dl></article>`;
+  return `<article class="market-tax-scenario-card"><div><span>${label}</span><strong>${escapeHtml(item?.title || "Referência da pesquisa")}</strong></div><dl><div><dt>Preço de venda</dt><dd class="financial-value" data-financial-size="${financialValueSize(base)}">${base}</dd></div><div><dt>Tributos aproximados contidos no preço</dt><dd class="financial-value" data-financial-size="${financialValueSize(taxes)}">${taxes}</dd></div></dl></article>`;
 }
 
 function taxAction(label, attribute, secondary = false) {
@@ -1957,7 +1976,7 @@ function renderMarketTaxStat(marketState) {
     const content = mode === "selected" && calculations.selected
       ? selectedTaxSummary(marketState, calculations.selected)
       : calculations.minimum && calculations.maximum
-        ? `<div class="market-tax-extremes-summary"><div class="market-tax-shared-rate"><span>Carga tributária aplicada aos dois cenários</span><strong>${taxPercent(calculations.maximum.rates.total)}</strong></div><div class="market-tax-scenarios">${extremeTaxScenario("Menor preço + tributos", minimumItem, calculations.minimum)}${extremeTaxScenario("Maior preço + tributos", maximumItem, calculations.maximum)}</div></div>`
+        ? `<div class="market-tax-extremes-summary"><div class="market-tax-shared-rate"><span>Carga tributária estimada nos dois cenários</span><strong>${taxPercent(calculations.maximum.rates.total)}</strong></div><div class="market-tax-scenarios">${extremeTaxScenario("Menor preço (tributos contidos)", minimumItem, calculations.minimum)}${extremeTaxScenario("Maior preço (tributos contidos)", maximumItem, calculations.maximum)}</div></div>`
         : primary ? selectedTaxSummary(marketState, primary) : "";
     return `<div class="market-tax-stat is-success">${heading}${content}<small class="market-tax-source">Fonte: ${escapeHtml(primary.source)} · Versão: ${escapeHtml(primary.version)}</small>${taxAction(tax.expanded ? "Ocultar detalhes" : "Ver detalhes", "data-toggle-market-taxes")}</div>`;
   }
@@ -2001,11 +2020,11 @@ function renderTaxDetails(marketState) {
   if (mode === "selected" && calculations.selected) {
     const result = calculations.selected;
     const selectedTitle = escapeHtml(marketState.selectedItem?.title || "Produto atual");
-    return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">Baseado no produto selecionado</p><h3 id="market-tax-breakdown-title">${selectedTitle}</h3></div><div class="market-tax-detail-selected">${taxMoneyMetric("Preço base", result.marketPrice)}${taxMoneyMetric("Tributos estimados", result.estimatedTaxes)}${taxMoneyMetric("Total com tributos", result.total, true)}</div>${taxRateDetails(result)}${origin.markup}<p>${origin.summary}</p></section>`;
+    return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">Baseado no produto selecionado</p><h3 id="market-tax-breakdown-title">${selectedTitle}</h3></div><div class="market-tax-detail-selected">${taxMoneyMetric("Preço de venda", result.marketPrice)}${taxMoneyMetric("Tributos aproximados contidos no preço", result.estimatedTaxes)}</div>${taxRateDetails(result)}${origin.markup}<p>${origin.summary}</p></section>`;
   }
   const minimum = calculations.minimum;
   const maximum = calculations.maximum;
-  return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">Baseado nos extremos da pesquisa</p><h3 id="market-tax-breakdown-title">Comparação tributária: menor e maior valor</h3></div>${taxRateDetails(primary)}<div class="market-tax-detail-scenarios">${extremeTaxScenario("Menor preço + tributos", minimumMarketItemForDisplay(marketState), minimum)}${extremeTaxScenario("Maior preço + tributos", maximumMarketItemForDisplay(marketState), maximum)}</div>${origin.markup}<p>${origin.summary}</p></section>`;
+  return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">Baseado nos extremos da pesquisa</p><h3 id="market-tax-breakdown-title">Comparação tributária: menor e maior valor</h3></div>${taxRateDetails(primary)}<div class="market-tax-detail-scenarios">${extremeTaxScenario("Menor preço (tributos contidos)", minimumMarketItemForDisplay(marketState), minimum)}${extremeTaxScenario("Maior preço (tributos contidos)", maximumMarketItemForDisplay(marketState), maximum)}</div>${origin.markup}<p>${origin.summary}</p></section>`;
 }
 
 function renderMarketPanel(document, marketState) {
@@ -2160,11 +2179,17 @@ function detail(label, value, extraClass = "") {
   return `<div class="${extraClass}"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`;
 }
 
+function marketDifferenceLabel(differenceRate, maximumFractionDigits) {
+  if (Math.abs(differenceRate) < 1e-12) return "No mesmo nível do mercado";
+  const percentage = Math.abs(differenceRate * 100).toLocaleString("pt-BR", { maximumFractionDigits });
+  return `${percentage}% ${differenceRate > 0 ? "abaixo" : "acima"}`;
+}
+
 function savedMarket(product) {
   const canonical = product.calculationData?.pricingResult?.market;
   if (canonical?.price) {
     return {
-      difference: `${Math.abs(canonical.differenceRate * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% ${canonical.difference <= 0 ? "abaixo" : "acima"}`,
+      difference: marketDifferenceLabel(canonical.differenceRate, 2),
       price: canonical.price,
       productTitle: canonical.reference?.selectedProduct?.title || canonical.reference?.query || canonical.rule,
       source: canonical.source || "não informada",
@@ -2173,9 +2198,9 @@ function savedMarket(product) {
   const market = product.calculationData?.market;
   const price = Number(market?.selectedProduct?.price ?? market?.marketPrice ?? market?.stats?.median);
   if (!Number.isFinite(price) || price <= 0 || market?.source !== "market-product") return null;
-  const relativeDifference = (product.suggestedPrice - price) / price;
+  const relativeDifference = (price - product.suggestedPrice) / price;
   return {
-    difference: `${Math.abs(relativeDifference * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% ${relativeDifference <= 0 ? "abaixo" : "acima"}`,
+    difference: marketDifferenceLabel(relativeDifference, 1),
     price,
     productTitle: market.selectedProduct?.title || market.query || "Produto consultado",
     source: market.selectedProduct?.source || product.marketplace || "Marketplace",
@@ -3553,6 +3578,7 @@ function navigate(view, detailTarget = "") {
 }
 
 function setAuthenticatedUser(user, taxAvailability = null) {
+  if (state.user && String(state.user.id) !== String(user.id)) clearAuthenticatedState();
   authenticationRevision += 1;
   updateCurrentUser(user);
   state.taxAvailability = taxAvailability;
@@ -3567,10 +3593,23 @@ function updateCurrentUser(user) {
 function clearAuthenticatedState() {
   aiAssistant.invalidate();
   authenticationRevision += 1;
+  clearTimeout(productSearchTimer);
+  productSearchTimer = undefined;
+  pendingDetailTarget = "";
   state.user = null;
   state.products = [];
   state.selectedProduct = null;
   state.taxAvailability = null;
+  resetCurrentProductForm({ focusProductName: false });
+  $("#productSearch").value = "";
+  $("#productSort").value = "desc";
+  $("#productsList").replaceChildren();
+  $("#productDetails").replaceChildren();
+  $("#productEditorForm").reset?.();
+  $("#productDialogTitle").textContent = "";
+  if ($("#productDialog").open) $("#productDialog").close();
+  setMessage($("#saveProductStatus"), "");
+  setMessage($("#historyMessage"), "");
   $("#currentUserName").textContent = "Conta";
   profileSettings.closeForSession();
   clearMarketReference(window.sessionStorage);
@@ -3768,7 +3807,7 @@ function restoreMarketReferenceFromSession() {
   $("#marketQuery").value = saved.query;
 }
 
-function resetCurrentProductForm() {
+function resetCurrentProductForm({ focusProductName = true } = {}) {
   aiAssistant.invalidate();
   // Invalida somente respostas locais pendentes; não inicia chamadas externas.
   marketSearchRevision += 1;
@@ -3793,7 +3832,11 @@ function resetCurrentProductForm() {
   clearMarketReference(window.sessionStorage);
   pricingTabs.activate("product", { resetScroll: true });
   render();
-  $("#productName").focus({ preventScroll: true });
+  if (focusProductName) $("#productName").focus({ preventScroll: true });
+}
+
+function authenticatedRequestIsCurrent(revision, userId) {
+  return revision === authenticationRevision && Boolean(state.user) && String(state.user.id) === String(userId);
 }
 
 function productPayloadFromCalculator() {
@@ -3846,16 +3889,20 @@ function productPayloadFromCalculator() {
 async function saveProduct() {
   const status = $("#saveProductStatus");
   const button = $("#saveProductButton");
+  const requestRevision = authenticationRevision;
+  const requestUserId = state.user?.id;
   try {
     const payload = productPayloadFromCalculator();
     button.disabled = true;
     setMessage(status, "Salvando consulta…");
     const response = await api.post("/products", payload);
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     // O servidor recalcula e devolve o snapshot que passa a ser a versão salva.
     state.selectedProduct = response.product;
     resetCurrentProductForm();
     setMessage(status, "Produto salvo com sucesso. Você já pode cadastrar outro item.", true);
   } catch (error) {
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     setMessage(status, messageFor(error));
   } finally {
     button.disabled = false;
@@ -3863,6 +3910,8 @@ async function saveProduct() {
 }
 
 async function loadProducts() {
+  const requestRevision = authenticationRevision;
+  const requestUserId = state.user?.id;
   const list = $("#productsList");
   const search = $("#productSearch").value.trim();
   const sort = $("#productSort").value;
@@ -3872,9 +3921,11 @@ async function loadProducts() {
   try {
     const params = new URLSearchParams({ search, sort });
     const response = await api.get(`/products?${params.toString()}`);
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     state.products = response.products;
     renderProductsList(list, state.products);
   } catch (error) {
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     list.innerHTML = "";
     setMessage($("#historyMessage"), messageFor(error));
   }
@@ -3915,8 +3966,10 @@ function showProductEditor(product) {
 }
 
 async function getProduct(id) {
+  const requestRevision = authenticationRevision;
+  const requestUserId = state.user?.id;
   const response = await api.get(`/products/${encodeURIComponent(id)}`);
-  return response.product;
+  return authenticatedRequestIsCurrent(requestRevision, requestUserId) ? response.product : null;
 }
 
 function reuseProduct(product) {
@@ -3975,13 +4028,17 @@ function reuseProduct(product) {
 
 async function deleteProduct(id) {
   if (!window.confirm("Excluir este produto do seu histórico? Esta ação não pode ser desfeita.")) return;
+  const requestRevision = authenticationRevision;
+  const requestUserId = state.user?.id;
 
   try {
     await api.delete(`/products/${encodeURIComponent(id)}`);
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     if ($("#productDialog").open) $("#productDialog").close();
     setMessage($("#historyMessage"), "Produto excluído do seu histórico.", true);
     await loadProducts();
   } catch (error) {
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     setMessage($("#historyMessage"), messageFor(error));
   }
 }
@@ -3989,6 +4046,8 @@ async function deleteProduct(id) {
 async function editCurrentProduct(event) {
   event.preventDefault();
   const product = state.selectedProduct;
+  const requestRevision = authenticationRevision;
+  const requestUserId = state.user?.id;
   const form = event.currentTarget;
   if (!product || !form.reportValidity()) return;
 
@@ -4000,11 +4059,13 @@ async function editCurrentProduct(event) {
 
   try {
     const response = await api.patch(`/products/${encodeURIComponent(product.id)}`, payload);
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     state.selectedProduct = response.product;
     $("#productDialog").close();
     setMessage($("#historyMessage"), "Produto atualizado com sucesso.", true);
     await loadProducts();
   } catch (error) {
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     setMessage($("#historyMessage"), messageFor(error));
   }
 }
@@ -4044,15 +4105,18 @@ const profileSettings = createProfileSettings({
 });
 
 async function logout() {
+  const requestRevision = authenticationRevision;
+  const requestUserId = state.user?.id;
+  let message = "Você saiu da sua conta.";
   try {
     await api.post("/auth/logout", undefined, { handleUnauthorized: false });
   } catch (error) {
-    setMessage($("#saveProductStatus"), messageFor(error));
-    return;
+    message = "Os dados desta sessão foram removidos da tela. Não foi possível confirmar a saída no servidor; feche o navegador se estiver em um computador compartilhado.";
   }
 
+  if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
   clearAuthenticatedState();
-  showAuth("login", "Você saiu da sua conta.");
+  showAuth("login", message);
 }
 
 async function submitLogin(event) {
@@ -4311,12 +4375,16 @@ $("#productsList").addEventListener("click", async (event) => {
   const { productAction: action, productId: id } = button.dataset;
   if (action === "delete") return deleteProduct(id);
 
+  const requestRevision = authenticationRevision;
+  const requestUserId = state.user?.id;
   try {
     const product = await getProduct(id);
+    if (!product) return;
     if (action === "view") showProductDetails(product);
     if (action === "edit") showProductEditor(product);
     if (action === "reuse") reuseProduct(product);
   } catch (error) {
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     setMessage($("#historyMessage"), messageFor(error));
   }
 });

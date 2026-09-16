@@ -28,15 +28,21 @@ function bootstrapFixture(get) {
   const requests = [];
   const timers = [];
   const authViews = [];
+  const sessionEvents = [];
   const nodes = new Map();
   const context = vm.createContext({
     state: { user: null, products: [], selectedProduct: null, taxAvailability: null },
     authenticationRevision: 0,
     ApiError,
     api: { get: async (path, options) => { requests.push({ path, options }); return get(); } },
-    aiAssistant: { invalidate() {} },
-    profileSettings: { closeForSession() {} },
-    clearMarketReference() {},
+    aiAssistant: { invalidate() { sessionEvents.push("assistant-invalidated"); } },
+    profileSettings: { closeForSession() { sessionEvents.push("profile-closed"); } },
+    clearMarketReference() { sessionEvents.push("market-reference-cleared"); },
+    resetCurrentProductForm() { sessionEvents.push("form-reset"); },
+    setMessage() {},
+    clearTimeout() {},
+    productSearchTimer: undefined,
+    pendingDetailTarget: "",
     syncRoute() {},
     showAuth: (mode, message) => authViews.push({ mode, message }),
     $: (selector) => {
@@ -52,7 +58,7 @@ function bootstrapFixture(get) {
   });
   vm.runInContext(between(mainSource, "function setAuthenticatedUser(", "function setMarketError("), context);
   vm.runInContext(between(mainSource, "async function bootstrap(", "\nupdatePasswordRequirements();"), context);
-  return { context, requests, timers, authViews, nodes };
+  return { context, requests, timers, authViews, nodes, sessionEvents };
 }
 
 test("bootstrap faz uma checagem inicial com cookies e recupera o usuário da sessão", async () => {
@@ -110,6 +116,45 @@ test("resposta de sessão antiga não restaura usuário após encerrar a sessão
   assert.equal(fixture.context.state.user, null);
   assert.equal(fixture.nodes.get("#currentUserName").textContent, "Conta");
   assert.equal(fixture.authViews.length, 1);
+  assert.ok(fixture.sessionEvents.includes("form-reset"));
+  assert.ok(fixture.sessionEvents.includes("assistant-invalidated"));
+  assert.ok(fixture.sessionEvents.includes("profile-closed"));
+});
+
+test("troca de conta limpa o estado da conta anterior antes de autenticar a nova", () => {
+  const fixture = bootstrapFixture(async () => ({}));
+  fixture.context.state.user = { id: "old-user", name: "Conta anterior" };
+  fixture.context.state.products = [{ id: "old-product" }];
+  fixture.context.state.selectedProduct = { id: "old-product" };
+  fixture.context.setAuthenticatedUser({ id: "new-user", name: "Conta nova" }, { configured: true });
+  assert.equal(fixture.context.state.user.id, "new-user");
+  assert.equal(fixture.context.state.products.length, 0);
+  assert.equal(fixture.context.state.selectedProduct, null);
+  assert.ok(fixture.sessionEvents.includes("form-reset"));
+});
+
+test("resposta pendente do histórico não repõe produtos depois da invalidação da sessão", async () => {
+  const work = pending();
+  const list = { innerHTML: "", replaceChildren() {} };
+  const nodes = new Map([
+    ["#productsList", list], ["#productSearch", { value: "" }], ["#productSort", { value: "desc" }],
+    ["#historyMessage", { hidden: true, textContent: "", classList: { toggle() {} } }],
+  ]);
+  const context = vm.createContext({
+    state: { user: { id: "user-a" }, products: [] }, authenticationRevision: 0,
+    api: { get: () => work.promise }, URLSearchParams,
+    $: (selector) => nodes.get(selector),
+    setMessage(element, message = "") { element.textContent = message; },
+    renderProductsList() { throw new Error("resposta antiga não pode renderizar"); },
+  });
+  vm.runInContext(between(mainSource, "function authenticatedRequestIsCurrent(", "async function saveProduct()"), context);
+  vm.runInContext(between(mainSource, "async function loadProducts()", "function openDialog("), context);
+  const loading = context.loadProducts();
+  context.authenticationRevision += 1;
+  context.state.user = null;
+  work.resolve({ products: [{ id: "old-product" }] });
+  await loading;
+  assert.deepEqual(context.state.products, []);
 });
 
 test("retry do bootstrap agendado antes do login não inicia nova requisição depois dele", async () => {

@@ -58,7 +58,7 @@ test("pesquisa de mercado preserva o termo comercial e inicia o fluxo fiscal nor
 
 test("alterar ou salvar limpa a classificação atual sem nova chamada fiscal", () => {
   const resetNcm = sourceBetween("function resetNcmClassification", "function closeMobileMenus");
-  const resetForm = sourceBetween("function resetCurrentProductForm()", "function productPayloadFromCalculator()");
+  const resetForm = sourceBetween("function resetCurrentProductForm(", "function authenticatedRequestIsCurrent(");
 
   assert.match(resetNcm, /elements\.ncmCode\.value = ""/);
   assert.match(resetNcm, /ncmSearchState = emptyNcmSearchState/);

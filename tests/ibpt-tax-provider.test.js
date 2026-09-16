@@ -31,8 +31,8 @@ test("usa os componentes IBPT separados para produto nacional", () => {
 
   assert.deepEqual(result.rates, { federal: 17.88, state: 12, municipal: 0, total: 29.88 });
   assert.equal(result.estimatedTaxes, 2_659.02);
-  assert.equal(result.total, 11_558.02);
   assert.equal(result.marketPrice, 8_899);
+  assert.equal(Object.hasOwn(result, "total"), false);
   assert.equal(result.productOrigin, "nacional");
 });
 
@@ -42,7 +42,8 @@ test("usa importadosfederal somente quando a origem é importada", () => {
 
   assert.deepEqual(result.rates, { federal: 24.57, state: 12, municipal: 0, total: 36.57 });
   assert.equal(result.estimatedTaxes, 3_254.36);
-  assert.equal(result.total, 12_153.36);
+  assert.equal(result.marketPrice, 8_899);
+  assert.equal(Object.hasOwn(result, "total"), false);
 });
 
 test("busca somente o NCM exato e exige origem e maior preço válidos", () => {

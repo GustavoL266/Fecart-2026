@@ -62,7 +62,6 @@ test("sem seleção, dashboard compara menor e maior preço com os componentes I
       calculations: {
         minimum: {
         marketPrice: 100,
-        total: 131.45,
         estimatedTaxes: 31.45,
         ncm: "09012100",
         productOrigin: "nacional",
@@ -74,7 +73,6 @@ test("sem seleção, dashboard compara menor e maior preço com os componentes I
         },
         maximum: {
           marketPrice: 200,
-          total: 262.9,
           estimatedTaxes: 62.9,
           ncm: "09012100",
           productOrigin: "nacional",
@@ -89,16 +87,19 @@ test("sem seleção, dashboard compara menor e maior preço com os componentes I
   }, new ConfiguredTaxRuleEngine().assess(inputs));
 
   assert.match(document.nodes.get("#marketStats").innerHTML, /Baseado nos extremos da pesquisa/);
-  assert.match(document.nodes.get("#marketStats").innerHTML, /Menor preço \+ tributos/);
-  assert.match(document.nodes.get("#marketStats").innerHTML, /Maior preço \+ tributos/);
-  assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s131,45/);
-  assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s262,90/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Menor preço \(tributos contidos\)/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Maior preço \(tributos contidos\)/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s100,00/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s200,00/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s31,45/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s62,90/);
+  assert.doesNotMatch(document.nodes.get("#marketStats").innerHTML, /Total com tributos|R\$\s131,45|R\$\s262,90/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /IBPT \/ Empresômetro/);
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Comparação tributária/);
-  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Menor preço \+ tributos/);
-  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Maior preço \+ tributos/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Menor preço \(tributos contidos\)/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Maior preço \(tributos contidos\)/);
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Carga tributária estimada/);
-  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Tributos estimados/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Tributos aproximados contidos no preço/);
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Versão: 26\.2\.A/);
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Vigência: 20\/08\/2026 a 30\/09\/2026/);
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Origem do produto<\/dt><dd>Nacional/);
@@ -126,7 +127,6 @@ test("detalhamento importado mostra país sem alterar a origem tributária do IB
       expanded: true,
       calculations: { selected: {
         marketPrice: 100,
-        total: 142.57,
         estimatedTaxes: 42.57,
         ncm: "09012100",
         productOrigin: "importado",
@@ -140,8 +140,9 @@ test("detalhamento importado mostra país sem alterar a origem tributária do IB
   }, new ConfiguredTaxRuleEngine().assess(inputs));
 
   assert.match(document.nodes.get("#marketStats").innerHTML, /Baseado no produto selecionado/);
-  assert.match(document.nodes.get("#marketStats").innerHTML, /Preço base/);
-  assert.match(document.nodes.get("#marketStats").innerHTML, /Total com tributos/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Preço de venda/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Tributos aproximados contidos no preço/);
+  assert.doesNotMatch(document.nodes.get("#marketStats").innerHTML, /Total com tributos|R\$\s142,57/);
   const details = document.nodes.get("#marketTaxDetails").innerHTML;
   assert.match(details, /Origem do produto<\/dt><dd>Importado \(Fora do País\)/);
   assert.match(details, /País de origem<\/dt><dd>China/);

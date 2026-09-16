@@ -701,6 +701,7 @@ function navigate(view, detailTarget = "") {
 }
 
 function setAuthenticatedUser(user, taxAvailability = null) {
+  if (state.user && String(state.user.id) !== String(user.id)) clearAuthenticatedState();
   authenticationRevision += 1;
   updateCurrentUser(user);
   state.taxAvailability = taxAvailability;
@@ -715,10 +716,23 @@ function updateCurrentUser(user) {
 function clearAuthenticatedState() {
   aiAssistant.invalidate();
   authenticationRevision += 1;
+  clearTimeout(productSearchTimer);
+  productSearchTimer = undefined;
+  pendingDetailTarget = "";
   state.user = null;
   state.products = [];
   state.selectedProduct = null;
   state.taxAvailability = null;
+  resetCurrentProductForm({ focusProductName: false });
+  $("#productSearch").value = "";
+  $("#productSort").value = "desc";
+  $("#productsList").replaceChildren();
+  $("#productDetails").replaceChildren();
+  $("#productEditorForm").reset?.();
+  $("#productDialogTitle").textContent = "";
+  if ($("#productDialog").open) $("#productDialog").close();
+  setMessage($("#saveProductStatus"), "");
+  setMessage($("#historyMessage"), "");
   $("#currentUserName").textContent = "Conta";
   profileSettings.closeForSession();
   clearMarketReference(window.sessionStorage);
@@ -916,7 +930,7 @@ function restoreMarketReferenceFromSession() {
   $("#marketQuery").value = saved.query;
 }
 
-function resetCurrentProductForm() {
+function resetCurrentProductForm({ focusProductName = true } = {}) {
   aiAssistant.invalidate();
   // Invalida somente respostas locais pendentes; não inicia chamadas externas.
   marketSearchRevision += 1;
@@ -941,7 +955,11 @@ function resetCurrentProductForm() {
   clearMarketReference(window.sessionStorage);
   pricingTabs.activate("product", { resetScroll: true });
   render();
-  $("#productName").focus({ preventScroll: true });
+  if (focusProductName) $("#productName").focus({ preventScroll: true });
+}
+
+function authenticatedRequestIsCurrent(revision, userId) {
+  return revision === authenticationRevision && Boolean(state.user) && String(state.user.id) === String(userId);
 }
 
 function productPayloadFromCalculator() {
@@ -994,16 +1012,20 @@ function productPayloadFromCalculator() {
 async function saveProduct() {
   const status = $("#saveProductStatus");
   const button = $("#saveProductButton");
+  const requestRevision = authenticationRevision;
+  const requestUserId = state.user?.id;
   try {
     const payload = productPayloadFromCalculator();
     button.disabled = true;
     setMessage(status, "Salvando consulta…");
     const response = await api.post("/products", payload);
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     // O servidor recalcula e devolve o snapshot que passa a ser a versão salva.
     state.selectedProduct = response.product;
     resetCurrentProductForm();
     setMessage(status, "Produto salvo com sucesso. Você já pode cadastrar outro item.", true);
   } catch (error) {
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     setMessage(status, messageFor(error));
   } finally {
     button.disabled = false;
@@ -1011,6 +1033,8 @@ async function saveProduct() {
 }
 
 async function loadProducts() {
+  const requestRevision = authenticationRevision;
+  const requestUserId = state.user?.id;
   const list = $("#productsList");
   const search = $("#productSearch").value.trim();
   const sort = $("#productSort").value;
@@ -1020,9 +1044,11 @@ async function loadProducts() {
   try {
     const params = new URLSearchParams({ search, sort });
     const response = await api.get(`/products?${params.toString()}`);
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     state.products = response.products;
     renderProductsList(list, state.products);
   } catch (error) {
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     list.innerHTML = "";
     setMessage($("#historyMessage"), messageFor(error));
   }
@@ -1063,8 +1089,10 @@ function showProductEditor(product) {
 }
 
 async function getProduct(id) {
+  const requestRevision = authenticationRevision;
+  const requestUserId = state.user?.id;
   const response = await api.get(`/products/${encodeURIComponent(id)}`);
-  return response.product;
+  return authenticatedRequestIsCurrent(requestRevision, requestUserId) ? response.product : null;
 }
 
 function reuseProduct(product) {
@@ -1123,13 +1151,17 @@ function reuseProduct(product) {
 
 async function deleteProduct(id) {
   if (!window.confirm("Excluir este produto do seu histórico? Esta ação não pode ser desfeita.")) return;
+  const requestRevision = authenticationRevision;
+  const requestUserId = state.user?.id;
 
   try {
     await api.delete(`/products/${encodeURIComponent(id)}`);
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     if ($("#productDialog").open) $("#productDialog").close();
     setMessage($("#historyMessage"), "Produto excluído do seu histórico.", true);
     await loadProducts();
   } catch (error) {
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     setMessage($("#historyMessage"), messageFor(error));
   }
 }
@@ -1137,6 +1169,8 @@ async function deleteProduct(id) {
 async function editCurrentProduct(event) {
   event.preventDefault();
   const product = state.selectedProduct;
+  const requestRevision = authenticationRevision;
+  const requestUserId = state.user?.id;
   const form = event.currentTarget;
   if (!product || !form.reportValidity()) return;
 
@@ -1148,11 +1182,13 @@ async function editCurrentProduct(event) {
 
   try {
     const response = await api.patch(`/products/${encodeURIComponent(product.id)}`, payload);
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     state.selectedProduct = response.product;
     $("#productDialog").close();
     setMessage($("#historyMessage"), "Produto atualizado com sucesso.", true);
     await loadProducts();
   } catch (error) {
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     setMessage($("#historyMessage"), messageFor(error));
   }
 }
@@ -1192,15 +1228,18 @@ const profileSettings = createProfileSettings({
 });
 
 async function logout() {
+  const requestRevision = authenticationRevision;
+  const requestUserId = state.user?.id;
+  let message = "Você saiu da sua conta.";
   try {
     await api.post("/auth/logout", undefined, { handleUnauthorized: false });
   } catch (error) {
-    setMessage($("#saveProductStatus"), messageFor(error));
-    return;
+    message = "Os dados desta sessão foram removidos da tela. Não foi possível confirmar a saída no servidor; feche o navegador se estiver em um computador compartilhado.";
   }
 
+  if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
   clearAuthenticatedState();
-  showAuth("login", "Você saiu da sua conta.");
+  showAuth("login", message);
 }
 
 async function submitLogin(event) {
@@ -1459,12 +1498,16 @@ $("#productsList").addEventListener("click", async (event) => {
   const { productAction: action, productId: id } = button.dataset;
   if (action === "delete") return deleteProduct(id);
 
+  const requestRevision = authenticationRevision;
+  const requestUserId = state.user?.id;
   try {
     const product = await getProduct(id);
+    if (!product) return;
     if (action === "view") showProductDetails(product);
     if (action === "edit") showProductEditor(product);
     if (action === "reuse") reuseProduct(product);
   } catch (error) {
+    if (!authenticatedRequestIsCurrent(requestRevision, requestUserId)) return;
     setMessage($("#historyMessage"), messageFor(error));
   }
 });

@@ -127,9 +127,27 @@ export function applyAssistantFields(fields, elements) {
 export function parseBrazilianNumber(rawValue) {
   const value = String(rawValue ?? "").trim().replace(/\s/g, "");
   if (value === "") return { status: "empty", value: null };
-  const commaCount = (value.match(/,/g) || []).length;
-  const normalized = commaCount === 1 ? value.replace(/\./g, "").replace(",", ".") : value;
-  if (commaCount > 1 || !/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return { status: "invalid", value: null };
+  const sign = /^[+-]/.test(value) ? value[0] : "";
+  const unsigned = sign ? value.slice(1) : value;
+  if (!unsigned) return { status: "invalid", value: null };
+
+  const commaCount = (unsigned.match(/,/g) || []).length;
+  const dotCount = (unsigned.match(/\./g) || []).length;
+  let normalized;
+  if (commaCount === 1) {
+    const [integerPart, decimalPart] = unsigned.split(",");
+    const validInteger = /^\d+$/.test(integerPart) || /^\d{1,3}(?:\.\d{3})+$/.test(integerPart);
+    if (!validInteger || !/^\d+$/.test(decimalPart)) return { status: "invalid", value: null };
+    normalized = `${sign}${integerPart.replace(/\./g, "")}.${decimalPart}`;
+  } else if (commaCount > 1) {
+    return { status: "invalid", value: null };
+  } else if (dotCount > 0) {
+    if (!/^\d{1,3}(?:\.\d{3})+$/.test(unsigned)) return { status: "ambiguous", value: null };
+    normalized = `${sign}${unsigned.replace(/\./g, "")}`;
+  } else {
+    if (!/^\d+$/.test(unsigned)) return { status: "invalid", value: null };
+    normalized = `${sign}${unsigned}`;
+  }
   const numeric = Number(normalized);
   return Number.isFinite(numeric) ? { status: "valid", value: numeric } : { status: "invalid", value: null };
 }
@@ -189,8 +207,10 @@ export function validatePricingForm(elements) {
       } else errors[fieldId] = rule.required;
       continue;
     }
-    if (parsed.status === "invalid") {
-      errors[fieldId] = "Informe um número válido, sem notação científica.";
+    if (parsed.status !== "valid") {
+      errors[fieldId] = parsed.status === "ambiguous"
+        ? "Use vírgula para centavos e ponto apenas para milhares. Ex.: 1.500,00."
+        : "Informe um número válido, sem notação científica.";
       continue;
     }
     rawInputs[fieldId] = PERCENTAGE_FIELDS.has(fieldId) ? parsed.value / 100 : parsed.value;

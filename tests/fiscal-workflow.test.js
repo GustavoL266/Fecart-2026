@@ -125,7 +125,8 @@ test("iPhone, bolo, notebook e televisão têm NCM relevante e estimativa IBPT",
     assert.equal(calculation.provider, "IBPT", query);
     assert.equal(calculation.version, "26.2.A", query);
     assert.ok(calculation.estimatedTaxes > 0, query);
-    assert.equal(calculation.total, 1_000 + calculation.estimatedTaxes, query);
+    assert.equal(calculation.marketPrice, 1_000, query);
+    assert.equal(Object.hasOwn(calculation, "total"), false, query);
   }
 });
 
@@ -159,10 +160,10 @@ test("fluxo completo preserva a pesquisa, confirma NCM e estima os extremos sem 
   assert.equal(w.context.marketState.tax.mode, "extremes");
   assert.equal(w.context.marketState.tax.calculations.minimum.marketPrice, 100);
   assert.equal(w.context.marketState.tax.calculations.maximum.marketPrice, 8_899);
-  assert.equal(w.context.marketState.tax.result.total, 11_558.02);
+  assert.equal(w.context.marketState.tax.result.marketPrice, 8_899);
   assert.equal(w.context.marketState.items.find((item) => item.id === "max").price, 8_899);
   assert.equal(JSON.stringify(w.context.marketState.stats), originalStats);
-  assert.match(w.$("#marketStats").innerHTML, /11\.558,02/);
+  assert.doesNotMatch(w.$("#marketStats").innerHTML, /11\.558,02|Total com tributos/);
   assert.match(w.$("#marketStats").innerHTML, /29,88%/);
   assert.match(w.$("#marketStats").innerHTML, /2\.659,02/);
   assert.match(w.$("#marketStats").innerHTML, /IBPT \/ Empresômetro/);
@@ -195,7 +196,8 @@ test("alternar a origem troca UF por país, limpa o estado anterior e preserva i
   assert.equal(w.context.state.countryOfOrigin, "China");
   assert.equal(w.context.currentMarketTaxContext().countryOfOrigin, "China");
   assert.equal(w.context.marketState.tax.result.rates.federal, 24.57);
-  assert.equal(w.context.marketState.tax.result.total, 12_153.36);
+  assert.equal(w.context.marketState.tax.result.marketPrice, 8_899);
+  assert.equal(Object.hasOwn(w.context.marketState.tax.result, "total"), false);
   assert.equal(w.requests.filter((request) => request.path === "/tax/estimate").length, 4);
   assert.equal("countryOfOrigin" in w.requests.at(-1).body, false);
 

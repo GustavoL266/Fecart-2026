@@ -8,11 +8,17 @@ function detail(label, value, extraClass = "") {
   return `<div class="${extraClass}"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`;
 }
 
+function marketDifferenceLabel(differenceRate, maximumFractionDigits) {
+  if (Math.abs(differenceRate) < 1e-12) return "No mesmo nível do mercado";
+  const percentage = Math.abs(differenceRate * 100).toLocaleString("pt-BR", { maximumFractionDigits });
+  return `${percentage}% ${differenceRate > 0 ? "abaixo" : "acima"}`;
+}
+
 function savedMarket(product) {
   const canonical = product.calculationData?.pricingResult?.market;
   if (canonical?.price) {
     return {
-      difference: `${Math.abs(canonical.differenceRate * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% ${canonical.difference <= 0 ? "abaixo" : "acima"}`,
+      difference: marketDifferenceLabel(canonical.differenceRate, 2),
       price: canonical.price,
       productTitle: canonical.reference?.selectedProduct?.title || canonical.reference?.query || canonical.rule,
       source: canonical.source || "não informada",
@@ -21,9 +27,9 @@ function savedMarket(product) {
   const market = product.calculationData?.market;
   const price = Number(market?.selectedProduct?.price ?? market?.marketPrice ?? market?.stats?.median);
   if (!Number.isFinite(price) || price <= 0 || market?.source !== "market-product") return null;
-  const relativeDifference = (product.suggestedPrice - price) / price;
+  const relativeDifference = (price - product.suggestedPrice) / price;
   return {
-    difference: `${Math.abs(relativeDifference * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% ${relativeDifference <= 0 ? "abaixo" : "acima"}`,
+    difference: marketDifferenceLabel(relativeDifference, 1),
     price,
     productTitle: market.selectedProduct?.title || market.query || "Produto consultado",
     source: market.selectedProduct?.source || product.marketplace || "Marketplace",

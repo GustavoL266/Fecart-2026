@@ -4162,12 +4162,12 @@ tr:last-child td {
 .market-tax-summary-grid,
 .market-tax-detail-selected {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
 .market-tax-detail-selected {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .market-tax-summary-metric {

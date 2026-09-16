@@ -31,13 +31,14 @@ test("país de origem possui estado separado e não altera o payload enviado ao 
 });
 
 test("card e detalhamento mostram os modos selecionado e extremos com os dados tributários", () => {
-  for (const label of ["Baseado no produto selecionado", "Baseado nos extremos da pesquisa", "Menor preço + tributos", "Maior preço + tributos", "Carga tributária estimada", "Tributos estimados", "Fonte:", "Versão:", "Vigência:"]) {
-    assert.match(dashboard, new RegExp(label.replace(/[+]/g, "\\+")));
+  for (const label of ["Baseado no produto selecionado", "Baseado nos extremos da pesquisa", "Menor preço (tributos contidos)", "Maior preço (tributos contidos)", "Carga tributária estimada", "Tributos aproximados contidos no preço", "Fonte:", "Versão:", "Vigência:"]) {
+    assert.ok(dashboard.includes(label), label);
   }
   assert.match(dashboard, /calculations\.selected/);
   assert.match(dashboard, /calculations\.minimum/);
   assert.match(dashboard, /calculations\.maximum/);
   assert.match(dashboard, /market-tax-summary-grid/);
+  assert.doesNotMatch(dashboard, /Total com tributos/);
 });
 
 test("selecionar, remover ou iniciar outra pesquisa invalida a base tributária anterior", () => {
