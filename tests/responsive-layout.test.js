@@ -52,6 +52,13 @@ test("overflow horizontal fica restrito a componentes que realmente precisam del
   assert.match(styles, /\.table-panel\s*{[\s\S]*?overflow-x:\s*auto/);
 });
 
+test("campos monetarios reservam espaco reutilizavel para o prefixo em qualquer densidade", () => {
+  assert.match(styles, /\.pricing-sidebar \.sidebar-input-wrap\.has-prefix input\s*{[\s\S]*?padding-inline-start:\s*2\.875rem/);
+  assert.match(styles, /\.input-prefix\s*{[\s\S]*?inset-inline-start:\s*0\.8125rem/);
+  assert.match(styles, /\.input-affix\s*{[\s\S]*?top:\s*50%;[\s\S]*?transform:\s*translateY\(-50%\)/);
+  assert.doesNotMatch(styles, /\.sidebar-input-wrap\.has-prefix input\s*{[\s\S]*?padding-left:\s*43px/);
+});
+
 test("modais respeitam largura e altura dinamicas da viewport", () => {
   assert.match(styles, /\.modal-dialog,[\s\S]*?max-block-size: calc\(100dvh - 2rem\)/);
   assert.match(styles, /\.modal-dialog,[\s\S]*?overflow: auto/);

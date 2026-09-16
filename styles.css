@@ -2926,12 +2926,12 @@ tr:last-child td {
   margin: 0;
 }
 
-.sidebar-input-wrap.has-prefix input {
-  padding-left: 43px;
+.pricing-sidebar .sidebar-input-wrap.has-prefix input {
+  padding-inline-start: 2.875rem;
 }
 
-.sidebar-input-wrap.has-suffix input {
-  padding-right: 52px;
+.pricing-sidebar .sidebar-input-wrap.has-suffix input {
+  padding-inline-end: 3.25rem;
 }
 
 .input-affix {
@@ -2947,11 +2947,11 @@ tr:last-child td {
 }
 
 .input-prefix {
-  left: 13px;
+  inset-inline-start: 0.8125rem;
 }
 
 .input-suffix {
-  right: 13px;
+  inset-inline-end: 0.8125rem;
 }
 
 .sidebar-input-wrap:focus-within .input-affix {
