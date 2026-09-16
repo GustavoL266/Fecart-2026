@@ -19,14 +19,18 @@ test("viewport permite zoom nativo e a interface nao aplica escala global", () =
   assert.doesNotMatch(scripts, /devicePixelRatio|visualViewport\.scale/);
 });
 
-test("shell preserva sidebar e dashboard lado a lado enquanto existe largura funcional", () => {
-  assert.match(styles, /\.app-shell\s*{[\s\S]*?clamp\(17\.5rem,[\s\S]*?30vw[\s\S]*?minmax\(0, 1fr\)/);
+test("shell preserva sidebar e dashboard lado a lado com um estágio desktop compacto", () => {
+  assert.match(styles, /\.app-shell\s*{[\s\S]*?clamp\(20rem,[\s\S]*?38\.75rem[\s\S]*?minmax\(0, 1fr\)/);
 
-  const compactStart = styles.indexOf("@media (max-width: 75rem) and (min-width: 56.3125rem)");
+  const compactStart = styles.indexOf("@media (max-width: 96rem) and (min-width: 56.3125rem)");
   const mobileStart = styles.indexOf("@media (max-width: 56.25rem)", compactStart);
   assert.ok(compactStart >= 0 && mobileStart > compactStart, "faixa compacta precisa continuar delimitada");
   const compactRules = styles.slice(compactStart, mobileStart);
-  assert.doesNotMatch(compactRules, /\.app-shell|\.pricing-sidebar|\.pricing-panel-resizer/);
+  assert.match(compactRules, /\.app-shell\s*{[\s\S]*?clamp\(16\.5rem,[\s\S]*?21vw[\s\S]*?19rem[\s\S]*?minmax\(0, 1fr\)/);
+  assert.match(compactRules, /\.pricing-sidebar\s*{[\s\S]*?padding:\s*0 0\.875rem 1\.25rem/);
+  assert.match(compactRules, /\.pricing-sidebar :is\([\s\S]*?min-height:\s*2\.375rem/);
+  assert.match(compactRules, /\.pricing-tab\s*{[\s\S]*?min-height:\s*2rem/);
+  assert.doesNotMatch(compactRules, /grid-template-columns:\s*minmax\(0, 1fr\);/);
 
   assert.match(styles, /@media \(max-width: 900px\)\s*{[\s\S]*?\.app-shell\s*{\s*grid-template-columns:\s*1fr/);
   assert.match(styles, /\.pricing-sidebar\s*{[\s\S]*?height:\s*100dvh;[\s\S]*?overflow-y:\s*auto;[\s\S]*?scrollbar-gutter:\s*stable/);
