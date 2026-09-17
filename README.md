@@ -2,7 +2,7 @@
 
 Aplicação web para calcular preço de venda sustentável, comparar referências de mercado e salvar um histórico privado por usuário.
 
-Este README é o documento central de contexto do projeto. Ele foi ampliado para permitir que uma pessoa ou uma nova sessão do Codex continue o desenvolvimento em outro computador sem depender do histórico de conversas. A descrição abaixo corresponde ao código revisado em **14/09/2026**. Ao modificar comportamentos importantes, atualize também este documento e o guia específico da integração afetada.
+Este README é o documento central de contexto do projeto. Ele foi ampliado para permitir que uma pessoa ou uma nova sessão do Codex continue o desenvolvimento em outro computador sem depender do histórico de conversas. A descrição abaixo corresponde ao código revisado em **16/09/2026**. Ao modificar comportamentos importantes, atualize também este documento e o guia específico da integração afetada.
 
 ## Comece por aqui em uma nova sessão
 
@@ -84,6 +84,8 @@ Os principais indicadores são:
 - **Alertas:** pendências e observações relevantes, incluindo limites da avaliação fiscal.
 
 Os botões de detalhes abrem a análise da simulação, incluindo composição dos custos, memória da conta, visualizações e comparação com o mercado. Essa tela reutiliza os resultados do mesmo motor financeiro.
+
+A página **Sobre** resume a proposta do assistente sem reproduzir todo o formulário: apresenta o fluxo em quatro etapas — produto, custos, impostos e margem, resultado — e destaca preço com margem, preço de equilíbrio, custo unitário e comparação de mercado. Detalhes, alertas, memória de cálculo, histórico e consultas externas continuam disponíveis nos seus fluxos próprios do simulador.
 
 ### Mercado e classificação fiscal
 
@@ -752,6 +754,8 @@ Na segunda revisão do assistente, em 12/09/2026, passaram **315 testes**. A cau
 Na correção da regressão de quantidade mensal em 12/09/2026, passaram **328 testes** e o lint de 78 arquivos JavaScript. O validador deixou de descartar o contexto somente quando a única pendência é `AI_REQUIRED_FIELD_MISSING` para `expectedMonthlyUnits`: “10”, “é 10”, “é de 10”, “10 por mês” e “produzo 10 mensalmente” passam a resolver o valor literal, enquanto uma resposta numérica à pergunta de rendimento continua sendo quantidade do lote. Nas repetições reais de `clarification-monthly`, houve um 503 transitório e uma saída HTTP 200 com `wasteRate.basis` incompatível que o backend rejeitou corretamente; a execução final completou as duas gerações com HTTP 200, formulário válido e preço técnico calculável. No navegador local, “É DE 10” removeu a pergunta, habilitou a confirmação, gerou exatamente um POST de esclarecimento e, depois de aplicar, exibiu preço sustentável de R$ 19,22 com as estimativas daquela execução. O build foi executado; como nenhum módulo de `js/` mudou, o conteúdo versionado de `app.js` permaneceu idêntico.
 
 Na evolução de **Meu perfil** em 14/09/2026, passaram **351 testes**, lint de 82 arquivos JavaScript e build sobre a `main` atualizada. Nome e e-mail passaram a ser editáveis com validação em ambas as camadas e bloqueio de duplicidade; a senha atual é verificada antes de gerar o novo hash, e todas as consultas usam o usuário autenticado da sessão. A contagem de produtos vem do PostgreSQL sem expor registros. Uma prévia local com respostas simuladas confirmou o modal e a seção de senha nas larguras 1920, 1366, 1024, 768 e 390 px, sem estouro horizontal, além de feedback de salvamento, cancelamento, ESC, retorno de foco e navegação para **Meus Produtos**. Como este ambiente não possuía PostgreSQL nem segredo de sessão configurados, a rodada não incluiu logout/login real após a troca de senha; os contratos de banco e controlador foram cobertos por testes isolados.
+
+Na simplificação da página **Sobre** em 16/09/2026, passaram **376 testes**, lint de 84 arquivos JavaScript e build sobre a `main` atualizada. A apresentação foi condensada em hero, quatro etapas, quatro resultados principais e um aviso final; acordeões e cards promocionais redundantes foram removidos sem retirar as funcionalidades correspondentes do simulador. A prévia local confirmou grids de 4, 2 e 1 coluna em desktop, tablet e celular, respectivamente, nas larguras 1366, 768 e 390 px, sem estouro horizontal.
 
 Os testes automatizados de APIs usam respostas simuladas e não demonstram a disponibilidade das credenciais de produção. A chamada real descrita acima usou exclusivamente o `.env` local e comprova o contrato e o acesso nessa conta, não as variáveis do serviço Render. Após o deploy, execute uma vez `pnpm gemini:check` no Shell do serviço para validar a conta de produção. Um resultado com mocks precisa ser relatado como tal. Capturas, navegadores temporários e relatórios locais de uma sessão não devem ser presumidos disponíveis em outro clone.
 
