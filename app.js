@@ -897,6 +897,23 @@ class TaxService {
 
 
 const MARKET_REFERENCE_KEY = "assistente-precificacao-market-reference-v1";
+const MARKET_REFERENCE_RULES = Object.freeze(["manual", "selected-product", "market-average", "market-median"]);
+
+function marketRuleForForm(rule) {
+  return MARKET_REFERENCE_RULES.includes(rule) ? rule : "manual";
+}
+
+function marketRequestPayload(reference) {
+  if (!reference || reference.rule === "" || reference.rule === null || reference.rule === undefined) return {};
+  return {
+    rule: reference.rule,
+    query: String(reference.query || ""),
+    marketplace: String(reference.marketplace || ""),
+    provider: String(reference.provider || ""),
+    selectedProduct: reference.selectedProduct || null,
+    stats: reference.stats || null,
+  };
+}
 
 function safeHttpsUrl(value) {
   try {
@@ -3842,14 +3859,7 @@ function productPayloadFromCalculator() {
     pricing: {
       inputs,
       emptyOptionalFields: validation.emptyOptionalFields,
-      market: {
-        rule: elements.marketReferenceRule.value,
-        query: marketState.query,
-        stats: marketState.stats,
-        selectedProduct: marketState.selectedItem,
-        marketplace: marketState.marketplace || "Google Shopping",
-        provider: marketState.provider || "SearchAPI / Google Shopping",
-      },
+      market: marketRequestPayload(marketReferenceFromState(inputs)),
       fiscalValidation: focusState.status === "success" && focusState.ncm?.codigo === inputs.fiscalContext.ncmCode
         ? {
           status: "success",
@@ -3995,7 +4005,7 @@ function reuseProduct(product) {
     provider: reference?.provider || "SearchAPI / Google Shopping",
     error: "",
   };
-  elements.marketReferenceRule.value = reference?.rule || "manual";
+  elements.marketReferenceRule.value = marketRuleForForm(reference?.rule);
   if (marketState.selectedItem) saveMarketReference(window.sessionStorage, { manualValue: manualMarketValue || null, query: marketState.query, selectedItem: marketState.selectedItem });
   else clearMarketReference(window.sessionStorage);
   $("#marketQuery").value = marketState.query;

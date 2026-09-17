@@ -5,7 +5,7 @@ import { ApiError, api } from "./services/api-client.js";
 import { TaxService, marketTaxError, marketTaxPrerequisiteError } from "./services/tax-service.js";
 import { normalizeProductForFiscalSearch, isRelevantFiscalNcm, normalizeNcmDescription } from "./domain/fiscal-classification.js";
 import { normalizeFiscalState } from "./domain/fiscal-context.js";
-import { clearMarketReference, loadMarketReference, saveMarketReference } from "./services/market-reference-store.js";
+import { clearMarketReference, loadMarketReference, marketRequestPayload, marketRuleForForm, saveMarketReference } from "./services/market-reference-store.js";
 import { applyAssistantFields, applySavedInputs, clearPricingInputs, FORM_OPTION_FIELD_IDS, migrateLegacyV5Inputs, migrateLegacyV6Inputs, PRICING_FIELD_IDS, readAssistantFieldContext, readAssistantRateContext, renderPricingErrors, validatePricingForm } from "./ui/form.js";
 import { createAiAssistant } from "./ui/ai-assistant.js";
 import { financialValueSize } from "./utils/formatters.js";
@@ -986,14 +986,7 @@ function productPayloadFromCalculator() {
     pricing: {
       inputs,
       emptyOptionalFields: validation.emptyOptionalFields,
-      market: {
-        rule: elements.marketReferenceRule.value,
-        query: marketState.query,
-        stats: marketState.stats,
-        selectedProduct: marketState.selectedItem,
-        marketplace: marketState.marketplace || "Google Shopping",
-        provider: marketState.provider || "SearchAPI / Google Shopping",
-      },
+      market: marketRequestPayload(marketReferenceFromState(inputs)),
       fiscalValidation: focusState.status === "success" && focusState.ncm?.codigo === inputs.fiscalContext.ncmCode
         ? {
           status: "success",
@@ -1139,7 +1132,7 @@ function reuseProduct(product) {
     provider: reference?.provider || "SearchAPI / Google Shopping",
     error: "",
   };
-  elements.marketReferenceRule.value = reference?.rule || "manual";
+  elements.marketReferenceRule.value = marketRuleForForm(reference?.rule);
   if (marketState.selectedItem) saveMarketReference(window.sessionStorage, { manualValue: manualMarketValue || null, query: marketState.query, selectedItem: marketState.selectedItem });
   else clearMarketReference(window.sessionStorage);
   $("#marketQuery").value = marketState.query;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { clearMarketReference, loadMarketReference, saveMarketReference } from "../js/services/market-reference-store.js";
+import { clearMarketReference, loadMarketReference, marketRequestPayload, marketRuleForForm, saveMarketReference } from "../js/services/market-reference-store.js";
 
 function memoryStorage() {
   const values = new Map();
@@ -65,4 +65,29 @@ test("preserva referência externa quando o fallback manual ainda está vazio", 
   assert.equal(saveMarketReference(storage, { manualValue: null, query: "produto", selectedItem }), true);
   assert.equal(loadMarketReference(storage).manualValue, null);
   assert.equal(loadMarketReference(storage).selectedItem.price, 99.9);
+});
+
+test("omite regra vazia do payload e restaura ausência persistida sem deixar o select inválido", () => {
+  assert.deepEqual(marketRequestPayload(null), {});
+  assert.deepEqual(marketRequestPayload({ rule: "" }), {});
+  assert.equal(marketRuleForForm("none"), "manual");
+  assert.equal(marketRuleForForm(undefined), "manual");
+  assert.equal(marketRuleForForm("market-average"), "market-average");
+});
+
+test("mantém regras presentes no payload para que o backend aplique a enumeração estrita", () => {
+  assert.deepEqual(marketRequestPayload({
+    rule: "manual",
+    query: "bolo",
+    marketplace: "Google Shopping",
+    provider: "SearchAPI",
+  }), {
+    rule: "manual",
+    query: "bolo",
+    marketplace: "Google Shopping",
+    provider: "SearchAPI",
+    selectedProduct: null,
+    stats: null,
+  });
+  assert.equal(marketRequestPayload({ rule: "valor-invalido" }).rule, "valor-invalido");
 });

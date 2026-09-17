@@ -52,6 +52,12 @@ test("o reset ocorre somente depois da resposta bem-sucedida de salvar", () => {
   assert.doesNotMatch(save.slice(errorHandler), /resetCurrentProductForm\(\)/);
 });
 
+test("payload de produto inclui mercado somente quando existe referência ativa", () => {
+  const payload = sourceBetween("function productPayloadFromCalculator()", "async function saveProduct()");
+  assert.match(payload, /market: marketRequestPayload\(marketReferenceFromState\(inputs\)\)/);
+  assert.doesNotMatch(payload, /rule: elements\.marketReferenceRule\.value/);
+});
+
 test("respostas pendentes de NCM ou mercado não restauram dados após o reset", () => {
   const ncm = sourceBetween("async function lookupNcm(code)", "function resetNcmClassification");
   const market = sourceBetween("async function searchMarket()", "function selectMarketProduct");

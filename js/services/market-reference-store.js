@@ -1,4 +1,21 @@
 const MARKET_REFERENCE_KEY = "assistente-precificacao-market-reference-v1";
+const MARKET_REFERENCE_RULES = Object.freeze(["manual", "selected-product", "market-average", "market-median"]);
+
+export function marketRuleForForm(rule) {
+  return MARKET_REFERENCE_RULES.includes(rule) ? rule : "manual";
+}
+
+export function marketRequestPayload(reference) {
+  if (!reference || reference.rule === "" || reference.rule === null || reference.rule === undefined) return {};
+  return {
+    rule: reference.rule,
+    query: String(reference.query || ""),
+    marketplace: String(reference.marketplace || ""),
+    provider: String(reference.provider || ""),
+    selectedProduct: reference.selectedProduct || null,
+    stats: reference.stats || null,
+  };
+}
 
 function safeHttpsUrl(value) {
   try {
