@@ -73,8 +73,9 @@ test("pesquisa sinônimos separadamente, filtra antes de limitar e não confirma
   assert.deepEqual(response.results, [{ code: phone.codigo, description: phone.descricao_completa }]);
   assert.equal(response.rejectedIrrelevantResults, 24);
   assert.equal(response.confirmedNcm, undefined);
-  assert.ok(logs.includes("[NCM] originalQuery=iPhone 15 Pro Max"));
-  assert.ok(logs.includes("[NCM] normalizedQuery=telefone celular smartphone"));
+  assert.ok(logs.includes("[NCM] originalQueryLength=17"));
+  assert.ok(logs.includes("[NCM] normalizedQueryLength=27"));
+  assert.doesNotMatch(logs.join("|"), /iPhone|telefone celular smartphone/);
   assert.ok(logs.includes("[NCM] rejectedIrrelevantResults=24"));
 });
 

@@ -47,8 +47,9 @@ test("rota executa as duas consultas pedidas e registra somente metadados seguro
     });
     assert.deepEqual(result.results, results);
   }
-  assert.match(logs[0][0], /Query: Iphone/);
-  assert.match(logs[4][0], /Query: iPhone 15 Pro Max/);
+  assert.equal(logs[0][0], "[Market] queryLength=6");
+  assert.equal(logs[4][0], "[Market] queryLength=17");
   assert.match(logs[1][0], /Provider: SearchAPI Google Shopping/);
+  assert.doesNotMatch(JSON.stringify(logs), /Iphone|iPhone 15 Pro Max/);
   assert.doesNotMatch(JSON.stringify(logs), /authorization|bearer|nk-/i);
 });

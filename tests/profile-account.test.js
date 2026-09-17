@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { changeOwnPassword, findOwnProfile, ProfileAccountError, updateOwnProfile } from "../lib/profile-account.js";
+import { changeOwnPassword, changeOwnPasswordAndRevokeSessions, findOwnProfile, ProfileAccountError, updateOwnProfile } from "../lib/profile-account.js";
 import { userForClient } from "../lib/models.js";
 import { changePasswordSchema, profileUpdateSchema, validate } from "../lib/validation.js";
 
@@ -89,6 +89,35 @@ test("troca de senha valida o hash atual e nunca grava texto puro", async () => 
   });
 });
 
+test("troca de senha revoga atomicamente todas as sessões e a rota cria somente uma sessão nova", async () => {
+  const calls = [];
+  const client = {
+    async query(sql, values = []) {
+      calls.push({ sql, values });
+      if (sql.startsWith("SELECT")) return { rows: [{ password_hash: "hash-atual" }] };
+      if (sql.startsWith("UPDATE")) return { rowCount: 1 };
+      return { rowCount: 2 };
+    },
+    release() { calls.push({ sql: "RELEASE", values: [] }); },
+  };
+  const database = { async connect() { return client; } };
+  await changeOwnPasswordAndRevokeSessions(
+    database,
+    "authenticated-user",
+    { currentPassword: "atual-123", newPassword: "nova-456", newPasswordConfirmation: "nova-456" },
+    { verify: async () => true, hash: async () => "hash-novo" },
+  );
+  assert.deepEqual(calls.map(({ sql }) => sql), [
+    "BEGIN",
+    "SELECT password_hash FROM users WHERE id = $1",
+    "UPDATE users SET password_hash = $2 WHERE id = $1 AND password_hash = $3",
+    "DELETE FROM user_sessions WHERE sess->>'userId' = $1",
+    "COMMIT",
+    "RELEASE",
+  ]);
+  assert.deepEqual(calls[3].values, ["authenticated-user"]);
+});
+
 test("rotas de perfil usam autenticação e nunca aceitam um ID do corpo", async () => {
   const server = await readFile(new URL("../server.js", import.meta.url), "utf8");
   const profileRoute = server.slice(server.indexOf('app.patch("/auth/me"'), server.indexOf('app.post("/auth/change-password"'));
@@ -97,6 +126,7 @@ test("rotas de perfil usam autenticação e nunca aceitam um ID do corpo", async
   assert.match(profileRoute, /updateOwnProfile\(pool, req\.user\.id, input\)/);
   assert.doesNotMatch(profileRoute, /req\.body\.(?:id|userId)/);
   assert.match(passwordRoute, /requireAuth/);
-  assert.match(passwordRoute, /changeOwnPassword\(pool, req\.user\.id, input\)/);
+  assert.match(passwordRoute, /changeOwnPasswordAndRevokeSessions\(pool, req\.user\.id, input\)/);
+  assert.match(passwordRoute, /authenticateSession\(req, req\.user\)/);
   assert.doesNotMatch(passwordRoute, /password_hash|req\.body\.(?:id|userId)/);
 });

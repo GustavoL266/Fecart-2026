@@ -96,3 +96,26 @@ test("modelo preserva consulta market-product e neutraliza fonte antiga não rec
   assert.equal(productForClient(legacy).calculationData.market.source, "manual");
   assert.doesNotThrow(() => renderProductsList({ innerHTML: "" }, [{ ...product, calculationData: {} }]));
 });
+
+test("histórico escapa a fonte de mercado persistida antes de montar HTML", () => {
+  const maliciousSource = '<img src=x data-security-proof="stored-html">';
+  const item = {
+    ...product,
+    calculationData: {
+      pricingResult: {
+        market: {
+          price: 100,
+          source: maliciousSource,
+          rule: "selected-product",
+          difference: 20,
+          differenceRate: 0.2,
+          reference: { selectedProduct: { title: "Produto" } },
+        },
+      },
+    },
+  };
+  const list = { innerHTML: "" };
+  renderProductsList(list, [item]);
+  assert.doesNotMatch(list.innerHTML, /<img src=x/);
+  assert.match(list.innerHTML, /&lt;img src=x data-security-proof=&quot;stored-html&quot;&gt;/);
+});

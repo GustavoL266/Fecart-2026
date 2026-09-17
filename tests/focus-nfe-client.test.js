@@ -228,3 +228,14 @@ test("rejeita resposta 200 com contrato inválido", async () => {
   const client = clientWith(async () => response(200, { codigo: "09012100" }));
   await assert.rejects(() => client.getNcm("09012100"), { code: "FOCUS_NFE_INVALID_RESPONSE", status: 502 });
 });
+
+test("rejeita resposta excessiva antes de ler o corpo da Focus NFe", async () => {
+  let bodyRead = false;
+  const oversized = response(200, validNcm, { "content-length": "100001" });
+  oversized.json = async () => { bodyRead = true; return validNcm; };
+  await assert.rejects(() => clientWith(async () => oversized).getNcm(validNcm.codigo), {
+    code: "FOCUS_NFE_INVALID_RESPONSE",
+    status: 502,
+  });
+  assert.equal(bodyRead, false);
+});

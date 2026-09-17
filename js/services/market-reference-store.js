@@ -1,5 +1,14 @@
 const MARKET_REFERENCE_KEY = "assistente-precificacao-market-reference-v1";
 
+function safeHttpsUrl(value) {
+  try {
+    const url = new URL(String(value || "").slice(0, 2_048));
+    return url.protocol === "https:" ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
 function safeMarketItem(value) {
   const price = Number(value?.price);
   if (!value?.id || !value?.title || !Number.isFinite(price) || price <= 0) return null;
@@ -11,8 +20,8 @@ function safeMarketItem(value) {
     seller: String(value.seller || value.source || "Marketplace"),
     currency: String(value.currency || "BRL"),
     category: String(value.category || ""),
-    image: String(value.image || ""),
-    url: String(value.url || ""),
+    image: safeHttpsUrl(value.image),
+    url: safeHttpsUrl(value.url),
     consultedAt: String(value.consultedAt || ""),
     ...(Number.isFinite(Number(value.rating)) ? { rating: Number(value.rating) } : {}),
     ...(Number.isInteger(Number(value.reviews)) && Number(value.reviews) >= 0 ? { reviews: Number(value.reviews) } : {}),

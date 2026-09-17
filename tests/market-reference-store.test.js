@@ -43,6 +43,21 @@ test("ignora conteúdo inválido do armazenamento da sessão", () => {
   assert.equal(saveMarketReference(storage, { manualValue: 0, selectedItem: {} }), false);
 });
 
+test("remove URLs com esquemas executáveis do armazenamento da sessão", () => {
+  const storage = memoryStorage();
+  const selectedItem = {
+    id: "B003TESTE",
+    title: "Produto",
+    price: 10,
+    source: "Loja",
+    image: "data:image/svg+xml,<svg onload=alert(1)>",
+    url: "javascript:alert(1)",
+  };
+  assert.equal(saveMarketReference(storage, { manualValue: null, query: "produto", selectedItem }), true);
+  assert.equal(loadMarketReference(storage).selectedItem.image, "");
+  assert.equal(loadMarketReference(storage).selectedItem.url, "");
+});
+
 test("preserva referência externa quando o fallback manual ainda está vazio", () => {
   const storage = memoryStorage();
   const selectedItem = { id: "B002TESTE", title: "Produto sem fallback", price: 99.9, source: "Loja Exemplo", seller: "Loja Exemplo" };

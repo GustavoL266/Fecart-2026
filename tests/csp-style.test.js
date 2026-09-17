@@ -40,7 +40,7 @@ test("a interface não cria estilos inline incompatíveis com a CSP", async () =
 });
 
 test("a CSP mantém estilos restritos à própria aplicação", async () => {
-  const source = await readFile(resolve(projectRoot, "server.js"), "utf8");
+  const source = await readFile(resolve(projectRoot, "lib", "request-security.js"), "utf8");
 
   assert.match(source, /styleSrc:\s*\["'self'"\]/);
   assert.match(source, /styleSrcElem:\s*\["'self'"\]/);

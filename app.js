@@ -898,6 +898,15 @@ class TaxService {
 
 const MARKET_REFERENCE_KEY = "assistente-precificacao-market-reference-v1";
 
+function safeHttpsUrl(value) {
+  try {
+    const url = new URL(String(value || "").slice(0, 2_048));
+    return url.protocol === "https:" ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
 function safeMarketItem(value) {
   const price = Number(value?.price);
   if (!value?.id || !value?.title || !Number.isFinite(price) || price <= 0) return null;
@@ -909,8 +918,8 @@ function safeMarketItem(value) {
     seller: String(value.seller || value.source || "Marketplace"),
     currency: String(value.currency || "BRL"),
     category: String(value.category || ""),
-    image: String(value.image || ""),
-    url: String(value.url || ""),
+    image: safeHttpsUrl(value.image),
+    url: safeHttpsUrl(value.url),
     consultedAt: String(value.consultedAt || ""),
     ...(Number.isFinite(Number(value.rating)) ? { rating: Number(value.rating) } : {}),
     ...(Number.isInteger(Number(value.reviews)) && Number(value.reviews) >= 0 ? { reviews: Number(value.reviews) } : {}),
@@ -2225,7 +2234,7 @@ function renderProductsList(container, products) {
               <span>Custo: <strong>${currency.format(product.costPrice)}</strong></span>
               <span>Margem: <strong>${Number(product.profitMargin).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%</strong></span>
               <span>Preço sugerido: <strong>${currency.format(product.suggestedPrice)}</strong></span>
-              ${market ? `<span>Mercado na data: <strong>${currency.format(market.price)}</strong></span><span>Diferença: <strong>${escapeHtml(market.difference)}</strong></span><span>Fonte: <strong>${market.source}</strong></span>` : ""}
+              ${market ? `<span>Mercado na data: <strong>${currency.format(market.price)}</strong></span><span>Diferença: <strong>${escapeHtml(market.difference)}</strong></span><span>Fonte: <strong>${escapeHtml(market.source)}</strong></span>` : ""}
               <span>Criado em: <strong>${escapeHtml(formatDate(product.consultationDate))}</strong></span>
             </div>
           </div>
@@ -4114,6 +4123,7 @@ async function submitLogin(event) {
 async function submitRegistration(event) {
   event.preventDefault();
   const form = event.currentTarget;
+  const email = $("#registerEmail").value.trim().toLowerCase();
   const password = $("#registerPassword").value;
   const confirmation = $("#registerPasswordConfirmation").value;
   const isValid = ["registerName", "registerEmail", "registerPassword", "registerPasswordConfirmation"].every(validateRegisterField);
@@ -4125,20 +4135,17 @@ async function submitRegistration(event) {
     setMessage($("#authMessage"), "");
     const response = await api.post("/auth/register", {
       name: $("#registerName").value.trim(),
-      email: $("#registerEmail").value.trim(),
+      email,
       password,
       passwordConfirmation: confirmation,
     }, { handleUnauthorized: false });
     form.reset();
     updatePasswordRequirements();
-    setAuthenticatedUser(response.user, response.taxEstimate);
+    $("#loginEmail").value = email;
+    showAuth("login", response.message);
+    $("#loginPassword").focus();
   } catch (error) {
-    if (error instanceof ApiError && error.status === 409) {
-      setFieldError("registerEmail", "Já existe uma conta cadastrada com este e-mail.");
-      $("#registerEmail").focus();
-    } else {
-      setMessage($("#authMessage"), messageFor(error));
-    }
+    setMessage($("#authMessage"), messageFor(error));
   } finally {
     setSubmitState(button, false, "Criar conta");
   }

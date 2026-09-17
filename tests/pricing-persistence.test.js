@@ -29,3 +29,30 @@ test("NCM só é salvo como Focus validado se o código e a prova coincidem", ()
   const stale = authoritativeProductSnapshot({ name: "X", description: "", category: "C", pricing: { inputs: { ...inputs, fiscalContext: { ncmCode: "12345678" } }, market: {}, fiscalValidation: { status: "success", source: "Focus NFe", code: "18061000", ncm: { codigo: "18061000" } } } });
   assert.equal(stale.calculationData.fiscal.ncmValidation.status, "unverified");
 });
+
+test("snapshot descarta esquemas de URL executáveis em referência adulterada", () => {
+  const payload = {
+    name: "X",
+    description: "",
+    category: "C",
+    pricing: {
+      inputs: { ...inputs, marketPrice: null },
+      market: {
+        rule: "selected-product",
+        selectedProduct: {
+          id: "produto-1",
+          title: "Referência",
+          source: "Loja",
+          price: 100,
+          currency: "BRL",
+          image: "data:image/svg+xml,<svg onload=alert(1)>",
+          url: "javascript:alert(1)",
+        },
+      },
+    },
+  };
+  const snapshot = authoritativeProductSnapshot(payload);
+  const selected = snapshot.calculationData.market.selectedProduct;
+  assert.equal(selected.image, "");
+  assert.equal(selected.url, "");
+});

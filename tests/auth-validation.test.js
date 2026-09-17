@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hashPassword, verifyPassword } from "../lib/passwords.js";
+import { hashPassword, verifyPassword, verifyPasswordForLogin } from "../lib/passwords.js";
 import { EMPTY_OPTIONAL_FIELD_IDS, productSchema, registerSchema, validate } from "../lib/validation.js";
 
 test("gera hash bcrypt verificável sem manter a senha em texto puro", async () => {
@@ -11,6 +11,12 @@ test("gera hash bcrypt verificável sem manter a senha em texto puro", async () 
   assert.match(hash, /^\$2[aby]\$/);
   assert.equal(await verifyPassword(password, hash), true);
   assert.equal(await verifyPassword("senha-incorreta", hash), false);
+});
+
+test("login executa bcrypt também quando o e-mail não corresponde a uma conta", async () => {
+  assert.equal(await verifyPasswordForLogin("senha-qualquer-123", null), false);
+  const hash = await hashPassword("senha-correta-123");
+  assert.equal(await verifyPasswordForLogin("senha-correta-123", hash), true);
 });
 
 test("normaliza e valida o cadastro", () => {

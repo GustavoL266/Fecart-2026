@@ -5,7 +5,6 @@ import { dirname, resolve } from "node:path";
 import express from "express";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
-import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import { getConfig, getFocusNfeConfig, getSearchApiConfig, getAiAssistantConfig, aiAssistantHealth, deploymentHealth, marketHealth } from "./lib/config.js";
 import { createAiFormProvider } from "./lib/ai-form-assistant.js";
@@ -17,9 +16,10 @@ import { createFocusNFeClient, focusNFeErrorForClient, FocusNFeError, redactFocu
 import { createIbptTaxProvider, ibptErrorForClient, IbptTaxError } from "./lib/ibpt-tax-provider.js";
 import { searchFiscalNcms, confirmFiscalNcm, hasRelevantFiscalConfirmation } from "./lib/fiscal-classification.js";
 import { productForClient, userForClient } from "./lib/models.js";
-import { hashPassword, verifyPassword } from "./lib/passwords.js";
-import { changeOwnPassword, findOwnProfile, profileAccountErrorForClient, ProfileAccountError, updateOwnProfile } from "./lib/profile-account.js";
+import { hashPassword, verifyPasswordForLogin } from "./lib/passwords.js";
+import { changeOwnPasswordAndRevokeSessions, findOwnProfile, profileAccountErrorForClient, ProfileAccountError, updateOwnProfile } from "./lib/profile-account.js";
 import { authoritativeProductSnapshot } from "./lib/pricing-persistence.js";
+import { createSecurityHeaders, requireSameOriginForWrites } from "./lib/request-security.js";
 import { changePasswordSchema, loginSchema, marketSearchSchema, ncmSearchSchema, productCreateSchema, productIdSchema, productListSchema, productMetadataSchema, profileUpdateSchema, registerSchema, taxEstimateSchema, validate } from "./lib/validation.js";
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
@@ -50,27 +50,8 @@ app.disable("x-powered-by");
 if (config.secureCookie) app.set("trust proxy", 1);
 console.info(`[Session] store=PostgreSQL secure=${config.secureCookie} sameSite=lax trustProxy=${config.secureCookie}`);
 
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        baseUri: ["'self'"],
-        connectSrc: ["'self'"],
-        fontSrc: ["'self'", "data:"],
-        formAction: ["'self'"],
-        frameAncestors: ["'none'"],
-        imgSrc: ["'self'", "data:", "https:"],
-        objectSrc: ["'none'"],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'"],
-        styleSrcElem: ["'self'"],
-        styleSrcAttr: ["'none'"],
-      },
-    },
-    crossOriginEmbedderPolicy: false,
-  }),
-);
+app.use(createSecurityHeaders());
+app.use(requireSameOriginForWrites);
 app.use(express.json({ limit: "100kb" }));
 app.use((req, res, next) => {
   if (req.path.startsWith("/auth") || req.path.startsWith("/products") || req.path.startsWith("/fiscal") || req.path.startsWith("/market") || req.path.startsWith("/tax") || req.path.startsWith("/diagnostics")) {
@@ -177,20 +158,26 @@ function productColumns(includeCalculation = true) {
   return `id, name, description, category, cost_price, additional_costs, profit_margin, suggested_price, marketplace, consultation_date, created_at, updated_at${calculation}`;
 }
 
+const registrationAcceptedPayload = Object.freeze({
+  message: "Se os dados puderem ser usados, a conta estará pronta. Entre para continuar.",
+});
+
+function registrationAccepted(res) {
+  return res.status(202).json(registrationAcceptedPayload);
+}
+
 app.post("/auth/register", authLimiter, async (req, res, next) => {
   try {
     const input = validate(registerSchema, req.body);
     const passwordHash = await hashPassword(input.password);
-    const { rows } = await pool.query(
+    await pool.query(
       "INSERT INTO users (id, name, email, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, name, email, created_at, updated_at",
       [randomUUID(), input.name, input.email, passwordHash],
     );
-    const user = rows[0];
-    await authenticateSession(req, user);
-    console.info(`[auth] Conta criada com sucesso: ${user.id}`);
-    return res.status(201).json(authenticatedPayload(user));
+    console.info("[Auth] accountCreated=true");
+    return registrationAccepted(res);
   } catch (error) {
-    if (error.code === "23505") return res.status(409).json({ error: "Já existe uma conta cadastrada com este e-mail." });
+    if (error.code === "23505") return registrationAccepted(res);
     return next(error);
   }
 });
@@ -200,8 +187,8 @@ app.post("/auth/login", authLimiter, async (req, res, next) => {
     const input = validate(loginSchema, req.body);
     const { rows } = await pool.query("SELECT id, name, email, password_hash, created_at, updated_at FROM users WHERE email = $1", [input.email]);
     const user = rows[0];
-    const validPassword = user && (await verifyPassword(input.password, user.password_hash));
-    if (!validPassword) return res.status(401).json({ error: "E-mail ou senha inválidos." });
+    const validPassword = await verifyPasswordForLogin(input.password, user?.password_hash);
+    if (!user || !validPassword) return res.status(401).json({ error: "E-mail ou senha inválidos." });
 
     await authenticateSession(req, user);
     return res.json(authenticatedPayload(user));
@@ -249,7 +236,8 @@ app.patch("/auth/me", requireAuth, async (req, res, next) => {
 app.post("/auth/change-password", requireAuth, authLimiter, async (req, res, next) => {
   try {
     const input = validate(changePasswordSchema, req.body, { code: "PASSWORD_VALIDATION_ERROR" });
-    await changeOwnPassword(pool, req.user.id, input);
+    await changeOwnPasswordAndRevokeSessions(pool, req.user.id, input);
+    await authenticateSession(req, req.user);
     return res.status(204).end();
   } catch (error) {
     return next(error);
@@ -354,13 +342,13 @@ app.post("/tax/estimate", requireAuth, taxCalculationLimiter, async (req, res, n
     const ncmValid = typeof req.body?.ncm === "string" && /^\d{8}$/.test(req.body.ncm);
     const ncmConfirmed = ncmValid && hasRelevantFiscalConfirmation(req.body, req.session);
     const productOrigin = ["nacional", "importado"].includes(req.body?.productOrigin) ? req.body.productOrigin : "missing_or_invalid";
-    const price = Number.isFinite(req.body?.unitValue) ? req.body.unitValue : "missing_or_invalid";
+    const priceValid = Number.isFinite(req.body?.unitValue) && req.body.unitValue > 0;
     console.info("[TaxEstimate] requested=true");
     console.info(`[TaxEstimate] configured=${taxProvider.metadata.configured}`);
     console.info(`[TaxEstimate] ncmConfirmed=${ncmConfirmed}`);
     console.info(`[TaxEstimate] ncmValid=${ncmValid}`);
     console.info(`[TaxEstimate] productOrigin=${productOrigin}`);
-    console.info(`[TaxEstimate] price=${price}`);
+    console.info(`[TaxEstimate] priceValid=${priceValid}`);
     const fieldMessages = {
       ncm: "NCM necessário: confirme um código com 8 dígitos, sem espaços ou outros caracteres.",
       productOrigin: "Selecione a origem do produto.",
@@ -384,7 +372,7 @@ app.post("/tax/estimate", requireAuth, taxCalculationLimiter, async (req, res, n
     }
     const input = parsed.data;
     const calculation = taxProvider.calculate(input);
-    console.info(`[TaxEstimate] calculated=true ncm=${calculation.ncm} version=${calculation.version}`);
+    console.info(`[TaxEstimate] calculated=true version=${calculation.version}`);
     return res.json({ calculation });
   } catch (error) {
     console.info(`[TaxEstimate] provider=IBPT code=${error.code || "UNKNOWN"}`);
@@ -492,7 +480,7 @@ app.use((error, req, res, next) => {
     ? redactFocusNFeSensitiveData(error.message, [focusNfeConfig.token])
     : error instanceof SearchApiError
       ? redactSearchApiSensitiveData(error.message, [searchApiConfig.apiKey])
-      : error.message;
+      : "details omitted";
   console.error(`[api] ${req.method} ${req.path} falhou (${error.code || "UNKNOWN"}):`, safeLogMessage);
   if (res.headersSent) return next(error);
   const status = isDatabaseError(error) ? 503 : error.status || 500;
@@ -523,7 +511,7 @@ async function startServer() {
       console.log(`Assistente de Precificação disponível em http://localhost:${config.port}`);
     });
   } catch (error) {
-    console.error(`[startup] Não foi possível iniciar o servidor (${error.code || "DATABASE_ERROR"}): ${error.message}`);
+    console.error(`[startup] Não foi possível iniciar o servidor (${error.code || "DATABASE_ERROR"}).`);
     await pool.end();
     process.exitCode = 1;
   }

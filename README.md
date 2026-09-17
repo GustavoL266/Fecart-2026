@@ -67,7 +67,7 @@ O projeto não implementa controle de estoque, pedidos, recebimentos, emissão d
 
 ### Entrada e identificação do produto
 
-O usuário cria uma conta ou entra com e-mail e senha. Em **Meu perfil**, pode atualizar nome e e-mail, alterar a senha mediante confirmação da senha atual e consultar a quantidade de produtos salvos. A sessão usa o UUID interno da conta, portanto a atualização do e-mail não encerra a sessão; duplicidades continuam bloqueadas pela restrição única do PostgreSQL. Na área do assistente, identifica o produto com nome e descrição opcional. O formulário começa com campos financeiros vazios; valores obrigatórios não são preenchidos automaticamente com zero.
+O usuário cria uma conta ou entra com e-mail e senha. Para não revelar se um e-mail já existe, o cadastro sempre devolve a mesma confirmação neutra e solicita o login; a restrição única do PostgreSQL continua sendo a autoridade sobre duplicidades. Em **Meu perfil**, pode atualizar o nome, alterar a senha mediante confirmação da senha atual e consultar a quantidade de produtos salvos. A troca de senha revoga as sessões anteriores e cria uma nova sessão somente para a requisição que concluiu a alteração. Na área do assistente, identifica o produto com nome e descrição opcional. O formulário começa com campos financeiros vazios; valores obrigatórios não são preenchidos automaticamente com zero.
 
 A sidebar organiza o preenchimento em etapas: **Produto, Fiscal, Diretos, Indiretos, Produção, Despesas, Consulta e Prazos**. A troca de etapa preserva os valores. Os módulos de abas e redimensionamento cuidam da navegação por clique, toque e teclado, além da adaptação entre desktop e celular.
 
@@ -577,12 +577,12 @@ Um banco local recém-criado começa vazio. Dados de produção não fazem parte
 | Método | Rota | Autenticação |
 | --- | --- | --- |
 | GET | `/health` | Pública; diagnóstico seguro de banco e integrações previstas no endpoint |
-| POST | `/auth/register` | Pública |
+| POST | `/auth/register` | Pública; responde `202` de forma idêntica para e-mail novo ou existente e não inicia sessão |
 | POST | `/auth/login` | Pública |
 | POST | `/auth/logout` | Sessão atual |
 | GET | `/auth/me` | Sessão atual; devolve dados públicos da conta e contagem de produtos próprios |
-| PATCH | `/auth/me` | Obrigatória; atualiza nome e e-mail somente do usuário da sessão |
-| POST | `/auth/change-password` | Obrigatória; valida a senha atual e grava somente o novo hash bcrypt |
+| PATCH | `/auth/me` | Obrigatória; atualiza somente o nome do usuário da sessão |
+| POST | `/auth/change-password` | Obrigatória; valida a senha atual, grava o novo hash bcrypt, revoga sessões anteriores e renova a atual |
 | GET | `/products` | Obrigatória |
 | GET | `/products/:id` | Obrigatória + dono |
 | GET | `/fiscal/ncms/:codigo` | Obrigatória; proxy backend para Focus NFe |
@@ -599,15 +599,15 @@ O frontend sempre envia cookies com `credentials: "include"`. Em produção, o R
 ## Verificação manual do fluxo
 
 1. Inicie banco, migrações e servidor.
-2. Acesse `http://localhost:3000` e crie uma conta.
+2. Acesse `http://localhost:3000`, crie uma conta e faça login depois da confirmação neutra do cadastro.
 3. Informe o preço médio local dos concorrentes manualmente, gere a precificação e confirme que o fluxo funciona sem consultar o provedor externo.
 4. Opcionalmente, pesquise um produto, confira os resultados e clique em **Usar como referência**; o preço individual selecionado passa a ser a referência de mercado, sem apagar a referência manual anterior.
 5. Clique em **Salvar produto**.
 6. Abra **Meus produtos**, pesquise, visualize, edite, reutilize e exclua um registro.
 7. Faça logout e login novamente: os produtos permanecem no banco.
 8. Para validar isolamento, crie outra conta e tente abrir o ID de um produto da primeira: a API responderá `Produto não encontrado`.
-9. Abra **Meu perfil**, altere nome e e-mail e confirme que o cabeçalho e um novo login refletem os dados atualizados.
-10. Em **Alterar senha**, confira confirmação divergente e senha atual incorreta antes de validar logout e login com a nova senha.
+9. Abra **Meu perfil**, altere o nome e confirme que o cabeçalho reflete o dado atualizado; o e-mail permanece somente leitura.
+10. Em **Alterar senha**, confira confirmação divergente e senha atual incorreta; depois confirme que outra sessão já aberta é recusada e que somente a sessão atual foi renovada.
 11. Confirme que **Ver meus produtos** abre o histórico e que cancelar ou fechar o modal descarta alterações não salvas.
 
 Para confirmar o usuário diretamente no banco sem revelar dados sensíveis, use uma consulta como:
@@ -708,11 +708,13 @@ Duas regras antigas de `#suggestedPrice` baseadas em viewport sobrepunham a tipo
 
 ### Segurança implementada
 
-As senhas são verificadas por bcrypt, e a sessão é regenerada na autenticação. A troca de senha exige o hash atual, gera outro hash bcrypt com os mesmos 12 rounds e preserva a sessão autenticada pelo UUID, sem retornar ou registrar senhas. Os cookies têm `HttpOnly`, `SameSite=Lax` e configuração segura em produção. As consultas SQL utilizam parâmetros; operações de produto filtram pelo proprietário e atualizações de perfil recebem o ID exclusivamente de `req.user.id`, nunca do corpo da requisição.
+As senhas são verificadas por bcrypt, inclusive por meio de um hash sentinela quando o login não encontra uma conta para reduzir diferenças de tempo. O cadastro retorna a mesma resposta para e-mail novo ou existente. A sessão é regenerada no login; ao trocar a senha, a alteração do hash e a revogação das sessões anteriores acontecem na mesma transação, e a requisição bem-sucedida recebe uma nova sessão. Os cookies têm `HttpOnly`, `SameSite=Lax` e configuração segura em produção. As consultas SQL utilizam parâmetros; operações de produto filtram pelo proprietário e atualizações de perfil recebem o ID exclusivamente de `req.user.id`, nunca do corpo da requisição.
+
+Requisições mutáveis autenticadas por cookie passam por uma verificação de mesma origem baseada em `Origin` e Fetch Metadata. O Helmet configura CSP, `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options` e política de referenciador. O backend serve somente uma lista explícita de arquivos públicos; `.env`, `.git`, documentação e configuração de deploy não são publicados.
 
 O Helmet configura CSP com scripts e estilos da própria aplicação. `style-src-attr 'none'` significa que soluções baseadas em estilos inline podem falhar em produção. Prefira classes e atributos de apresentação já tratados em CSS; os testes verificam esse contrato.
 
-As credenciais externas ficam no ambiente do servidor. As rotas usam validação e limites de chamadas. No caso de IA, há também limite de mensagem/resposta, JSON estruturado, validação de evidências e tratamento seguro de erros anteriores à rota, como JSON malformado.
+As credenciais externas ficam no ambiente do servidor. As rotas usam validação e limites de chamadas. Respostas da Gemini, SearchAPI e Focus NFe possuem limite de corpo e timeout; URLs de referências de mercado são restritas a HTTPS antes da persistência e do reuso. Logs de mercado e classificação registram comprimentos, status e contagens, não a consulta completa. No caso de IA, há também limite de mensagem/resposta, JSON estruturado, validação de evidências e tratamento seguro de erros anteriores à rota, como JSON malformado.
 
 Não conclua que uma integração está funcional apenas porque `configured` está verdadeiro. Essa informação indica presença/configuração; uma chamada pode falhar por permissão, credencial, ambiente, quota ou disponibilidade. Os guias de cada integração descrevem os diagnósticos específicos.
 
@@ -756,6 +758,8 @@ Na correção da regressão de quantidade mensal em 12/09/2026, passaram **328 t
 Na evolução de **Meu perfil** em 14/09/2026, passaram **351 testes**, lint de 82 arquivos JavaScript e build sobre a `main` atualizada. Nome e e-mail passaram a ser editáveis com validação em ambas as camadas e bloqueio de duplicidade; a senha atual é verificada antes de gerar o novo hash, e todas as consultas usam o usuário autenticado da sessão. A contagem de produtos vem do PostgreSQL sem expor registros. Uma prévia local com respostas simuladas confirmou o modal e a seção de senha nas larguras 1920, 1366, 1024, 768 e 390 px, sem estouro horizontal, além de feedback de salvamento, cancelamento, ESC, retorno de foco e navegação para **Meus Produtos**. Como este ambiente não possuía PostgreSQL nem segredo de sessão configurados, a rodada não incluiu logout/login real após a troca de senha; os contratos de banco e controlador foram cobertos por testes isolados.
 
 Na simplificação da página **Sobre** em 16/09/2026, passaram **376 testes**, lint de 84 arquivos JavaScript e build sobre a `main` atualizada. A apresentação foi condensada em hero, quatro etapas, quatro resultados principais e um aviso final; acordeões e cards promocionais redundantes foram removidos sem retirar as funcionalidades correspondentes do simulador. A prévia local confirmou grids de 4, 2 e 1 coluna em desktop, tablet e celular, respectivamente, nas larguras 1366, 768 e 390 px, sem estouro horizontal.
+
+Na auditoria de segurança de 16/09/2026, passaram **389 testes**, lint de 87 arquivos JavaScript e build. Foram corrigidos escape e URLs de referências persistidas, revogação transacional de sessões na troca de senha, proteção de mesma origem para escritas, enumeração de cadastro/login, limites de resposta da Focus NFe/SearchAPI e minimização de logs. Os testes de autorização cobrem listagem, leitura, alteração e exclusão entre duas contas, além de sessão ausente/inválida, SQLi, mass assignment, CSRF e headers. O relatório completo está em [docs/security-audit-2026-09-16.md](docs/security-audit-2026-09-16.md). `pnpm audit --prod` foi executado, mas o registro npm não pôde ser consultado porque o trust store desta máquina retornou `UNABLE_TO_VERIFY_LEAF_SIGNATURE`; a verificação TLS não foi desativada.
 
 Os testes automatizados de APIs usam respostas simuladas e não demonstram a disponibilidade das credenciais de produção. A chamada real descrita acima usou exclusivamente o `.env` local e comprova o contrato e o acesso nessa conta, não as variáveis do serviço Render. Após o deploy, execute uma vez `pnpm gemini:check` no Shell do serviço para validar a conta de produção. Um resultado com mocks precisa ser relatado como tal. Capturas, navegadores temporários e relatórios locais de uma sessão não devem ser presumidos disponíveis em outro clone.
 

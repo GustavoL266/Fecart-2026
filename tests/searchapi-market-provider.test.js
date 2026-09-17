@@ -166,6 +166,18 @@ test("rejeita configuração ausente, resposta inválida e consulta vazia", asyn
   await assert.rejects(() => applicationErrorProvider.search("produto"), { code: "SEARCHAPI_UPSTREAM_ERROR", status: 502 });
 });
 
+test("rejeita corpo excessivo do provedor antes de carregá-lo em memória", async () => {
+  let bodyRead = false;
+  const oversizedResponse = response(200, { shopping_results: [validProduct] }, new Map([["content-length", "100001"]]));
+  oversizedResponse.text = async () => { bodyRead = true; return "{}"; };
+  const provider = createSearchApiMarketProvider(
+    { apiKey: "secret" },
+    { fetchImpl: async () => oversizedResponse, logger: { info() {} } },
+  );
+  await assert.rejects(() => provider.search("produto"), { code: "SEARCHAPI_INVALID_RESPONSE", status: 502 });
+  assert.equal(bodyRead, false);
+});
+
 test("remove credenciais de logs e respostas públicas", () => {
   assert.equal(redactSearchApiSensitiveData("Authorization Bearer secret-token", ["secret-token"]), "Authorization Bearer [REDACTED]");
   const error = new SearchApiError("Falha segura.", { code: "SEARCHAPI_UNAUTHORIZED", status: 401, details: { upstreamStatus: 401, requestId: "abc" } });

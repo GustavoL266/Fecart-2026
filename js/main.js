@@ -1267,6 +1267,7 @@ async function submitLogin(event) {
 async function submitRegistration(event) {
   event.preventDefault();
   const form = event.currentTarget;
+  const email = $("#registerEmail").value.trim().toLowerCase();
   const password = $("#registerPassword").value;
   const confirmation = $("#registerPasswordConfirmation").value;
   const isValid = ["registerName", "registerEmail", "registerPassword", "registerPasswordConfirmation"].every(validateRegisterField);
@@ -1278,20 +1279,17 @@ async function submitRegistration(event) {
     setMessage($("#authMessage"), "");
     const response = await api.post("/auth/register", {
       name: $("#registerName").value.trim(),
-      email: $("#registerEmail").value.trim(),
+      email,
       password,
       passwordConfirmation: confirmation,
     }, { handleUnauthorized: false });
     form.reset();
     updatePasswordRequirements();
-    setAuthenticatedUser(response.user, response.taxEstimate);
+    $("#loginEmail").value = email;
+    showAuth("login", response.message);
+    $("#loginPassword").focus();
   } catch (error) {
-    if (error instanceof ApiError && error.status === 409) {
-      setFieldError("registerEmail", "Já existe uma conta cadastrada com este e-mail.");
-      $("#registerEmail").focus();
-    } else {
-      setMessage($("#authMessage"), messageFor(error));
-    }
+    setMessage($("#authMessage"), messageFor(error));
   } finally {
     setSubmitState(button, false, "Criar conta");
   }
