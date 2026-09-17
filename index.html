@@ -861,8 +861,10 @@
             </div>
             <div class="profile-field">
               <label for="profileEmail">E-mail</label>
-              <input id="profileEmail" class="profile-email-info" type="email" readonly disabled tabindex="-1" aria-describedby="profileEmailHint" />
-              <p id="profileEmailHint" class="helper-text">O e-mail da conta é apenas informativo e não pode ser alterado.</p>
+              <div class="profile-email-wrap" title="E-mail da conta · não editável">
+                <svg class="profile-email-lock" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /><path d="M12 14v3" /></svg>
+                <input id="profileEmail" class="profile-email-info" type="email" readonly disabled tabindex="-1" aria-label="E-mail da conta, não editável" />
+              </div>
             </div>
           </div>
         </section>

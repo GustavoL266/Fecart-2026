@@ -1815,17 +1815,6 @@ tr:last-child td {
   margin: 0;
 }
 
-.profile-dialog .profile-email-info:disabled {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-  color: var(--ink);
-  opacity: 1;
-  cursor: default;
-  pointer-events: none;
-  padding-inline: 0;
-}
-
 .profile-dialog {
   width: min(760px, calc(100% - 32px));
 }
@@ -1963,6 +1952,31 @@ tr:last-child td {
   min-height: 46px;
   border-radius: 9px;
   padding: 0 12px;
+}
+
+.profile-email-wrap {
+  position: relative;
+  min-width: 0;
+  cursor: default;
+}
+
+.profile-email-lock {
+  position: absolute;
+  inset-inline-start: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.profile-field .profile-email-info:disabled {
+  background: var(--subtle-surface);
+  color: var(--ink);
+  opacity: 1;
+  -webkit-text-fill-color: var(--ink);
+  cursor: default;
+  pointer-events: none;
+  padding-inline-start: 36px;
 }
 
 .profile-field input[aria-invalid="true"] {
