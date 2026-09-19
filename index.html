@@ -14,36 +14,39 @@
 
     <section id="authView" class="auth-view" aria-labelledby="loginTitle" hidden>
       <button type="button" class="theme-toggle auth-theme-toggle" data-theme-toggle aria-label="Ativar modo claro" aria-pressed="false"><span class="theme-symbol" aria-hidden="true">☾</span><span data-theme-label>Modo claro</span></button>
-      <div class="auth-intro">
-        <div class="brand">
-          <span class="brand-mark">PC</span>
-          <div>
-            <p class="auth-brand-name">Assistente de<br />Precificação</p>
+      <div class="auth-layout">
+        <div class="auth-intro">
+          <div class="brand">
+            <span class="brand-mark">PC</span>
+            <div>
+              <p class="auth-brand-name">Assistente de<br />Precificação</p>
+            </div>
           </div>
+          <div class="auth-intro-main">
+            <div class="auth-copy">
+              <p class="auth-kicker">Assistente de Precificação</p>
+              <h1>Decisões mais rentáveis, com <span>segurança.</span></h1>
+              <p>Calcule, salve e reutilize suas precificações em uma área exclusiva para sua conta.</p>
+            </div>
+            <div class="auth-benefits" aria-label="Benefícios da plataforma">
+              <article class="auth-benefit">
+                <span class="benefit-icon" aria-hidden="true">⌾</span>
+                <div><strong>Seus dados protegidos</strong><span>Segurança e privacidade.</span></div>
+              </article>
+              <article class="auth-benefit">
+                <span class="benefit-icon" aria-hidden="true">▥</span>
+                <div><strong>Histórico inteligente</strong><span>Acompanhe e reutilize.</span></div>
+              </article>
+              <article class="auth-benefit">
+                <span class="benefit-icon" aria-hidden="true">ϟ</span>
+                <div><strong>Mais eficiência no dia a dia</strong><span>Decida com rapidez.</span></div>
+              </article>
+            </div>
+          </div>
+          <p class="auth-footer">© 2026 Assistente de Precificação. Todos os direitos reservados.</p>
         </div>
-        <div class="auth-copy">
-          <p class="auth-kicker">Assistente de Precificação</p>
-          <h1>Decisões mais rentáveis, com <span>segurança.</span></h1>
-          <p>Calcule, salve e reutilize suas precificações em uma área exclusiva para sua conta.</p>
-        </div>
-        <div class="auth-benefits" aria-label="Benefícios da plataforma">
-          <article class="auth-benefit">
-            <span class="benefit-icon" aria-hidden="true">⌾</span>
-            <div><strong>Seus dados protegidos</strong><span>Segurança e privacidade.</span></div>
-          </article>
-          <article class="auth-benefit">
-            <span class="benefit-icon" aria-hidden="true">▥</span>
-            <div><strong>Histórico inteligente</strong><span>Acompanhe e reutilize.</span></div>
-          </article>
-          <article class="auth-benefit">
-            <span class="benefit-icon" aria-hidden="true">ϟ</span>
-            <div><strong>Mais eficiência no dia a dia</strong><span>Decida com rapidez.</span></div>
-          </article>
-        </div>
-        <p class="auth-footer">© 2026 Assistente de Precificação. Todos os direitos reservados.</p>
-      </div>
 
-      <div class="auth-card">
+        <div class="auth-card">
         <div class="auth-tabs" role="tablist" aria-label="Autenticação">
           <button id="showLoginButton" type="button" class="auth-tab active" role="tab" aria-selected="true">Entrar</button>
           <button id="showRegisterButton" type="button" class="auth-tab" role="tab" aria-selected="false">Criar conta</button>
@@ -110,6 +113,7 @@
           <button id="registerSubmitButton" type="submit" class="auth-submit"><span>Criar conta</span><span aria-hidden="true">→</span></button>
           <p class="auth-mode-hint">Já tem uma conta? <button type="button" data-auth-switch="login">Fazer login</button></p>
         </form>
+        </div>
       </div>
     </section>
 

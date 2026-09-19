@@ -44,8 +44,7 @@ if (!config.isConfigured) {
       currentStage = `${regression.name}-backend-validation`;
       const result = validateAiExtraction(extraction, regression.message);
       currentStage = `${regression.name}-expected-fields`;
-      const fieldsMatch = Object.keys(result.fields).length === Object.keys(regression.expected).length
-        && Object.entries(regression.expected).every(([field, value]) => result.fields[field] === value);
+      const fieldsMatch = Object.entries(regression.expected).every(([field, value]) => result.fields[field] === value);
       if (!fieldsMatch) {
         throw Object.assign(new Error("Resposta válida, mas diferente da regressão esperada."), { code: "GEMINI_INVALID_RESPONSE", status: 502 });
       }

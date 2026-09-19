@@ -268,6 +268,73 @@ test("normaliza totais explícitos do lote e explica a divisão na prévia", () 
   assert.match(result.summary[0].value, /0,40.*100 unidades/);
 });
 
+test("preserva campos válidos quando uma entrada conhecida falha semanticamente", () => {
+  const message = "Quero vender brigadeiros, tenho aproximadamente R$ 20 de outros custos e quero margem de 30%.";
+  const result = extract(message, [
+    entry("productName", "brigadeiros", "vender brigadeiros"),
+    entry("otherVariableCost", 20, "tenho aproximadamente R$ 20 de outros custos"),
+    entry("desiredNetMargin", 30, "margem de 30%"),
+  ]);
+  assert.deepEqual(result.fields, { productName: "brigadeiros", desiredNetMargin: 30 });
+  assert.deepEqual(result.pending.map(({ code, field }) => ({ code, field })), [
+    { code: "AI_MEANING_UNCERTAIN", field: "otherVariableCost" },
+  ]);
+});
+
+test("normaliza o alias da Gemini para outros custos sem confundir custo variável explícito", async () => {
+  const message = "Produzo 100 brigadeiros e tenho R$ 20 de outros custos nesse lote.";
+  const result = await parsePricingMessage({
+    provider: { fillMode: "partial", extract: async () => ({ entries: [entry(
+      "otherVariableCost", 20, "R$ 20 de outros custos", 100, "Produzo 100 brigadeiros",
+    )] }) },
+    input: { message },
+  });
+  assert.deepEqual(result.fields, { otherDirectExpenses: 0.2 });
+  assert.equal("otherVariableCost" in result.fields, false);
+  const variableMessage = "Gasto R$ 5 de custos variáveis por unidade.";
+  const variable = await parsePricingMessage({
+    provider: { fillMode: "partial", extract: async () => ({ entries: [entry("otherVariableCost", 5, variableMessage)] }) },
+    input: { message: variableMessage },
+  });
+  assert.deepEqual(variable.fields, { otherVariableCost: 5 });
+});
+
+test("aceita impostos sobre a venda como carga total e mantém tributos individuais bloqueados", () => {
+  const message = "Tenho aproximadamente 8% de impostos sobre a venda e margem de 25%.";
+  assert.deepEqual(extract(message, [
+    entry("taxRate", 8, "aproximadamente 8% de impostos sobre a venda"),
+    entry("desiredNetMargin", 25, "margem de 25%"),
+  ]).fields, { taxRate: 8, desiredNetMargin: 25 });
+  assert.throws(() => extract("ICMS de 8%.", [entry("taxRate", 8, "ICMS de 8%")]), invalid);
+});
+
+test("normaliza strings numéricas estritas sem aceitar texto financeiro livre", async () => {
+  const message = "Ingredientes por unidade R$ 3,50 e margem de 10%.";
+  const result = await parsePricingMessage({
+    provider: { fillMode: "partial", extract: async () => ({ entries: [
+      entry("materialCost", "R$ 3,50", "Ingredientes por unidade R$ 3,50"),
+      entry("desiredNetMargin", "10%", "margem de 10%"),
+    ] }) },
+    input: { message },
+  });
+  assert.deepEqual(result.fields, { materialCost: 3.5, desiredNetMargin: 10 });
+  await assert.rejects(() => parsePricingMessage({
+    provider: { fillMode: "partial", extract: async () => ({ entries: [entry("materialCost", "cerca de três", message)] }) },
+    input: { message },
+  }), { code: "GEMINI_INVALID_RESPONSE", status: 502 });
+});
+
+test("entrada desconhecida não invalida campos conhecidos da mesma resposta", () => {
+  const message = "Quero vender bolo e quero margem de 10%.";
+  const result = validateAiExtraction({ entries: [
+    entry("productName", "bolo", "vender bolo"),
+    entry("desiredNetMargin", 10, "margem de 10%"),
+    entry("finalPrice", 99, "vender bolo"),
+  ] }, message);
+  assert.deepEqual(result.fields, { productName: "bolo", desiredNetMargin: 10 });
+  assert.equal("finalPrice" in result.fields, false);
+});
+
 test("null é omitido e não apaga campos preenchidos", () => {
   const fields = extract("Matéria-prima por unidade R$ 20.", [entry("materialCost", 20, "Matéria-prima por unidade R$ 20"), entry("averageOrderFreight", null, "")]).fields;
   assert.deepEqual({ averageOrderFreight: 5, ...fields }, { averageOrderFreight: 5, materialCost: 20 });

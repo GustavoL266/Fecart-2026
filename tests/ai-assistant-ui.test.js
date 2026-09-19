@@ -202,6 +202,31 @@ test("análise só exibe a prévia; confirmação aplica uma única vez", async 
   assert.match(ui.elements.status.textContent, /aplicadas/);
 });
 
+test("resposta parcialmente válida exibe prévia e não aplica o campo rejeitado", async () => {
+  const message = "Quero vender brigadeiros, tenho R$ 20 de outros custos e quero margem de 30%.";
+  const provider = { fillMode: "partial", extract: async () => ({ entries: [
+    { field: "productName", value: "brigadeiros", source: "user_provided", evidence: "vender brigadeiros", basis: "not-applicable", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
+    { field: "otherVariableCost", value: 20, source: "user_provided", evidence: "R$ 20 de outros custos", basis: "unit", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
+    { field: "desiredNetMargin", value: 30, source: "user_provided", evidence: "margem de 30%", basis: "not-applicable", certainty: "certain", batchUnits: null, batchEvidence: null, correctionEvidence: null },
+  ] }) };
+  const form = controls({ otherVariableCost: "9" });
+  const ui = fixture({
+    parse: (text) => parsePricingMessage({ provider, input: { message: text } }),
+    apply: (fields) => applyAssistantFields(fields, form),
+  });
+  await ui.enter(message);
+  await ui.elements.form.emit("submit");
+  assert.equal(ui.elements.preview.hidden, false);
+  assert.ok(ui.elements.fields.children.length >= 1);
+  assert.equal(ui.applied.length, 0);
+  assert.equal(form.otherVariableCost.value, "9");
+  assert.doesNotMatch(ui.elements.status.textContent, /Não foi possível validar/);
+  await ui.elements.apply.emit("click");
+  assert.equal(form.productName.value, "brigadeiros");
+  assert.equal(form.desiredNetMargin.value, "30");
+  assert.equal(form.otherVariableCost.value, "9");
+});
+
 test("envio imediato lê o último caractere já presente no textarea", async () => {
   const calls = [];
   const ui = fixture({ parse: async (message) => { calls.push(message); return response({ desiredNetMargin: 10 }); } });

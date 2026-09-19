@@ -2196,10 +2196,10 @@ tr:last-child td {
 .auth-view {
   position: relative;
   isolation: isolate;
-  grid-template-columns: minmax(0, 1fr) minmax(520px, 680px);
-  gap: clamp(48px, 8vw, 150px);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
   overflow: hidden;
-  padding: clamp(32px, 5vw, 82px);
+  padding: clamp(32px, 5vh, 72px) clamp(32px, 4vw, 64px);
   background:
     radial-gradient(ellipse 42% 58% at 44% 47%, rgba(10, 113, 66, 0.34), transparent 70%),
     radial-gradient(ellipse 38% 42% at 9% 8%, rgba(35, 73, 54, 0.18), transparent 80%),
@@ -2221,13 +2221,33 @@ tr:last-child td {
   transform: rotate(-15deg);
 }
 
+.auth-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 680px) minmax(440px, 680px);
+  align-items: center;
+  justify-content: center;
+  gap: clamp(48px, 5vw, 110px);
+  width: min(100%, 1600px);
+  min-width: 0;
+  margin-inline: auto;
+}
+
 .auth-intro {
-  align-content: space-between;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  align-content: stretch;
   align-self: stretch;
-  gap: clamp(38px, 7vh, 110px);
-  width: min(100%, 680px);
+  gap: clamp(28px, 5vh, 72px);
+  width: 100%;
   max-width: 680px;
-  margin-left: auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.auth-intro-main {
+  display: grid;
+  align-self: center;
+  gap: clamp(32px, 5vh, 64px);
+  min-width: 0;
 }
 
 .auth-intro .brand {
@@ -2338,7 +2358,7 @@ tr:last-child td {
 }
 
 .auth-card {
-  justify-self: end;
+  justify-self: stretch;
   width: min(100%, 680px);
   border: 1px solid rgba(166, 182, 172, 0.28);
   border-radius: 36px;
@@ -2558,7 +2578,7 @@ tr:last-child td {
 }
 
 @media (max-width: 1180px) {
-  .auth-view {
+  .auth-layout {
     grid-template-columns: minmax(0, 1fr) minmax(430px, 560px);
     gap: 42px;
   }
@@ -2569,14 +2589,20 @@ tr:last-child td {
 }
 
 @media (max-width: 980px) {
-  .auth-view {
+  .auth-layout {
     grid-template-columns: 1fr;
+    align-content: start;
     gap: 34px;
   }
 
   .auth-intro {
+    grid-template-rows: auto;
     gap: 28px;
     margin: 0 auto;
+  }
+
+  .auth-intro-main {
+    gap: 28px;
   }
 
   .auth-card {
@@ -2591,11 +2617,18 @@ tr:last-child td {
 
 @media (max-width: 620px) {
   .auth-view {
-    gap: 26px;
     padding: 24px 16px 32px;
   }
 
+  .auth-layout {
+    gap: 26px;
+  }
+
   .auth-intro {
+    gap: 24px;
+  }
+
+  .auth-intro-main {
     gap: 24px;
   }
 
@@ -3858,10 +3891,14 @@ tr:last-child td {
 
   .auth-view {
     align-content: start;
-    gap: 20px;
     min-height: 100dvh;
     overflow: visible;
     padding: max(20px, env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));
+  }
+
+  .auth-layout {
+    align-content: start;
+    gap: 20px;
   }
 
   .auth-intro {
@@ -3869,6 +3906,10 @@ tr:last-child td {
     width: 100%;
     padding-right: 52px;
     text-align: left;
+  }
+
+  .auth-intro-main {
+    gap: 18px;
   }
 
   .auth-intro .brand {
@@ -5633,6 +5674,7 @@ body {
   .about-view,
   .about-content,
   .auth-view,
+  .auth-layout,
   .auth-card,
   .market-dashboard-section,
   .market-dashboard-section > *,

@@ -19,6 +19,16 @@ test("viewport permite zoom nativo e a interface nao aplica escala global", () =
   assert.doesNotMatch(scripts, /devicePixelRatio|visualViewport\.scale/);
 });
 
+test("login usa um container único centralizado para relacionar apresentação e formulário", () => {
+  assert.match(html, /<div class="auth-layout">[\s\S]*?<div class="auth-intro">[\s\S]*?<div class="auth-card">/);
+  assert.match(html, /<div class="auth-intro-main">[\s\S]*?<div class="auth-copy">[\s\S]*?<div class="auth-benefits"/);
+  assert.match(styles, /\.auth-layout\s*{[\s\S]*?grid-template-columns:\s*minmax\(0, 680px\) minmax\(440px, 680px\)[\s\S]*?width:\s*min\(100%, 1600px\)[\s\S]*?margin-inline:\s*auto/);
+  assert.match(styles, /\.auth-view\s*{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)[\s\S]*?align-items:\s*stretch/);
+  assert.match(styles, /@media \(max-width: 980px\)[\s\S]*?\.auth-layout\s*{[\s\S]*?grid-template-columns:\s*1fr/);
+  const layoutRule = styles.match(/\.auth-layout\s*{[\s\S]*?\n}/)?.[0] || "";
+  assert.doesNotMatch(layoutRule, /position:\s*absolute|transform:\s*scale|margin-(?:left|right):/);
+});
+
 test("shell preserva sidebar e dashboard lado a lado com um estágio desktop compacto", () => {
   assert.match(styles, /\.app-shell\s*{[\s\S]*?clamp\(20rem,[\s\S]*?38\.75rem[\s\S]*?minmax\(0, 1fr\)/);
 

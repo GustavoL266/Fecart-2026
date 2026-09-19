@@ -137,3 +137,61 @@ test("regressão observada: ambiguidades preservam só dados seguros", () => {
     { code: "AI_AMBIGUOUS_VALUE", field: "desiredNetMargin" },
   ]);
 });
+
+test("exemplo completo: brigadeiros mantém custos do lote e outros custos diretos", () => {
+  const message = "Quero vender brigadeiros. Gasto R$ 45 em ingredientes para produzir 100 unidades, R$ 15 em embalagens e tenho aproximadamente R$ 20 de outros custos. Quero uma margem de lucro de 30%.";
+  const result = extract(message, [
+    entry("productName", "brigadeiros", "vender brigadeiros"),
+    entry("materialCost", 45, "R$ 45 em ingredientes", 100, "produzir 100 unidades"),
+    entry("packagingCost", 15, "R$ 15 em embalagens", 100, "produzir 100 unidades"),
+    entry("otherDirectExpenses", 20, "aproximadamente R$ 20 de outros custos", 100, "produzir 100 unidades"),
+    entry("desiredNetMargin", 30, "margem de lucro de 30%"),
+  ]);
+  assert.deepEqual(result.fields, {
+    productName: "brigadeiros", materialCost: 0.45, packagingCost: 0.15,
+    otherDirectExpenses: 0.2, desiredNetMargin: 30,
+  });
+});
+
+test("exemplo completo: revenda aplica dados inequívocos e pede só a base da embalagem", () => {
+  const message = "Compro um perfume por R$ 85. Pago R$ 8 de frete, R$ 4 de embalagem e tenho uma taxa de cartão de 4%. Meus concorrentes vendem esse produto por aproximadamente R$ 149. Quero uma margem de lucro de 30%.";
+  const result = extract(message, [
+    entry("productName", "perfume", "Compro um perfume"),
+    entry("materialCost", 85, "Compro um perfume por R$ 85"),
+    entry("averageOrderFreight", 8, "R$ 8 de frete"),
+    entry("packagingCost", 4, "R$ 4 de embalagem"),
+    entry("paymentFeeRate", 4, "taxa de cartão de 4%"),
+    entry("marketPrice", 149, "concorrentes vendem esse produto por aproximadamente R$ 149"),
+    entry("desiredNetMargin", 30, "margem de lucro de 30%"),
+  ]);
+  assert.deepEqual(result.fields, {
+    productName: "perfume", materialCost: 85, averageOrderFreight: 8,
+    paymentFeeRate: 4, marketPrice: 149, desiredNetMargin: 30,
+  });
+  assert.deepEqual(result.pending.map(({ code, field }) => ({ code, field })), [
+    { code: "AI_COST_BASIS_UNKNOWN", field: "packagingCost" },
+  ]);
+});
+
+test("exemplo completo: garrafa aplica impostos totais, taxas, margem e mercado", () => {
+  const message = "Vendo uma garrafa térmica. Pago R$ 48 pelo produto, R$ 7 de frete, R$ 3,50 pela embalagem e R$ 5 de custos variáveis. Tenho aproximadamente 8% de impostos sobre a venda, 5% de taxa do cartão e quero margem de lucro de 25%. Os concorrentes vendem por cerca de R$ 99.";
+  const result = extract(message, [
+    entry("productName", "garrafa térmica", "Vendo uma garrafa térmica"),
+    entry("materialCost", 48, "Pago R$ 48 pelo produto"),
+    entry("averageOrderFreight", 7, "R$ 7 de frete"),
+    entry("packagingCost", 3.5, "R$ 3,50 pela embalagem"),
+    entry("otherVariableCost", 5, "R$ 5 de custos variáveis"),
+    entry("taxRate", 8, "aproximadamente 8% de impostos sobre a venda"),
+    entry("paymentFeeRate", 5, "5% de taxa do cartão"),
+    entry("desiredNetMargin", 25, "margem de lucro de 25%"),
+    entry("marketPrice", 99, "concorrentes vendem por cerca de R$ 99"),
+  ]);
+  assert.deepEqual(result.fields, {
+    productName: "garrafa térmica", materialCost: 48, averageOrderFreight: 7,
+    taxRate: 8, paymentFeeRate: 5, desiredNetMargin: 25, marketPrice: 99,
+  });
+  assert.deepEqual(result.pending.map(({ code, field }) => ({ code, field })), [
+    { code: "AI_COST_BASIS_UNKNOWN", field: "packagingCost" },
+    { code: "AI_COST_BASIS_UNKNOWN", field: "otherVariableCost" },
+  ]);
+});

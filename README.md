@@ -101,6 +101,8 @@ O botão **Preencher com IA** abre um modal integrado ao tema do site. A pessoa 
 
 Uma frase com custos de um lote explícito pode ser normalizada para custos unitários. Componentes mistos são normalizados separadamente antes da soma. Base ausente, ambiguidade, valor impossível ou lote sem quantidade aparecem como pendências no modal; a pessoa pode esclarecer sem reescrever a descrição. No modo completo, campos auxiliares não informados podem receber estimativas identificadas, valores manuais já presentes prevalecem sobre estimativas e somente a confirmação aplica tudo ao formulário. Na descrição inicial, `expectedMonthlyUnits` exige contexto mensal explícito e nunca é copiado do tamanho do lote nem estimado para liberar o cálculo. Quando a única pendência restante é a pergunta controlada de quantidade mensal, respostas literais como “10”, “é de 10” ou “10 por mês” usam o significado da própria pergunta e resolvem esse campo como dado do usuário.
 
+A resposta externa continua sujeita a JSON Schema, Zod, evidência literal e regras de domínio. Uma entry estrutural ou semanticamente inválida nunca chega ao formulário; quando a mesma resposta contém campos independentes válidos, esses campos formam a prévia e o item recusado vira pendência controlada. Se nada for válido, a resposta permanece um erro. Strings numéricas só são normalizadas quando todo o valor corresponde a um número brasileiro/decimal estrito; texto financeiro livre não é convertido silenciosamente.
+
 ### Salvamento e Meus produtos
 
 **Salvar produto** envia entradas ao backend, que recalcula e monta o registro autoritativo. Apenas depois de uma resposta bem-sucedida o formulário é limpo para uma nova consulta. Uma falha de salvamento não deve apagar o trabalho do usuário.
@@ -703,6 +705,8 @@ O tema possui preferência clara/escura, com verde de destaque, cards e linguage
 Os valores monetários são uma unidade visual: `R$ 25.287,10` não deve quebrar entre símbolo e número, invadir outro card ou ser truncado. A solução atual utiliza `.financial-value`, `white-space: nowrap`, `min-width: 0`, containers e `clamp()` combinado com `data-financial-size` gerado a partir do texto formatado.
 
 O grid interno do preço principal reserva aproximadamente 63% para o preço sustentável e 37% para mercado quando há espaço. Em áreas estreitas, os blocos passam para coluna. Detalhes e visualizações também consideram a largura efetiva do container, pois uma sidebar larga pode deixar pouco espaço mesmo em uma janela desktop.
+
+Na autenticação, `.auth-layout` é o container único de apresentação e formulário. Ele cresce até `1600px`, permanece centralizado e usa duas colunas relacionadas; `.auth-intro` distribui marca, conteúdo principal e rodapé dentro da altura disponível. Abaixo do breakpoint estrutural, o layout passa para uma coluna. O zoom permanece nativo: não existe `zoom`, `transform: scale()` nem JavaScript para detectar escala.
 
 Duas regras antigas de `#suggestedPrice` baseadas em viewport sobrepunham a tipografia responsiva devido à maior especificidade. Elas foram removidas. Não reintroduza uma regra de fonte por ID que anule o ajuste pelo container. Evite usar `overflow: hidden` ou reticências como solução para um valor financeiro grande.
 

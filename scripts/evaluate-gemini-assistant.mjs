@@ -1,14 +1,28 @@
 import { getAiAssistantConfig } from "../lib/config.js";
-import { finalizeAiPricingAnalysis, validateAiExtraction } from "../lib/ai-pricing-schema.js";
 import { createGeminiFormProvider, verifyGeminiModelAccess } from "../lib/gemini-form-provider.js";
 import { parsePricingMessage } from "../lib/ai-form-assistant.js";
 import { calculatePricing } from "../js/domain/pricing-calculator.js";
-import { applyAssistantFields, CAPACITY_FIELD_IDS, PRICING_FIELD_IDS, validatePricingForm } from "../js/ui/form.js";
+import { applyAssistantFields, FORM_OPTION_FIELD_IDS, PRICING_FIELD_IDS, validatePricingForm } from "../js/ui/form.js";
 
 // Fixed, non-personal prompts only. Output is intentionally limited to public
 // validated fields and controlled pending codes; raw model data/evidence is never logged.
 const cases = [
   { id: "bolo-minimal", message: "Quero vender bolo e quero margem de 10%", fields: { productName: "bolo", desiredNetMargin: 10 }, pending: [] },
+  {
+    id: "pedido-brigadeiros-completo",
+    message: "Quero vender brigadeiros. Gasto R$ 45 em ingredientes para produzir 100 unidades, R$ 15 em embalagens e tenho aproximadamente R$ 20 de outros custos. Quero uma margem de lucro de 30%.",
+    fields: { productName: "brigadeiros", materialCost: 0.45, packagingCost: 0.15, otherDirectExpenses: 0.2, desiredNetMargin: 30 }, pending: [],
+  },
+  {
+    id: "pedido-perfume-completo",
+    message: "Compro um perfume por R$ 85. Pago R$ 8 de frete, R$ 4 de embalagem e tenho uma taxa de cartão de 4%. Meus concorrentes vendem esse produto por aproximadamente R$ 149. Quero uma margem de lucro de 30%.",
+    fields: { productName: "perfume", materialCost: 85, averageOrderFreight: 8, paymentFeeRate: 4, marketPrice: 149, desiredNetMargin: 30 }, pending: ["AI_COST_BASIS_UNKNOWN"],
+  },
+  {
+    id: "pedido-garrafa-completo",
+    message: "Vendo uma garrafa térmica. Pago R$ 48 pelo produto, R$ 7 de frete, R$ 3,50 pela embalagem e R$ 5 de custos variáveis. Tenho aproximadamente 8% de impostos sobre a venda, 5% de taxa do cartão e quero margem de lucro de 25%. Os concorrentes vendem por cerca de R$ 99.",
+    fields: { productName: "garrafa térmica", materialCost: 48, averageOrderFreight: 7, taxRate: 8, paymentFeeRate: 5, desiredNetMargin: 25, marketPrice: 99 }, pending: ["AI_COST_BASIS_UNKNOWN"],
+  },
   { id: "brigadeiros-lote", message: "Faço brigadeiros, gasto R$ 40 por lote de 100 unidades e quero margem de 30%.", fields: { productName: "brigadeiros", materialCost: 0.4, desiredNetMargin: 30 }, pending: ["AI_REQUIRED_FIELD_MISSING"], ready: false },
   { id: "camiseta-complete", message: "Quero vender camiseta, pago R$ 25 por peça e quero margem de 20%.", fields: { productName: "camiseta", materialCost: 25, desiredNetMargin: 20 }, pending: ["AI_REQUIRED_FIELD_MISSING"], ready: false },
   { id: "marmita-complete", message: "Quero vender marmita, gasto R$ 12 por unidade e quero margem de 25%.", fields: { productName: "marmita", materialCost: 12, desiredNetMargin: 25 }, pending: ["AI_REQUIRED_FIELD_MISSING"], ready: false },
@@ -82,8 +96,11 @@ const selectedCases = selectedIds.size ? cases.filter(({ id }) => selectedIds.ha
 const includesExpected = (actual, expected) => Object.entries(expected).every(([field, value]) => actual[field] === value);
 const simulatorCheck = (fields) => {
   const controls = Object.fromEntries([
-    ...PRICING_FIELD_IDS, ...CAPACITY_FIELD_IDS, "productName", "productDescription",
-  ].map((id) => [id, { value: "" }]));
+    ...PRICING_FIELD_IDS, ...FORM_OPTION_FIELD_IDS, "productName", "productDescription",
+  ].map((id) => [id, { value: ({
+    laborCostMode: "automatic", freightPayer: "company", allocationMethod: "quantity",
+    capitalRateSource: "informed", discountType: "none",
+  })[id] || "" }]));
   applyAssistantFields(fields, controls);
   const validation = validatePricingForm(controls);
   if (!validation.isValid) return { formValid: false, technicalPrice: null };
@@ -149,10 +166,8 @@ try {
       }
       continue;
     }
-    let extraction;
     try {
-      extraction = await provider.extract(message);
-      const result = finalizeAiPricingAnalysis(validateAiExtraction(extraction, message), {}, config.fillMode);
+      const result = await parsePricingMessage({ provider, input: { message } });
       const simulator = simulatorCheck(result.fields);
       const pendingCodes = result.pending.map(({ code }) => code);
       const matchesExpected = !expected.error && includesExpected(result.fields, expected.fields)
@@ -170,24 +185,8 @@ try {
     } catch (error) {
       const matchesExpected = error?.code === expected.error || expected.acceptableErrors?.includes(error?.code) === true;
       if (!matchesExpected) failed = true;
-      const canonical = (value) => String(value ?? "").normalize("NFKC").toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim();
-      const safeEntries = Array.isArray(extraction?.entries) ? extraction.entries.map((entry) => {
-        let validation = "ok";
-        try { validateAiExtraction({ entries: [entry] }, message); } catch (entryError) { validation = entryError?.code || "AI_INTERNAL_ERROR"; }
-        return {
-          field: typeof entry?.field === "string" ? entry.field : null,
-          source: typeof entry?.source === "string" ? entry.source : null,
-          valueType: entry?.value === null ? "null" : typeof entry?.value,
-          basis: typeof entry?.basis === "string" ? entry.basis : null,
-          certainty: typeof entry?.certainty === "string" ? entry.certainty : null,
-          batchUnits: Number.isFinite(entry?.batchUnits) ? entry.batchUnits : null,
-          evidenceIsEmpty: entry?.evidence === "",
-          evidenceIsLiteral: typeof entry?.evidence === "string" && canonical(message).includes(canonical(entry.evidence)),
-          validation,
-        };
-      }) : undefined;
       process.stdout.write(`${JSON.stringify({
-        id, upstreamStatus: extraction ? 200 : Number.isInteger(error?.upstreamStatus) ? error.upstreamStatus : null,
+        id, upstreamStatus: Number.isInteger(error?.upstreamStatus) ? error.upstreamStatus : null,
         code: typeof error?.code === "string" ? error.code : "AI_INTERNAL_ERROR",
         status: Number.isInteger(error?.status) ? error.status : 500,
         upstreamErrorCode: Number.isInteger(error?.upstreamErrorCode) ? error.upstreamErrorCode : null,
@@ -199,7 +198,6 @@ try {
         receivedType: typeof error?.receivedType === "string" ? error.receivedType : null,
         validationRule: typeof error?.validationRule === "string" ? error.validationRule : null,
         matchesExpected,
-        ...(!matchesExpected && safeEntries ? { safeEntries } : {}),
       })}\n`);
     }
   }
