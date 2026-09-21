@@ -73,7 +73,7 @@ function fixture({ parse = async () => response({ desiredNetMargin: 20 }), apply
   const controller = createAiAssistant({
     dialog, openButtons: [openButton], parse,
     hasSession: () => session,
-    onApply: (fields) => { if (apply) apply(fields); applied.push(fields); },
+    onApply: (fields, skipped) => { if (apply) apply(fields, skipped); applied.push(fields); },
     onSearchMarket: () => { searched += 1; },
   });
   return {
@@ -548,8 +548,8 @@ test("quantidade mensal faltando aceita resposta curta no contexto da escolha", 
   assert.deepEqual(ui.applied, [{ ...previousFields, expectedMonthlyUnits: 10 }]);
 });
 
-test("campo obrigatório pode ficar em branco com aviso e aplicação parcial", async () => {
-  const issue = { code: "AI_BATCH_UNITS_REQUIRED", field: "packagingCost", message: "Quantas unidades o lote produz?" };
+test("campo realmente obrigatório pode ficar em branco com aviso e aplicação parcial", async () => {
+  const issue = { code: "AI_BATCH_UNITS_REQUIRED", field: "materialCost", message: "Quantas unidades o lote produz?" };
   const ui = fixture({ parse: async () => response({ desiredNetMargin: 20 }, [issue]) });
   await ui.enter("Margem 20%; embalagem R$ 80 por lote.");
   await ui.elements.form.emit("submit");
@@ -562,6 +562,29 @@ test("campo obrigatório pode ficar em branco com aviso e aplicação parcial", 
   assert.equal(ui.elements["clarification-form"].hidden, true);
   assert.equal(ui.elements.apply.hidden, true);
   assert.ok(descendants(ui.elements.fields).some((item) => item.textContent === "Não informado"));
+});
+
+test("campo opcional ignorado pela IA é limpo e recalculado sem interação adicional", async () => {
+  const controlsState = controls({
+    materialCost: "15", otherDirectExpenses: "9", desiredNetMargin: "10",
+  });
+  let calculatedPrice = null;
+  const issue = { code: "AI_CONFIRM_FIELD", field: "otherDirectExpenses", message: "Deseja considerar outras despesas?" };
+  const ui = fixture({
+    parse: async () => response({ materialCost: 15, desiredNetMargin: 10 }, [issue]),
+    apply: (fields, skipped) => {
+      applyAssistantFields(fields, controlsState, skipped);
+      const validation = validatePricingForm(controlsState);
+      assert.equal(validation.isValid, true);
+      calculatedPrice = calculatePricing(validation.inputs).technicalPrice;
+    },
+  });
+  await ui.enter("Insumos R$ 15, margem 10%; deixar outras despesas em branco.");
+  await ui.elements.form.emit("submit");
+  await clickButton(ui.elements["pending-list"], "Deixar em branco");
+  await ui.elements.apply.emit("click");
+  assert.equal(controlsState.otherDirectExpenses.value, "");
+  assert.equal(calculatedPrice, 16.67);
 });
 
 test("falha no esclarecimento preserva prévia anterior e texto digitado", async () => {

@@ -435,7 +435,7 @@ export function createAiAssistant({ dialog, openButtons, parse, onApply, onSearc
   function apply() {
     if (phase !== "preview" || !result || !dialog.open || !hasSession()) return;
     try {
-      const message = onApply(result.fields);
+      const message = onApply(result.fields, result.skipped);
       phase = result.pending.length ? "partial-applied" : "applied";
       const suffix = result.pending.length ? " Responda às pendências para analisar os demais dados." : "";
       showStatus(`${message || "Informações aplicadas. O simulador foi atualizado."}${suffix}`, "success");

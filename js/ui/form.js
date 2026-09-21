@@ -10,19 +10,19 @@ export const ASSISTANT_COMBINED_RATE_FIELDS = Object.freeze([
 
 const FIELD_RULES = Object.freeze({
   materialCost: { required: "Informe o custo dos insumos e da matéria-prima." },
-  wasteRate: { required: "Informe a perda ou use 0%." },
-  packagingCost: { required: "Informe o custo de embalagem ou use R$ 0." },
-  averageOrderFreight: { required: "Informe o frete médio do pedido ou use R$ 0." },
+  wasteRate: { optional: true },
+  packagingCost: { optional: true },
+  averageOrderFreight: { optional: true },
   companyFreightShare: { optional: true, nullWhenEmpty: true },
-  averageOrderUnits: { required: "Informe a quantidade média de unidades por pedido." },
+  averageOrderUnits: { optional: true, nullWhenEmpty: true },
   otherVariableCost: { optional: true },
   otherDirectExpenses: { optional: true },
   monthlyLaborCost: { optional: true, nullWhenEmpty: true },
   monthlyProductiveHours: { optional: true, nullWhenEmpty: true },
   laborHourlyCost: { optional: true, nullWhenEmpty: true },
-  productionTimeMinutes: { required: "Informe o tempo médio para produzir uma unidade." },
-  monthlyFixedCosts: { required: "Informe os custos fixos mensais ou use R$ 0." },
-  expectedMonthlyUnits: { required: "Informe a quantidade que espera produzir ou vender por mês." },
+  productionTimeMinutes: { optional: true, nullWhenEmpty: true },
+  monthlyFixedCosts: { optional: true },
+  expectedMonthlyUnits: { optional: true, nullWhenEmpty: true },
   allocationLaborHours: { optional: true, nullWhenEmpty: true },
   machineTimeMinutes: { optional: true, nullWhenEmpty: true },
   monthlyMachineHours: { optional: true, nullWhenEmpty: true },
@@ -31,7 +31,7 @@ const FIELD_RULES = Object.freeze({
   equipmentValue: { optional: true },
   equipmentUsefulLifeMonths: { optional: true, nullWhenEmpty: true },
   equipmentMaintenanceMonthly: { optional: true },
-  taxRate: { required: "Informe o percentual efetivo de impostos ou use 0%." },
+  taxRate: { optional: true },
   paymentFeeRate: { optional: true },
   commissionRate: { optional: true },
   marketplaceFeeRate: { optional: true },
@@ -39,12 +39,12 @@ const FIELD_RULES = Object.freeze({
   postSaleLossRate: { optional: true },
   minimumMargin: { optional: true, nullWhenEmpty: true },
   desiredNetMargin: { required: "Informe a margem de lucro desejada." },
-  inventoryDays: { required: "Informe os dias entre comprar ou produzir e vender." },
-  receivingDays: { required: "Informe o prazo para receber do cliente." },
-  paymentDays: { required: "Informe o prazo para pagar fornecedores." },
+  inventoryDays: { optional: true },
+  receivingDays: { optional: true },
+  paymentDays: { optional: true },
   monthlyCapitalRate: { optional: true, nullWhenEmpty: true },
-  discountRate: { optional: true },
-  fixedDiscountAmount: { optional: true },
+  discountRate: { optional: true, nullWhenEmpty: true },
+  fixedDiscountAmount: { optional: true, nullWhenEmpty: true },
   marketPrice: { optional: true, nullWhenEmpty: true },
 });
 
@@ -114,14 +114,24 @@ export function validateAssistantFields(fields) {
   return patch;
 }
 
-export function applyAssistantFields(fields, elements) {
+export function applyAssistantFields(fields, elements, skipped = {}) {
   const patch = validateAssistantFields(fields);
+  if (!skipped || typeof skipped !== "object" || Array.isArray(skipped)) throw new Error("AI_INVALID_RESPONSE");
+  const skippedIds = Object.entries(skipped).map(([fieldId, decision]) => {
+    validateAssistantFields({ [fieldId]: null });
+    if (!decision || typeof decision !== "object" || Array.isArray(decision)
+      || Object.keys(decision).length !== 2 || decision.value !== null || decision.source !== "skipped"
+      || Object.hasOwn(patch, fieldId)) throw new Error("AI_INVALID_RESPONSE");
+    return fieldId;
+  });
   for (const [fieldId, value] of Object.entries(patch)) {
     const control = elements[fieldId];
     if (!control || (control.options && !Array.from(control.options).some((option) => option.value === value))) throw new Error("AI_INVALID_RESPONSE");
   }
+  for (const fieldId of skippedIds) if (!elements[fieldId]) throw new Error("AI_INVALID_RESPONSE");
   for (const [fieldId, value] of Object.entries(patch)) elements[fieldId].value = typeof value === "number" ? assistantNumberFormatter.format(value) : value;
-  return Object.keys(patch);
+  for (const fieldId of skippedIds) elements[fieldId].value = "";
+  return [...Object.keys(patch), ...skippedIds];
 }
 
 export function parseBrazilianNumber(rawValue) {

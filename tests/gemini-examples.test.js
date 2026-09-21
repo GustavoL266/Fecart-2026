@@ -117,7 +117,6 @@ test("modo complete resolve o bolo após 'são por unidade' sem exigir que a res
   assert.equal(first.calculationReady, false);
   assert.deepEqual(first.pending.map(({ code, field }) => ({ code, field })), [
     { code: "AI_COST_BASIS_UNKNOWN", field: "materialCost" },
-    { code: "AI_REQUIRED_FIELD_MISSING", field: "expectedMonthlyUnits" },
   ]);
   assert.equal(first.sources.packagingCost, "estimated");
 
@@ -134,8 +133,8 @@ test("modo complete resolve o bolo após 'são por unidade' sem exigir que a res
     },
   } });
   assert.equal(calls, 2);
-  assert.equal(result.needsClarification, true);
-  assert.equal(result.calculationReady, false);
+  assert.equal(result.needsClarification, false);
+  assert.equal(result.calculationReady, true);
   assert.equal(result.fields.materialCost, 15);
   assert.equal("expectedMonthlyUnits" in result.fields, false);
   assert.equal(result.sources.materialCost, "user_provided");
@@ -144,7 +143,7 @@ test("modo complete resolve o bolo após 'são por unidade' sem exigir que a res
   const fields = controls();
   applyAssistantFields(result.fields, fields);
   const validation = validatePricingForm(fields);
-  assert.equal(validation.isValid, false);
+  assert.equal(validation.isValid, true);
 });
 
 test("modo complete resolve '15 reais de um lote de 3' usando o contexto e preserva estimativas", async () => {
@@ -188,11 +187,9 @@ test("modo complete resolve '15 reais de um lote de 3' usando o contexto e prese
   assert.equal(result.fields.packagingCost, 1);
   assert.equal(result.sources.packagingCost, "estimated");
   assert.equal(result.sources.materialCost, "user_provided");
-  assert.deepEqual(result.pending.map(({ code, field }) => ({ code, field })), [
-    { code: "AI_REQUIRED_FIELD_MISSING", field: "expectedMonthlyUnits" },
-  ]);
-  assert.equal(result.needsClarification, true);
-  assert.equal(result.calculationReady, false);
+  assert.deepEqual(result.pending, []);
+  assert.equal(result.needsClarification, false);
+  assert.equal(result.calculationReady, true);
 });
 
 for (const answer of ["10", "é 10", "é de 10", "10 por mês", "produzo 10 mensalmente", "É DE 10"]) {
@@ -216,7 +213,7 @@ for (const answer of ["10", "é 10", "é de 10", "10 por mês", "produzo 10 mens
         return { entries: [entry("expectedMonthlyUnits", 10, answer)] };
       },
     };
-    const first = await parsePricingMessage({ provider, input: { message, currentFields: completeCurrentFields() } });
+    const first = await parsePricingMessage({ provider, input: { message, currentFields: completeCurrentFields({ monthlyFixedCosts: 1000 }) } });
     assert.deepEqual(first.pending.map(({ code, field }) => ({ code, field })), [
       { code: "AI_REQUIRED_FIELD_MISSING", field: "expectedMonthlyUnits" },
     ]);
@@ -283,21 +280,21 @@ for (const scenario of [
     expectedMaterial: 12,
   },
 ]) {
-  test(`modo complete preserva fontes e mantém escala mensal ausente — ${scenario.name}`, async () => {
+  test(`modo complete preserva fontes e aceita escala mensal ausente sem custos para ratear — ${scenario.name}`, async () => {
     const provider = { fillMode: "complete", extract: async () => ({ entries: [
       ...scenario.userEntries,
       ...completeEstimates(scenario.estimates),
     ] }) };
     const result = await parsePricingMessage({ provider, input: { message: scenario.message, currentFields: completeCurrentFields() } });
-    assert.equal(result.calculationReady, false);
-    assert.equal(result.needsClarification, true);
-    assert.equal(result.pending.some(({ code, field }) => code === "AI_REQUIRED_FIELD_MISSING" && field === "expectedMonthlyUnits"), true);
+    assert.equal(result.calculationReady, true);
+    assert.equal(result.needsClarification, false);
+    assert.equal(result.pending.some(({ code, field }) => code === "AI_REQUIRED_FIELD_MISSING" && field === "expectedMonthlyUnits"), false);
     assert.equal(result.fields.materialCost, scenario.expectedMaterial);
     assert.equal(result.sources.materialCost, "user_provided");
     assert.equal(result.sources.packagingCost, "estimated");
     const fields = controls();
     applyAssistantFields(result.fields, fields);
     const validation = validatePricingForm(fields);
-    assert.equal(validation.isValid, false);
+    assert.equal(validation.isValid, true);
   });
 }

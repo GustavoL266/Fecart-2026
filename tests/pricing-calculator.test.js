@@ -102,8 +102,8 @@ test("valida negativos, denominadores, bases condicionais e não corrige valores
   assert.match(validatePricingInputs(cost100({ materialCost: -1 })).errors.materialCost, /não pode ser negativo/);
   assert.match(validatePricingInputs(cost100({ averageOrderUnits: 0 })).errors.averageOrderUnits, /maior que zero/);
   assert.match(validatePricingInputs(cost100({ desiredNetMargin: 0.9, taxRate: 0.1 })).errors.desiredNetMargin, /menor que 100%/);
-  assert.match(validatePricingInputs(cost100({ freightPayer: "shared" })).errors.companyFreightShare, /Informe/);
-  assert.match(validatePricingInputs(cost100({ allocationMethod: "machine-hours" })).errors.machineTimeMinutes, /Informe/);
+  assert.match(validatePricingInputs(cost100({ averageOrderFreight: 10, freightPayer: "shared" })).errors.companyFreightShare, /Informe/);
+  assert.match(validatePricingInputs(cost100({ monthlyFixedCosts: 100, allocationMethod: "machine-hours" })).errors.machineTimeMinutes, /Informe/);
   assert.match(validatePricingInputs(cost100({ equipmentValue: 1000 })).errors.equipmentUsefulLifeMonths, /Informe/);
   assert.throws(() => calculatePricing(cost100({ monthlyCapitalRate: Infinity, capitalRateSource: "informed" })), PricingValidationError);
 });

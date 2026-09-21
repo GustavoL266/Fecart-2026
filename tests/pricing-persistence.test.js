@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { authoritativeProductSnapshot } from "../lib/pricing-persistence.js";
 import { calculatePricing, PricingValidationError } from "../js/domain/pricing-calculator.js";
+import { EMPTY_OPTIONAL_FIELD_IDS } from "../lib/validation.js";
 
 const inputs = { materialCost: 18.5, wasteRate: 0.05, packagingCost: 3.5, deliveryCost: 4, insuranceCost: 0.5, otherDirectExpenses: 1.5, monthlyPayroll: 12000, monthlyFixedCosts: 8000, expectedMonthlyUnits: 2000, taxRate: 0.06, paymentFeeRate: 0.028, commissionRate: 0.05, desiredNetMargin: 0.2, inventoryDays: 10, receivingDays: 7, paymentDays: 30, monthlyCapitalRate: 0.02, fiscalContext: { ncmCode: "18061000" } };
 
@@ -17,6 +18,29 @@ test("servidor ignora derivados adulterados e devolve snapshot v7 autoritativo",
 
 test("backend repete a validação e não deixa preço existir com input inválido", () => {
   assert.throws(() => authoritativeProductSnapshot({ name: "X", description: "", category: "C", pricing: { inputs: { ...inputs, expectedMonthlyUnits: 0 }, market: {} } }), PricingValidationError);
+});
+
+test("backend salva cálculo v7 com opcionais ausentes e preserva a lista validada", () => {
+  const minimalInputs = {
+    materialCost: 15,
+    desiredNetMargin: 0.1,
+    laborCostMode: "automatic",
+    freightPayer: "company",
+    allocationMethod: "quantity",
+    capitalRateSource: "informed",
+    discountType: "none",
+    fiscalContext: {},
+  };
+  const snapshot = authoritativeProductSnapshot({
+    name: "Produto mínimo",
+    description: "",
+    category: "Outros",
+    pricing: { inputs: minimalInputs, market: {}, emptyOptionalFields: [...EMPTY_OPTIONAL_FIELD_IDS] },
+  });
+  assert.equal(snapshot.suggestedPrice, 16.67);
+  assert.equal(snapshot.calculationData.inputs.taxRate, 0);
+  assert.equal(snapshot.calculationData.inputs.expectedMonthlyUnits, 1);
+  assert.deepEqual(snapshot.calculationData.emptyOptionalFields, EMPTY_OPTIONAL_FIELD_IDS);
 });
 
 test("NCM só é salvo como Focus validado se o código e a prova coincidem", () => {

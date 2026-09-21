@@ -15,27 +15,23 @@ export class PricingValidationError extends Error {
 
 const requiredNumbers = Object.freeze({
   materialCost: { min: 0, label: "O custo dos insumos e da matéria-prima" },
-  wasteRate: { min: 0, maxExclusive: 1, label: "A perda e o desperdício" },
-  packagingCost: { min: 0, label: "O custo de embalagem" },
-  averageOrderFreight: { min: 0, label: "O frete médio do pedido" },
-  averageOrderUnits: { minExclusive: 0, label: "A quantidade média de unidades por pedido" },
-  productionTimeMinutes: { min: 0, label: "O tempo médio para produzir uma unidade" },
-  monthlyFixedCosts: { min: 0, label: "Os custos fixos mensais" },
-  expectedMonthlyUnits: { minExclusive: 0, label: "A quantidade mensal esperada" },
-  taxRate: { min: 0, maxExclusive: 1, label: "O percentual efetivo de impostos sobre a venda" },
   desiredNetMargin: { min: 0, maxExclusive: 1, label: "A margem de lucro desejada" },
-  inventoryDays: { min: 0, label: "O prazo entre comprar ou produzir e vender" },
-  receivingDays: { min: 0, label: "O prazo para receber do cliente" },
-  paymentDays: { min: 0, label: "O prazo para pagar fornecedores" },
 });
 
 const optionalNumbers = Object.freeze({
+  wasteRate: { defaultValue: 0, min: 0, maxExclusive: 1, label: "A perda e o desperdício" },
+  packagingCost: { defaultValue: 0, min: 0, label: "O custo de embalagem" },
+  averageOrderFreight: { defaultValue: 0, min: 0, label: "O frete médio do pedido" },
+  averageOrderUnits: { defaultValue: null, minExclusive: 0, label: "A quantidade média de unidades por pedido" },
   companyFreightShare: { defaultValue: null, min: 0, maxInclusive: 1, label: "O percentual do frete pago pela empresa" },
   otherVariableCost: { defaultValue: 0, min: 0, label: "Os outros custos variáveis de produção" },
   otherDirectExpenses: { defaultValue: 0, min: 0, label: "As outras despesas diretas" },
-  monthlyLaborCost: { defaultValue: null, min: 0, label: "O custo mensal da mão de obra de produção" },
+  monthlyLaborCost: { defaultValue: 0, min: 0, label: "O custo mensal da mão de obra de produção" },
   monthlyProductiveHours: { defaultValue: null, minExclusive: 0, label: "As horas produtivas totais da equipe" },
-  laborHourlyCost: { defaultValue: null, min: 0, label: "O custo da mão de obra por hora" },
+  laborHourlyCost: { defaultValue: 0, min: 0, label: "O custo da mão de obra por hora" },
+  productionTimeMinutes: { defaultValue: 0, min: 0, label: "O tempo médio para produzir uma unidade" },
+  monthlyFixedCosts: { defaultValue: 0, min: 0, label: "Os custos fixos mensais" },
+  expectedMonthlyUnits: { defaultValue: null, minExclusive: 0, label: "A quantidade mensal esperada" },
   allocationLaborHours: { defaultValue: null, minExclusive: 0, label: "As horas totais de mão de obra para rateio" },
   machineTimeMinutes: { defaultValue: null, min: 0, label: "O tempo de máquina por unidade" },
   monthlyMachineHours: { defaultValue: null, minExclusive: 0, label: "As horas totais de máquina no mês" },
@@ -50,7 +46,11 @@ const optionalNumbers = Object.freeze({
   fixedFeePerOrder: { defaultValue: 0, min: 0, label: "A taxa fixa por pedido" },
   postSaleLossRate: { defaultValue: 0, min: 0, maxExclusive: 1, label: "As perdas pós-venda" },
   minimumMargin: { defaultValue: null, min: 0, maxExclusive: 1, label: "A margem mínima" },
-  monthlyCapitalRate: { defaultValue: null, min: 0, maxExclusive: 1, label: "O custo mensal do capital" },
+  taxRate: { defaultValue: 0, min: 0, maxExclusive: 1, label: "O percentual efetivo de impostos sobre a venda" },
+  inventoryDays: { defaultValue: 0, min: 0, label: "O prazo entre comprar ou produzir e vender" },
+  receivingDays: { defaultValue: 0, min: 0, label: "O prazo para receber do cliente" },
+  paymentDays: { defaultValue: 0, min: 0, label: "O prazo para pagar fornecedores" },
+  monthlyCapitalRate: { defaultValue: 0, min: 0, maxExclusive: 1, label: "O custo mensal do capital" },
   discountRate: { defaultValue: 0, min: 0, maxExclusive: 1, label: "O desconto planejado" },
   fixedDiscountAmount: { defaultValue: 0, min: 0, label: "O desconto planejado" },
   marketPrice: { defaultValue: null, minExclusive: 0, label: "A referência de mercado" },
@@ -149,6 +149,14 @@ function requireConditionalNumber(normalized, errors, key, rule) {
   if (issue) errors[key] = numberMessage(rule, issue);
 }
 
+function requireConditionalInputNumber(input, normalized, errors, key, rule) {
+  if (optionalValue(input[key]) === null) {
+    errors[key] = numberMessage(rule, "required");
+    return;
+  }
+  requireConditionalNumber(normalized, errors, key, rule);
+}
+
 /** Validate normalized, typed domain inputs. Rates are fractions, never percentages. */
 export function validatePricingInputs(rawInput = {}) {
   rawInput = rawInput && typeof rawInput === "object" ? rawInput : {};
@@ -182,55 +190,81 @@ export function validatePricingInputs(rawInput = {}) {
   normalized.productionCapacity = normalizedCapacity(input, errors);
   normalized.fiscalContext = input.fiscalContext && typeof input.fiscalContext === "object" ? input.fiscalContext : {};
 
+  const averageOrderUnitsProvided = optionalValue(input.averageOrderUnits) !== null;
+  const expectedMonthlyUnitsProvided = optionalValue(input.expectedMonthlyUnits) !== null;
+  const monthlyProductiveHoursProvided = optionalValue(input.monthlyProductiveHours) !== null;
+  const hasOrderBasedCost = normalized.averageOrderFreight > 0 || normalized.fixedFeePerOrder > 0;
+  const hasAllocatableMonthlyCost = normalized.monthlyFixedCosts > 0 || normalized.equipmentValue > 0
+    || normalized.equipmentMaintenanceMonthly > 0;
+
+  if (hasOrderBasedCost) requireConditionalInputNumber(input, normalized, errors, "averageOrderUnits", optionalNumbers.averageOrderUnits);
+  else if (!averageOrderUnitsProvided) normalized.averageOrderUnits = 1;
+
   if (normalized.freightPayer === "shared") {
-    requireConditionalNumber(normalized, errors, "companyFreightShare", optionalNumbers.companyFreightShare);
+    if (normalized.averageOrderFreight > 0) requireConditionalInputNumber(input, normalized, errors, "companyFreightShare", optionalNumbers.companyFreightShare);
+    else if (normalized.companyFreightShare === null) normalized.companyFreightShare = 0;
   } else if (normalized.freightPayer === "company") normalized.companyFreightShare = 1;
   else if (normalized.freightPayer === "customer") normalized.companyFreightShare = 0;
 
   if (normalized.laborCostMode === "automatic") {
-    requireConditionalNumber(normalized, errors, "monthlyLaborCost", optionalNumbers.monthlyLaborCost);
-    requireConditionalNumber(normalized, errors, "monthlyProductiveHours", optionalNumbers.monthlyProductiveHours);
+    if (normalized.monthlyLaborCost > 0) {
+      requireConditionalInputNumber(input, normalized, errors, "monthlyProductiveHours", optionalNumbers.monthlyProductiveHours);
+      requireConditionalInputNumber(input, normalized, errors, "productionTimeMinutes", { ...optionalNumbers.productionTimeMinutes, minExclusive: 0 });
+    }
   } else if (normalized.laborCostMode === "manual") {
-    requireConditionalNumber(normalized, errors, "laborHourlyCost", optionalNumbers.laborHourlyCost);
+    if (normalized.laborHourlyCost > 0) {
+      requireConditionalInputNumber(input, normalized, errors, "productionTimeMinutes", { ...optionalNumbers.productionTimeMinutes, minExclusive: 0 });
+    }
   }
 
-  if (normalized.allocationMethod === "labor-hours") {
-    if (normalized.laborCostMode !== "automatic") requireConditionalNumber(normalized, errors, "allocationLaborHours", optionalNumbers.allocationLaborHours);
+  if (hasAllocatableMonthlyCost && normalized.allocationMethod === "quantity") {
+    requireConditionalInputNumber(input, normalized, errors, "expectedMonthlyUnits", optionalNumbers.expectedMonthlyUnits);
+  }
+  if (normalized.legacyMonthlyPayroll > 0) {
+    requireConditionalInputNumber(input, normalized, errors, "expectedMonthlyUnits", optionalNumbers.expectedMonthlyUnits);
+  }
+  if (hasAllocatableMonthlyCost && normalized.allocationMethod === "labor-hours") {
+    requireConditionalInputNumber(input, normalized, errors, "productionTimeMinutes", { ...optionalNumbers.productionTimeMinutes, minExclusive: 0 });
+    if (normalized.laborCostMode !== "automatic") requireConditionalInputNumber(input, normalized, errors, "allocationLaborHours", optionalNumbers.allocationLaborHours);
+    else requireConditionalInputNumber(input, normalized, errors, "monthlyProductiveHours", optionalNumbers.monthlyProductiveHours);
     const available = normalized.laborCostMode === "automatic" ? normalized.monthlyProductiveHours : normalized.allocationLaborHours;
     const required = normalized.productionTimeMinutes * normalized.expectedMonthlyUnits / 60;
-    if (typeof available === "number" && typeof required === "number" && required > available + 1e-12) {
+    if (expectedMonthlyUnitsProvided && typeof available === "number" && typeof required === "number" && required > available + 1e-12) {
       const field = normalized.laborCostMode === "automatic" ? "monthlyProductiveHours" : "allocationLaborHours";
       errors[field] = "As horas usadas por este produto no mês ultrapassam as horas totais informadas para o rateio.";
     }
   }
-  if (normalized.allocationMethod === "machine-hours") {
-    requireConditionalNumber(normalized, errors, "machineTimeMinutes", { ...optionalNumbers.machineTimeMinutes, minExclusive: 0 });
-    requireConditionalNumber(normalized, errors, "monthlyMachineHours", optionalNumbers.monthlyMachineHours);
+  if (hasAllocatableMonthlyCost && normalized.allocationMethod === "machine-hours") {
+    requireConditionalInputNumber(input, normalized, errors, "machineTimeMinutes", { ...optionalNumbers.machineTimeMinutes, minExclusive: 0 });
+    requireConditionalInputNumber(input, normalized, errors, "monthlyMachineHours", optionalNumbers.monthlyMachineHours);
     const required = normalized.machineTimeMinutes * normalized.expectedMonthlyUnits / 60;
-    if (typeof normalized.monthlyMachineHours === "number" && typeof required === "number" && required > normalized.monthlyMachineHours + 1e-12) {
+    if (expectedMonthlyUnitsProvided && typeof normalized.monthlyMachineHours === "number" && typeof required === "number" && required > normalized.monthlyMachineHours + 1e-12) {
       errors.monthlyMachineHours = "As horas de máquina usadas por este produto ultrapassam o total mensal informado.";
     }
   }
-  if (normalized.allocationMethod === "revenue") {
-    requireConditionalNumber(normalized, errors, "monthlyBusinessRevenue", optionalNumbers.monthlyBusinessRevenue);
-    requireConditionalNumber(normalized, errors, "monthlyProductRevenue", { ...optionalNumbers.monthlyProductRevenue, minExclusive: 0 });
+  if (hasAllocatableMonthlyCost && normalized.allocationMethod === "revenue") {
+    requireConditionalInputNumber(input, normalized, errors, "monthlyBusinessRevenue", optionalNumbers.monthlyBusinessRevenue);
+    requireConditionalInputNumber(input, normalized, errors, "monthlyProductRevenue", { ...optionalNumbers.monthlyProductRevenue, minExclusive: 0 });
+    requireConditionalInputNumber(input, normalized, errors, "expectedMonthlyUnits", optionalNumbers.expectedMonthlyUnits);
     if (typeof normalized.monthlyBusinessRevenue === "number" && typeof normalized.monthlyProductRevenue === "number"
       && normalized.monthlyProductRevenue > normalized.monthlyBusinessRevenue) {
       errors.monthlyProductRevenue = "O faturamento mensal deste produto não pode superar o faturamento mensal total da empresa.";
     }
   }
-  if (normalized.equipmentValue > 0) requireConditionalNumber(normalized, errors, "equipmentUsefulLifeMonths", optionalNumbers.equipmentUsefulLifeMonths);
+  if (normalized.equipmentValue > 0) requireConditionalInputNumber(input, normalized, errors, "equipmentUsefulLifeMonths", optionalNumbers.equipmentUsefulLifeMonths);
+
+  if (!expectedMonthlyUnitsProvided && !errors.expectedMonthlyUnits) normalized.expectedMonthlyUnits = 1;
+  if (!monthlyProductiveHoursProvided && !errors.monthlyProductiveHours) normalized.monthlyProductiveHours = 1;
 
   if (normalized.capitalRateSource === "zero") normalized.monthlyCapitalRate = 0;
-  else requireConditionalNumber(normalized, errors, "monthlyCapitalRate", optionalNumbers.monthlyCapitalRate);
 
   if (normalized.discountType === "none") {
     if (normalized.discountRate > 0 || normalized.fixedDiscountAmount > 0) errors.discountType = "Selecione o tipo de desconto correspondente ao valor informado.";
   } else if (normalized.discountType === "percentage") {
-    requireConditionalNumber(normalized, errors, "discountRate", { ...optionalNumbers.discountRate, minExclusive: 0 });
+    requireConditionalInputNumber(input, normalized, errors, "discountRate", { ...optionalNumbers.discountRate, minExclusive: 0 });
     if (normalized.fixedDiscountAmount > 0) errors.fixedDiscountAmount = "Use apenas o desconto percentual selecionado.";
   } else if (normalized.discountType === "fixed") {
-    requireConditionalNumber(normalized, errors, "fixedDiscountAmount", { ...optionalNumbers.fixedDiscountAmount, minExclusive: 0 });
+    requireConditionalInputNumber(input, normalized, errors, "fixedDiscountAmount", { ...optionalNumbers.fixedDiscountAmount, minExclusive: 0 });
     if (normalized.discountRate > 0) errors.discountRate = "Use apenas o desconto fixo selecionado.";
   }
 
@@ -388,7 +422,9 @@ export function calculatePricing(input, marketReference = null) {
 
   const equipmentDepreciationMonthly = inputs.equipmentValue > 0 ? inputs.equipmentValue / inputs.equipmentUsefulLifeMonths : 0;
   const equipmentMonthlyCost = equipmentDepreciationMonthly + inputs.equipmentMaintenanceMonthly;
-  const factor = allocationFactor(inputs);
+  const hasAllocatableMonthlyCost = inputs.monthlyFixedCosts > 0 || inputs.equipmentValue > 0
+    || inputs.equipmentMaintenanceMonthly > 0;
+  const factor = hasAllocatableMonthlyCost ? allocationFactor(inputs) : 0;
   const fixedCostPerUnit = inputs.monthlyFixedCosts * factor + inputs.legacyMonthlyPayroll / inputs.expectedMonthlyUnits;
   const equipmentCostPerUnit = equipmentMonthlyCost * factor;
   const indirectCost = fixedCostPerUnit + equipmentCostPerUnit;

@@ -2,13 +2,26 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { calculatePricing } from "../js/domain/pricing-calculator.js";
 import { ConfiguredTaxRuleEngine } from "../js/domain/tax-rule-engine.js";
-import { renderDashboard } from "../js/ui/dashboard.js";
+import { renderDashboard, renderIncompleteDashboard } from "../js/ui/dashboard.js";
 
 function documentStub() {
   const nodes = new Map();
   return { nodes, querySelector(selector) { if (!nodes.has(selector)) nodes.set(selector, { classList: { toggle() {} }, hidden: false, innerHTML: "", textContent: "", value: 0, setAttribute() {} }); return nodes.get(selector); } };
 }
 const inputs = { materialCost: 10, wasteRate: 0, packagingCost: 1, deliveryCost: 1, monthlyPayroll: 100, monthlyFixedCosts: 100, expectedMonthlyUnits: 100, taxRate: 0.06, paymentFeeRate: 0.02, commissionRate: 0.03, desiredNetMargin: 0.2, inventoryDays: 0, receivingDays: 0, paymentDays: 0, monthlyCapitalRate: 0, fiscalContext: {} };
+
+test("dashboard lista as pendências reais em vez de mensagem genérica", () => {
+  const document = documentStub();
+  renderIncompleteDashboard(document, { status: "idle", items: [], tax: { status: "idle" } }, {
+    materialCost: "Informe o custo dos insumos e da matéria-prima.",
+    desiredNetMargin: "Informe a margem de lucro desejada.",
+  });
+  assert.match(document.nodes.get("#recommendationText").textContent, /custo dos insumos/);
+  assert.match(document.nodes.get("#recommendationText").textContent, /margem de lucro desejada/);
+  assert.match(document.nodes.get("#alerts").innerHTML, /<li>Informe o custo dos insumos/);
+  assert.match(document.nodes.get("#alerts").innerHTML, /<li>Informe a margem de lucro desejada/);
+  assert.match(document.nodes.get("#marketStatus").textContent, /opcional/);
+});
 
 test("dashboard lê o resultado canônico e distingue produto individual", () => {
   const selectedProduct = { id: "produto-1", title: "Produto principal", price: 30, source: "Loja Exemplo", seller: "Loja Exemplo", currency: "BRL", image: "https://example.com/image.jpg", url: "https://example.com/product", rating: 4.7, reviews: 120, consultedAt: "2026-09-02T12:00:00.000Z" };

@@ -254,16 +254,22 @@ function renderMarketPanel(document, marketState) {
 
 export function renderIncompleteDashboard(document, marketState, errors) {
   const count = Object.keys(errors).length;
+  const pending = [...new Set(Object.values(errors))];
+  const pendingItems = pending.map((message) => `<li>${escapeHtml(message)}</li>`).join("");
   ["baseCost", "marketReferencePrice", "suggestedPrice", "profitPerSale", "estimatedMargin", "breakEvenPrice", "minimumMarginPrice", "desiredMarginPrice", "advertisedPrice", "postDiscountPrice", "detailSuggestedPrice", "detailBreakEvenPrice", "detailMinimumMarginPrice", "detailDesiredMarginPrice", "detailAdvertisedPrice", "detailPostDiscountPrice", "detailBaseCost", "detailSalesRate", "detailProfit", "detailMargin"].forEach((id) => { const node = document.querySelector(`#${id}`); if (node) node.textContent = "—"; });
   ["minimumMarginPriceRow", "advertisedPriceRow", "postDiscountPriceRow", "detailMinimumMarginCard", "detailAdvertisedPriceCard", "detailPostDiscountPriceCard"].forEach((id) => { const node = document.querySelector(`#${id}`); if (node) node.hidden = true; });
   document.querySelector("#priceStatus").textContent = "Aguardando dados válidos";
-  document.querySelector("#recommendationText").textContent = "Corrija os campos indicados para calcular e salvar.";
+  document.querySelector("#recommendationText").textContent = pending.length
+    ? `Para calcular, resolva: ${pending.join(" ")}`
+    : "Informe os dados indispensáveis para calcular.";
   document.querySelector("#marketStatus").textContent = "Mercado é opcional e será comparado quando houver referência válida.";
   document.querySelector("#alertCount").textContent = `${count} ${count === 1 ? "campo pendente" : "campos pendentes"}`;
   document.querySelector("#alertSummary").textContent = "O cálculo e o salvamento estão bloqueados.";
-  document.querySelector("#explanationList").innerHTML = "<li>Preencha os campos obrigatórios sem corrigir valores silenciosamente.</li>";
+  document.querySelector("#explanationList").innerHTML = pendingItems || "<li>Informe os dados indispensáveis para calcular.</li>";
   document.querySelector("#costRows").innerHTML = '<tr><td colspan="4">O detalhamento usa o resultado canônico após a validação.</td></tr>';
-  document.querySelector("#alerts").innerHTML = "<div class=\"warning\">Corrija os campos indicados.</div>";
+  document.querySelector("#alerts").innerHTML = pending.length
+    ? `<div class="warning"><strong>Para calcular, resolva:</strong><ul>${pendingItems}</ul></div>`
+    : "<div class=\"warning\">Informe os dados indispensáveis para calcular.</div>";
   document.querySelector("#fiscalSummary").innerHTML = "<p>O contexto fiscal será preservado sem inventar alíquotas.</p>";
   document.querySelector("#primaryMarketValue").hidden = true;
   document.querySelector("#primaryPriceCard").classList.toggle("has-market-reference", false);

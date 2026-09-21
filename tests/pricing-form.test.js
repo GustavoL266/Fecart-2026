@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
-  clearPricingInputs, FORM_OPTION_FIELD_IDS, parseBrazilianNumber, PRICING_FIELD_IDS, validatePricingForm,
+  clearPricingInputs, FORM_OPTION_FIELD_IDS, parseBrazilianNumber, PRICING_FIELD_IDS, REQUIRED_PRICING_FIELD_IDS, validatePricingForm,
 } from "../js/ui/form.js";
+import { calculatePricing } from "../js/domain/pricing-calculator.js";
 
 const values = {
   materialCost: "18,50", wasteRate: "5", packagingCost: "3,50",
@@ -68,6 +69,56 @@ test("converte percentuais, opções e vazios para o contrato canônico", () => 
   assert.ok(validation.emptyOptionalFields.includes("otherDirectExpenses"));
 });
 
+test("aceita todos os campos opcionais preenchidos com valores válidos", () => {
+  const validation = validatePricingForm(elementsFor({
+    companyFreightShare: "50", otherVariableCost: "1", otherDirectExpenses: "1",
+    laborHourlyCost: "10", allocationLaborHours: "160", machineTimeMinutes: "10", monthlyMachineHours: "160",
+    monthlyBusinessRevenue: "10000", monthlyProductRevenue: "1000", equipmentValue: "1000",
+    equipmentUsefulLifeMonths: "60", equipmentMaintenanceMonthly: "10", marketplaceFeeRate: "1",
+    fixedFeePerOrder: "1", postSaleLossRate: "1", minimumMargin: "10", discountRate: "5",
+    fixedDiscountAmount: "5", marketPrice: "30",
+  }));
+  assert.equal(validation.isValid, true);
+  assert.deepEqual(validation.emptyOptionalFields, []);
+});
+
+test("calcula com vários opcionais vazios usando somente neutros matemáticos", () => {
+  const optionalBlanks = Object.fromEntries(PRICING_FIELD_IDS
+    .filter((id) => !REQUIRED_PRICING_FIELD_IDS.includes(id))
+    .map((id) => [id, ""]));
+  const validation = validatePricingForm(elementsFor({
+    ...optionalBlanks,
+    materialCost: "15", wasteRate: "2", packagingCost: "2", desiredNetMargin: "10",
+  }));
+  assert.equal(validation.isValid, true);
+  assert.equal(validation.inputs.taxRate, 0);
+  assert.equal(validation.inputs.monthlyFixedCosts, 0);
+  assert.equal(validation.inputs.expectedMonthlyUnits, 1);
+  assert.equal(validation.inputs.averageOrderUnits, 1);
+  assert.equal(validation.inputs.marketPrice, null);
+  assert.equal(calculatePricing(validation.inputs).technicalPrice, 19.23);
+});
+
+test("opcional vazio é permitido, mas opcional preenchido com texto inválido continua sendo erro", () => {
+  assert.equal(validatePricingForm(elementsFor({ commissionRate: "" })).errors.commissionRate, undefined);
+  assert.equal(validatePricingForm(elementsFor({ commissionRate: "abc" })).errors.commissionRate, "Informe um número válido, sem notação científica.");
+});
+
+test("custo fixo zero não exige quantidade mensal, mas custo para ratear exige divisor", () => {
+  const neutral = validatePricingForm(elementsFor({ monthlyFixedCosts: "0", expectedMonthlyUnits: "" }));
+  assert.equal(neutral.isValid, true);
+  assert.equal(neutral.inputs.expectedMonthlyUnits, 1);
+  const allocated = validatePricingForm(elementsFor({ monthlyFixedCosts: "100", expectedMonthlyUnits: "" }));
+  assert.equal(allocated.isValid, false);
+  assert.match(allocated.errors.expectedMonthlyUnits, /quantidade mensal esperada/i);
+});
+
+test("somente os dados sempre indispensáveis bloqueiam quando vazios", () => {
+  assert.deepEqual(REQUIRED_PRICING_FIELD_IDS, ["materialCost", "desiredNetMargin"]);
+  assert.match(validatePricingForm(elementsFor({ materialCost: "" })).errors.materialCost, /insumos/);
+  assert.match(validatePricingForm(elementsFor({ desiredNetMargin: "" })).errors.desiredNetMargin, /margem/);
+});
+
 test("formulário válido pode enviar mais de vinte campos opcionais vazios", () => {
   const validation = validatePricingForm(elementsFor({
     laborCostMode: "manual", laborHourlyCost: "10", monthlyLaborCost: "", monthlyProductiveHours: "",
@@ -81,8 +132,8 @@ test("valida domínio matemático, margem e campos condicionais", () => {
   assert.match(validatePricingForm(elementsFor({ wasteRate: "100" })).errors.wasteRate, /menor que 100%/);
   assert.match(validatePricingForm(elementsFor({ materialCost: "-1" })).errors.materialCost, /não pode ser negativo/);
   assert.match(validatePricingForm(elementsFor({ taxRate: "80", paymentFeeRate: "10", commissionRate: "10", desiredNetMargin: "0" })).errors.desiredNetMargin, /menor que 100%/);
-  assert.match(validatePricingForm(elementsFor({ freightPayer: "shared", companyFreightShare: "" })).errors.companyFreightShare, /Informe/);
-  assert.match(validatePricingForm(elementsFor({ laborCostMode: "manual", laborHourlyCost: "" })).errors.laborHourlyCost, /Informe/);
+  assert.match(validatePricingForm(elementsFor({ averageOrderFreight: "10", freightPayer: "shared", companyFreightShare: "" })).errors.companyFreightShare, /Informe/);
+  assert.match(validatePricingForm(elementsFor({ laborCostMode: "manual", laborHourlyCost: "10", productionTimeMinutes: "" })).errors.productionTimeMinutes, /Informe/);
   assert.match(validatePricingForm(elementsFor({ minimumMargin: "25", desiredNetMargin: "20" })).errors.minimumMargin, /não pode ser maior/);
 });
 
@@ -93,7 +144,7 @@ test("campos inativos não invalidam a opção explícita selecionada", () => {
   }));
   assert.equal(validation.isValid, true);
   assert.equal(validation.inputs.monthlyCapitalRate, 0);
-  assert.equal(validation.inputs.laborHourlyCost, null);
+  assert.equal(validation.inputs.laborHourlyCost, 0);
 });
 
 test("HTML inicia vazio e expõe todos os campos e opções da versão 7", () => {

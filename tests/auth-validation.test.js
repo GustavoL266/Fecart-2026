@@ -61,7 +61,7 @@ test("contrato de produto rejeita derivados do navegador e exige o pacote de inp
 
 test("contrato aceita todos os opcionais vazios permitidos e rejeita nomes ou duplicatas", () => {
   const baseProduct = { name: "Produto teste", category: "Outros", pricing: { inputs: {}, market: {} } };
-  assert.equal(EMPTY_OPTIONAL_FIELD_IDS.length, 24);
+  assert.equal(EMPTY_OPTIONAL_FIELD_IDS.length, 35);
   assert.equal(productSchema.safeParse({
     ...baseProduct,
     pricing: { ...baseProduct.pricing, emptyOptionalFields: [...EMPTY_OPTIONAL_FIELD_IDS] },

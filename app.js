@@ -62,27 +62,23 @@ class PricingValidationError extends Error {
 
 const requiredNumbers = Object.freeze({
   materialCost: { min: 0, label: "O custo dos insumos e da matéria-prima" },
-  wasteRate: { min: 0, maxExclusive: 1, label: "A perda e o desperdício" },
-  packagingCost: { min: 0, label: "O custo de embalagem" },
-  averageOrderFreight: { min: 0, label: "O frete médio do pedido" },
-  averageOrderUnits: { minExclusive: 0, label: "A quantidade média de unidades por pedido" },
-  productionTimeMinutes: { min: 0, label: "O tempo médio para produzir uma unidade" },
-  monthlyFixedCosts: { min: 0, label: "Os custos fixos mensais" },
-  expectedMonthlyUnits: { minExclusive: 0, label: "A quantidade mensal esperada" },
-  taxRate: { min: 0, maxExclusive: 1, label: "O percentual efetivo de impostos sobre a venda" },
   desiredNetMargin: { min: 0, maxExclusive: 1, label: "A margem de lucro desejada" },
-  inventoryDays: { min: 0, label: "O prazo entre comprar ou produzir e vender" },
-  receivingDays: { min: 0, label: "O prazo para receber do cliente" },
-  paymentDays: { min: 0, label: "O prazo para pagar fornecedores" },
 });
 
 const optionalNumbers = Object.freeze({
+  wasteRate: { defaultValue: 0, min: 0, maxExclusive: 1, label: "A perda e o desperdício" },
+  packagingCost: { defaultValue: 0, min: 0, label: "O custo de embalagem" },
+  averageOrderFreight: { defaultValue: 0, min: 0, label: "O frete médio do pedido" },
+  averageOrderUnits: { defaultValue: null, minExclusive: 0, label: "A quantidade média de unidades por pedido" },
   companyFreightShare: { defaultValue: null, min: 0, maxInclusive: 1, label: "O percentual do frete pago pela empresa" },
   otherVariableCost: { defaultValue: 0, min: 0, label: "Os outros custos variáveis de produção" },
   otherDirectExpenses: { defaultValue: 0, min: 0, label: "As outras despesas diretas" },
-  monthlyLaborCost: { defaultValue: null, min: 0, label: "O custo mensal da mão de obra de produção" },
+  monthlyLaborCost: { defaultValue: 0, min: 0, label: "O custo mensal da mão de obra de produção" },
   monthlyProductiveHours: { defaultValue: null, minExclusive: 0, label: "As horas produtivas totais da equipe" },
-  laborHourlyCost: { defaultValue: null, min: 0, label: "O custo da mão de obra por hora" },
+  laborHourlyCost: { defaultValue: 0, min: 0, label: "O custo da mão de obra por hora" },
+  productionTimeMinutes: { defaultValue: 0, min: 0, label: "O tempo médio para produzir uma unidade" },
+  monthlyFixedCosts: { defaultValue: 0, min: 0, label: "Os custos fixos mensais" },
+  expectedMonthlyUnits: { defaultValue: null, minExclusive: 0, label: "A quantidade mensal esperada" },
   allocationLaborHours: { defaultValue: null, minExclusive: 0, label: "As horas totais de mão de obra para rateio" },
   machineTimeMinutes: { defaultValue: null, min: 0, label: "O tempo de máquina por unidade" },
   monthlyMachineHours: { defaultValue: null, minExclusive: 0, label: "As horas totais de máquina no mês" },
@@ -97,7 +93,11 @@ const optionalNumbers = Object.freeze({
   fixedFeePerOrder: { defaultValue: 0, min: 0, label: "A taxa fixa por pedido" },
   postSaleLossRate: { defaultValue: 0, min: 0, maxExclusive: 1, label: "As perdas pós-venda" },
   minimumMargin: { defaultValue: null, min: 0, maxExclusive: 1, label: "A margem mínima" },
-  monthlyCapitalRate: { defaultValue: null, min: 0, maxExclusive: 1, label: "O custo mensal do capital" },
+  taxRate: { defaultValue: 0, min: 0, maxExclusive: 1, label: "O percentual efetivo de impostos sobre a venda" },
+  inventoryDays: { defaultValue: 0, min: 0, label: "O prazo entre comprar ou produzir e vender" },
+  receivingDays: { defaultValue: 0, min: 0, label: "O prazo para receber do cliente" },
+  paymentDays: { defaultValue: 0, min: 0, label: "O prazo para pagar fornecedores" },
+  monthlyCapitalRate: { defaultValue: 0, min: 0, maxExclusive: 1, label: "O custo mensal do capital" },
   discountRate: { defaultValue: 0, min: 0, maxExclusive: 1, label: "O desconto planejado" },
   fixedDiscountAmount: { defaultValue: 0, min: 0, label: "O desconto planejado" },
   marketPrice: { defaultValue: null, minExclusive: 0, label: "A referência de mercado" },
@@ -196,6 +196,14 @@ function requireConditionalNumber(normalized, errors, key, rule) {
   if (issue) errors[key] = numberMessage(rule, issue);
 }
 
+function requireConditionalInputNumber(input, normalized, errors, key, rule) {
+  if (optionalValue(input[key]) === null) {
+    errors[key] = numberMessage(rule, "required");
+    return;
+  }
+  requireConditionalNumber(normalized, errors, key, rule);
+}
+
 /** Validate normalized, typed domain inputs. Rates are fractions, never percentages. */
 function validatePricingInputs(rawInput = {}) {
   rawInput = rawInput && typeof rawInput === "object" ? rawInput : {};
@@ -229,55 +237,81 @@ function validatePricingInputs(rawInput = {}) {
   normalized.productionCapacity = normalizedCapacity(input, errors);
   normalized.fiscalContext = input.fiscalContext && typeof input.fiscalContext === "object" ? input.fiscalContext : {};
 
+  const averageOrderUnitsProvided = optionalValue(input.averageOrderUnits) !== null;
+  const expectedMonthlyUnitsProvided = optionalValue(input.expectedMonthlyUnits) !== null;
+  const monthlyProductiveHoursProvided = optionalValue(input.monthlyProductiveHours) !== null;
+  const hasOrderBasedCost = normalized.averageOrderFreight > 0 || normalized.fixedFeePerOrder > 0;
+  const hasAllocatableMonthlyCost = normalized.monthlyFixedCosts > 0 || normalized.equipmentValue > 0
+    || normalized.equipmentMaintenanceMonthly > 0;
+
+  if (hasOrderBasedCost) requireConditionalInputNumber(input, normalized, errors, "averageOrderUnits", optionalNumbers.averageOrderUnits);
+  else if (!averageOrderUnitsProvided) normalized.averageOrderUnits = 1;
+
   if (normalized.freightPayer === "shared") {
-    requireConditionalNumber(normalized, errors, "companyFreightShare", optionalNumbers.companyFreightShare);
+    if (normalized.averageOrderFreight > 0) requireConditionalInputNumber(input, normalized, errors, "companyFreightShare", optionalNumbers.companyFreightShare);
+    else if (normalized.companyFreightShare === null) normalized.companyFreightShare = 0;
   } else if (normalized.freightPayer === "company") normalized.companyFreightShare = 1;
   else if (normalized.freightPayer === "customer") normalized.companyFreightShare = 0;
 
   if (normalized.laborCostMode === "automatic") {
-    requireConditionalNumber(normalized, errors, "monthlyLaborCost", optionalNumbers.monthlyLaborCost);
-    requireConditionalNumber(normalized, errors, "monthlyProductiveHours", optionalNumbers.monthlyProductiveHours);
+    if (normalized.monthlyLaborCost > 0) {
+      requireConditionalInputNumber(input, normalized, errors, "monthlyProductiveHours", optionalNumbers.monthlyProductiveHours);
+      requireConditionalInputNumber(input, normalized, errors, "productionTimeMinutes", { ...optionalNumbers.productionTimeMinutes, minExclusive: 0 });
+    }
   } else if (normalized.laborCostMode === "manual") {
-    requireConditionalNumber(normalized, errors, "laborHourlyCost", optionalNumbers.laborHourlyCost);
+    if (normalized.laborHourlyCost > 0) {
+      requireConditionalInputNumber(input, normalized, errors, "productionTimeMinutes", { ...optionalNumbers.productionTimeMinutes, minExclusive: 0 });
+    }
   }
 
-  if (normalized.allocationMethod === "labor-hours") {
-    if (normalized.laborCostMode !== "automatic") requireConditionalNumber(normalized, errors, "allocationLaborHours", optionalNumbers.allocationLaborHours);
+  if (hasAllocatableMonthlyCost && normalized.allocationMethod === "quantity") {
+    requireConditionalInputNumber(input, normalized, errors, "expectedMonthlyUnits", optionalNumbers.expectedMonthlyUnits);
+  }
+  if (normalized.legacyMonthlyPayroll > 0) {
+    requireConditionalInputNumber(input, normalized, errors, "expectedMonthlyUnits", optionalNumbers.expectedMonthlyUnits);
+  }
+  if (hasAllocatableMonthlyCost && normalized.allocationMethod === "labor-hours") {
+    requireConditionalInputNumber(input, normalized, errors, "productionTimeMinutes", { ...optionalNumbers.productionTimeMinutes, minExclusive: 0 });
+    if (normalized.laborCostMode !== "automatic") requireConditionalInputNumber(input, normalized, errors, "allocationLaborHours", optionalNumbers.allocationLaborHours);
+    else requireConditionalInputNumber(input, normalized, errors, "monthlyProductiveHours", optionalNumbers.monthlyProductiveHours);
     const available = normalized.laborCostMode === "automatic" ? normalized.monthlyProductiveHours : normalized.allocationLaborHours;
     const required = normalized.productionTimeMinutes * normalized.expectedMonthlyUnits / 60;
-    if (typeof available === "number" && typeof required === "number" && required > available + 1e-12) {
+    if (expectedMonthlyUnitsProvided && typeof available === "number" && typeof required === "number" && required > available + 1e-12) {
       const field = normalized.laborCostMode === "automatic" ? "monthlyProductiveHours" : "allocationLaborHours";
       errors[field] = "As horas usadas por este produto no mês ultrapassam as horas totais informadas para o rateio.";
     }
   }
-  if (normalized.allocationMethod === "machine-hours") {
-    requireConditionalNumber(normalized, errors, "machineTimeMinutes", { ...optionalNumbers.machineTimeMinutes, minExclusive: 0 });
-    requireConditionalNumber(normalized, errors, "monthlyMachineHours", optionalNumbers.monthlyMachineHours);
+  if (hasAllocatableMonthlyCost && normalized.allocationMethod === "machine-hours") {
+    requireConditionalInputNumber(input, normalized, errors, "machineTimeMinutes", { ...optionalNumbers.machineTimeMinutes, minExclusive: 0 });
+    requireConditionalInputNumber(input, normalized, errors, "monthlyMachineHours", optionalNumbers.monthlyMachineHours);
     const required = normalized.machineTimeMinutes * normalized.expectedMonthlyUnits / 60;
-    if (typeof normalized.monthlyMachineHours === "number" && typeof required === "number" && required > normalized.monthlyMachineHours + 1e-12) {
+    if (expectedMonthlyUnitsProvided && typeof normalized.monthlyMachineHours === "number" && typeof required === "number" && required > normalized.monthlyMachineHours + 1e-12) {
       errors.monthlyMachineHours = "As horas de máquina usadas por este produto ultrapassam o total mensal informado.";
     }
   }
-  if (normalized.allocationMethod === "revenue") {
-    requireConditionalNumber(normalized, errors, "monthlyBusinessRevenue", optionalNumbers.monthlyBusinessRevenue);
-    requireConditionalNumber(normalized, errors, "monthlyProductRevenue", { ...optionalNumbers.monthlyProductRevenue, minExclusive: 0 });
+  if (hasAllocatableMonthlyCost && normalized.allocationMethod === "revenue") {
+    requireConditionalInputNumber(input, normalized, errors, "monthlyBusinessRevenue", optionalNumbers.monthlyBusinessRevenue);
+    requireConditionalInputNumber(input, normalized, errors, "monthlyProductRevenue", { ...optionalNumbers.monthlyProductRevenue, minExclusive: 0 });
+    requireConditionalInputNumber(input, normalized, errors, "expectedMonthlyUnits", optionalNumbers.expectedMonthlyUnits);
     if (typeof normalized.monthlyBusinessRevenue === "number" && typeof normalized.monthlyProductRevenue === "number"
       && normalized.monthlyProductRevenue > normalized.monthlyBusinessRevenue) {
       errors.monthlyProductRevenue = "O faturamento mensal deste produto não pode superar o faturamento mensal total da empresa.";
     }
   }
-  if (normalized.equipmentValue > 0) requireConditionalNumber(normalized, errors, "equipmentUsefulLifeMonths", optionalNumbers.equipmentUsefulLifeMonths);
+  if (normalized.equipmentValue > 0) requireConditionalInputNumber(input, normalized, errors, "equipmentUsefulLifeMonths", optionalNumbers.equipmentUsefulLifeMonths);
+
+  if (!expectedMonthlyUnitsProvided && !errors.expectedMonthlyUnits) normalized.expectedMonthlyUnits = 1;
+  if (!monthlyProductiveHoursProvided && !errors.monthlyProductiveHours) normalized.monthlyProductiveHours = 1;
 
   if (normalized.capitalRateSource === "zero") normalized.monthlyCapitalRate = 0;
-  else requireConditionalNumber(normalized, errors, "monthlyCapitalRate", optionalNumbers.monthlyCapitalRate);
 
   if (normalized.discountType === "none") {
     if (normalized.discountRate > 0 || normalized.fixedDiscountAmount > 0) errors.discountType = "Selecione o tipo de desconto correspondente ao valor informado.";
   } else if (normalized.discountType === "percentage") {
-    requireConditionalNumber(normalized, errors, "discountRate", { ...optionalNumbers.discountRate, minExclusive: 0 });
+    requireConditionalInputNumber(input, normalized, errors, "discountRate", { ...optionalNumbers.discountRate, minExclusive: 0 });
     if (normalized.fixedDiscountAmount > 0) errors.fixedDiscountAmount = "Use apenas o desconto percentual selecionado.";
   } else if (normalized.discountType === "fixed") {
-    requireConditionalNumber(normalized, errors, "fixedDiscountAmount", { ...optionalNumbers.fixedDiscountAmount, minExclusive: 0 });
+    requireConditionalInputNumber(input, normalized, errors, "fixedDiscountAmount", { ...optionalNumbers.fixedDiscountAmount, minExclusive: 0 });
     if (normalized.discountRate > 0) errors.discountRate = "Use apenas o desconto fixo selecionado.";
   }
 
@@ -435,7 +469,9 @@ function calculatePricing(input, marketReference = null) {
 
   const equipmentDepreciationMonthly = inputs.equipmentValue > 0 ? inputs.equipmentValue / inputs.equipmentUsefulLifeMonths : 0;
   const equipmentMonthlyCost = equipmentDepreciationMonthly + inputs.equipmentMaintenanceMonthly;
-  const factor = allocationFactor(inputs);
+  const hasAllocatableMonthlyCost = inputs.monthlyFixedCosts > 0 || inputs.equipmentValue > 0
+    || inputs.equipmentMaintenanceMonthly > 0;
+  const factor = hasAllocatableMonthlyCost ? allocationFactor(inputs) : 0;
   const fixedCostPerUnit = inputs.monthlyFixedCosts * factor + inputs.legacyMonthlyPayroll / inputs.expectedMonthlyUnits;
   const equipmentCostPerUnit = equipmentMonthlyCost * factor;
   const indirectCost = fixedCostPerUnit + equipmentCostPerUnit;
@@ -989,19 +1025,19 @@ const ASSISTANT_COMBINED_RATE_FIELDS = Object.freeze([
 
 const FIELD_RULES = Object.freeze({
   materialCost: { required: "Informe o custo dos insumos e da matéria-prima." },
-  wasteRate: { required: "Informe a perda ou use 0%." },
-  packagingCost: { required: "Informe o custo de embalagem ou use R$ 0." },
-  averageOrderFreight: { required: "Informe o frete médio do pedido ou use R$ 0." },
+  wasteRate: { optional: true },
+  packagingCost: { optional: true },
+  averageOrderFreight: { optional: true },
   companyFreightShare: { optional: true, nullWhenEmpty: true },
-  averageOrderUnits: { required: "Informe a quantidade média de unidades por pedido." },
+  averageOrderUnits: { optional: true, nullWhenEmpty: true },
   otherVariableCost: { optional: true },
   otherDirectExpenses: { optional: true },
   monthlyLaborCost: { optional: true, nullWhenEmpty: true },
   monthlyProductiveHours: { optional: true, nullWhenEmpty: true },
   laborHourlyCost: { optional: true, nullWhenEmpty: true },
-  productionTimeMinutes: { required: "Informe o tempo médio para produzir uma unidade." },
-  monthlyFixedCosts: { required: "Informe os custos fixos mensais ou use R$ 0." },
-  expectedMonthlyUnits: { required: "Informe a quantidade que espera produzir ou vender por mês." },
+  productionTimeMinutes: { optional: true, nullWhenEmpty: true },
+  monthlyFixedCosts: { optional: true },
+  expectedMonthlyUnits: { optional: true, nullWhenEmpty: true },
   allocationLaborHours: { optional: true, nullWhenEmpty: true },
   machineTimeMinutes: { optional: true, nullWhenEmpty: true },
   monthlyMachineHours: { optional: true, nullWhenEmpty: true },
@@ -1010,7 +1046,7 @@ const FIELD_RULES = Object.freeze({
   equipmentValue: { optional: true },
   equipmentUsefulLifeMonths: { optional: true, nullWhenEmpty: true },
   equipmentMaintenanceMonthly: { optional: true },
-  taxRate: { required: "Informe o percentual efetivo de impostos ou use 0%." },
+  taxRate: { optional: true },
   paymentFeeRate: { optional: true },
   commissionRate: { optional: true },
   marketplaceFeeRate: { optional: true },
@@ -1018,12 +1054,12 @@ const FIELD_RULES = Object.freeze({
   postSaleLossRate: { optional: true },
   minimumMargin: { optional: true, nullWhenEmpty: true },
   desiredNetMargin: { required: "Informe a margem de lucro desejada." },
-  inventoryDays: { required: "Informe os dias entre comprar ou produzir e vender." },
-  receivingDays: { required: "Informe o prazo para receber do cliente." },
-  paymentDays: { required: "Informe o prazo para pagar fornecedores." },
+  inventoryDays: { optional: true },
+  receivingDays: { optional: true },
+  paymentDays: { optional: true },
   monthlyCapitalRate: { optional: true, nullWhenEmpty: true },
-  discountRate: { optional: true },
-  fixedDiscountAmount: { optional: true },
+  discountRate: { optional: true, nullWhenEmpty: true },
+  fixedDiscountAmount: { optional: true, nullWhenEmpty: true },
   marketPrice: { optional: true, nullWhenEmpty: true },
 });
 
@@ -1093,14 +1129,24 @@ function validateAssistantFields(fields) {
   return patch;
 }
 
-function applyAssistantFields(fields, elements) {
+function applyAssistantFields(fields, elements, skipped = {}) {
   const patch = validateAssistantFields(fields);
+  if (!skipped || typeof skipped !== "object" || Array.isArray(skipped)) throw new Error("AI_INVALID_RESPONSE");
+  const skippedIds = Object.entries(skipped).map(([fieldId, decision]) => {
+    validateAssistantFields({ [fieldId]: null });
+    if (!decision || typeof decision !== "object" || Array.isArray(decision)
+      || Object.keys(decision).length !== 2 || decision.value !== null || decision.source !== "skipped"
+      || Object.hasOwn(patch, fieldId)) throw new Error("AI_INVALID_RESPONSE");
+    return fieldId;
+  });
   for (const [fieldId, value] of Object.entries(patch)) {
     const control = elements[fieldId];
     if (!control || (control.options && !Array.from(control.options).some((option) => option.value === value))) throw new Error("AI_INVALID_RESPONSE");
   }
+  for (const fieldId of skippedIds) if (!elements[fieldId]) throw new Error("AI_INVALID_RESPONSE");
   for (const [fieldId, value] of Object.entries(patch)) elements[fieldId].value = typeof value === "number" ? assistantNumberFormatter.format(value) : value;
-  return Object.keys(patch);
+  for (const fieldId of skippedIds) elements[fieldId].value = "";
+  return [...Object.keys(patch), ...skippedIds];
 }
 
 function parseBrazilianNumber(rawValue) {
@@ -1775,7 +1821,7 @@ function createAiAssistant({ dialog, openButtons, parse, onApply, onSearchMarket
   function apply() {
     if (phase !== "preview" || !result || !dialog.open || !hasSession()) return;
     try {
-      const message = onApply(result.fields);
+      const message = onApply(result.fields, result.skipped);
       phase = result.pending.length ? "partial-applied" : "applied";
       const suffix = result.pending.length ? " Responda às pendências para analisar os demais dados." : "";
       showStatus(`${message || "Informações aplicadas. O simulador foi atualizado."}${suffix}`, "success");
@@ -2131,16 +2177,22 @@ function renderMarketPanel(document, marketState) {
 
 function renderIncompleteDashboard(document, marketState, errors) {
   const count = Object.keys(errors).length;
+  const pending = [...new Set(Object.values(errors))];
+  const pendingItems = pending.map((message) => `<li>${escapeHtml(message)}</li>`).join("");
   ["baseCost", "marketReferencePrice", "suggestedPrice", "profitPerSale", "estimatedMargin", "breakEvenPrice", "minimumMarginPrice", "desiredMarginPrice", "advertisedPrice", "postDiscountPrice", "detailSuggestedPrice", "detailBreakEvenPrice", "detailMinimumMarginPrice", "detailDesiredMarginPrice", "detailAdvertisedPrice", "detailPostDiscountPrice", "detailBaseCost", "detailSalesRate", "detailProfit", "detailMargin"].forEach((id) => { const node = document.querySelector(`#${id}`); if (node) node.textContent = "—"; });
   ["minimumMarginPriceRow", "advertisedPriceRow", "postDiscountPriceRow", "detailMinimumMarginCard", "detailAdvertisedPriceCard", "detailPostDiscountPriceCard"].forEach((id) => { const node = document.querySelector(`#${id}`); if (node) node.hidden = true; });
   document.querySelector("#priceStatus").textContent = "Aguardando dados válidos";
-  document.querySelector("#recommendationText").textContent = "Corrija os campos indicados para calcular e salvar.";
+  document.querySelector("#recommendationText").textContent = pending.length
+    ? `Para calcular, resolva: ${pending.join(" ")}`
+    : "Informe os dados indispensáveis para calcular.";
   document.querySelector("#marketStatus").textContent = "Mercado é opcional e será comparado quando houver referência válida.";
   document.querySelector("#alertCount").textContent = `${count} ${count === 1 ? "campo pendente" : "campos pendentes"}`;
   document.querySelector("#alertSummary").textContent = "O cálculo e o salvamento estão bloqueados.";
-  document.querySelector("#explanationList").innerHTML = "<li>Preencha os campos obrigatórios sem corrigir valores silenciosamente.</li>";
+  document.querySelector("#explanationList").innerHTML = pendingItems || "<li>Informe os dados indispensáveis para calcular.</li>";
   document.querySelector("#costRows").innerHTML = '<tr><td colspan="4">O detalhamento usa o resultado canônico após a validação.</td></tr>';
-  document.querySelector("#alerts").innerHTML = "<div class=\"warning\">Corrija os campos indicados.</div>";
+  document.querySelector("#alerts").innerHTML = pending.length
+    ? `<div class="warning"><strong>Para calcular, resolva:</strong><ul>${pendingItems}</ul></div>`
+    : "<div class=\"warning\">Informe os dados indispensáveis para calcular.</div>";
   document.querySelector("#fiscalSummary").innerHTML = "<p>O contexto fiscal será preservado sem inventar alíquotas.</p>";
   document.querySelector("#primaryMarketValue").hidden = true;
   document.querySelector("#primaryPriceCard").classList.toggle("has-market-reference", false);
@@ -2612,13 +2664,13 @@ function createProfileSettings({
 
 const sectionFields = Object.freeze({
   product: ["productName"],
-  fiscal: ["taxRegime", "originState", "destinationState", "customerType"],
-  direct: ["materialCost", "wasteRate", "packagingCost", "averageOrderFreight", "averageOrderUnits"],
-  indirect: ["monthlyFixedCosts"],
-  production: ["expectedMonthlyUnits", "productionTimeMinutes", "laborCostMode"],
-  sales: ["taxRate", "desiredNetMargin"],
+  fiscal: [],
+  direct: ["materialCost"],
+  indirect: [],
+  production: [],
+  sales: ["desiredNetMargin"],
   market: [],
-  terms: ["inventoryDays", "receivingDays", "paymentDays", "capitalRateSource"],
+  terms: [],
 });
 
 function fieldHasValidValue(field) {
@@ -2953,14 +3005,14 @@ const aiAssistant = createAiAssistant({
   },
 });
 
-function applyAiPricingFields(fields) {
+function applyAiPricingFields(fields, skipped = {}) {
   const previousOrigin = elements.productOrigin.value;
   const changedFields = applyAssistantFields(fields, {
     ...elements,
     productName: $("#productName"),
     productDescription: $("#productDescription"),
     marketQuery: $("#marketQuery"),
-  });
+  }, skipped);
   changedFields.forEach((fieldId) => touchedPricingFields.add(fieldId));
   // Preserve the same dependent state transitions as a manual form edit.
   if (changedFields.includes("productOrigin") && elements.productOrigin.value !== previousOrigin) {
@@ -2975,11 +3027,13 @@ function applyAiPricingFields(fields) {
   }
   render();
   const marketOnly = changedFields.length === 1 && changedFields[0] === "marketQuery";
+  const validation = validatePricingForm(elements);
+  const pending = [...new Set(Object.values(validation.errors))];
   const message = marketOnly
     ? "Busca preparada. Clique em Pesquisar no mercado para consultar os preços reais."
-    : validatePricingForm(elements).isValid
+    : validation.isValid
       ? "Informações aplicadas. O simulador recalculou os resultados com suas fórmulas atuais."
-      : "Informações aplicadas. Complete os demais campos obrigatórios para o simulador calcular o resultado.";
+      : `Informações aplicadas. Para calcular, resolva: ${pending.join(" ")}`;
   setMessage($("#saveProductStatus"), message, true);
   return fields.marketQuery && !marketOnly ? `${message} A busca de mercado também está pronta para pesquisar.` : message;
 }

@@ -80,14 +80,14 @@ const aiAssistant = createAiAssistant({
   },
 });
 
-function applyAiPricingFields(fields) {
+function applyAiPricingFields(fields, skipped = {}) {
   const previousOrigin = elements.productOrigin.value;
   const changedFields = applyAssistantFields(fields, {
     ...elements,
     productName: $("#productName"),
     productDescription: $("#productDescription"),
     marketQuery: $("#marketQuery"),
-  });
+  }, skipped);
   changedFields.forEach((fieldId) => touchedPricingFields.add(fieldId));
   // Preserve the same dependent state transitions as a manual form edit.
   if (changedFields.includes("productOrigin") && elements.productOrigin.value !== previousOrigin) {
@@ -102,11 +102,13 @@ function applyAiPricingFields(fields) {
   }
   render();
   const marketOnly = changedFields.length === 1 && changedFields[0] === "marketQuery";
+  const validation = validatePricingForm(elements);
+  const pending = [...new Set(Object.values(validation.errors))];
   const message = marketOnly
     ? "Busca preparada. Clique em Pesquisar no mercado para consultar os preços reais."
-    : validatePricingForm(elements).isValid
+    : validation.isValid
       ? "Informações aplicadas. O simulador recalculou os resultados com suas fórmulas atuais."
-      : "Informações aplicadas. Complete os demais campos obrigatórios para o simulador calcular o resultado.";
+      : `Informações aplicadas. Para calcular, resolva: ${pending.join(" ")}`;
   setMessage($("#saveProductStatus"), message, true);
   return fields.marketQuery && !marketOnly ? `${message} A busca de mercado também está pronta para pesquisar.` : message;
 }
