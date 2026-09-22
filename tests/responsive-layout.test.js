@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const [html, styles, scripts] = await Promise.all([
+const [html, styles, scripts, favicon] = await Promise.all([
   readFile(new URL("../index.html", import.meta.url), "utf8"),
   readFile(new URL("../styles.css", import.meta.url), "utf8"),
   Promise.all([
@@ -10,6 +10,7 @@ const [html, styles, scripts] = await Promise.all([
     readFile(new URL("../js/ui/dashboard.js", import.meta.url), "utf8"),
     readFile(new URL("../js/ui/pricing-panel.js", import.meta.url), "utf8"),
   ]).then((contents) => contents.join("\n")),
+  readFile(new URL("../favicon.svg", import.meta.url), "utf8"),
 ]);
 
 test("viewport permite zoom nativo e a interface nao aplica escala global", () => {
@@ -24,6 +25,13 @@ test("identidade visual usa Assistente de Precificação nos títulos da interfa
   assert.match(html, /<p class="eyebrow">Simulador financeiro<\/p>\s*<h1>Assistente de Precificação<\/h1>/);
   assert.match(html, /id="aiAssistantTitle">Assistente de Precificação<\/h2>/);
   assert.doesNotMatch(html, /Precificação por Custos/);
+});
+
+test("monograma visual usa AP em todas as telas e no favicon", () => {
+  assert.equal([...html.matchAll(/<span class="brand-mark">AP<\/span>/g)].length, 6);
+  assert.doesNotMatch(html, /<span class="brand-mark">PC<\/span>/);
+  assert.match(favicon, />AP<\/text>/);
+  assert.doesNotMatch(favicon, />PC<\/text>/);
 });
 
 test("login usa um container único centralizado para relacionar apresentação e formulário", () => {
