@@ -2100,10 +2100,6 @@ tr:last-child td {
     text-align: center;
   }
 
-  .auth-intro .brand {
-    justify-content: center;
-  }
-
   .auth-benefits {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     max-width: 720px;
@@ -2125,10 +2121,6 @@ tr:last-child td {
   .auth-intro {
     gap: 20px;
     text-align: left;
-  }
-
-  .auth-intro .brand {
-    justify-content: flex-start;
   }
 
   .auth-intro h1 {
@@ -2197,7 +2189,9 @@ tr:last-child td {
   position: relative;
   isolation: isolate;
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   align-items: stretch;
+  gap: clamp(24px, 3vh, 40px);
   overflow: hidden;
   padding: clamp(32px, 5vh, 72px) clamp(32px, 4vw, 64px);
   background:
@@ -2219,6 +2213,17 @@ tr:last-child td {
   box-shadow: 0 0 0 100px rgba(8, 10, 9, 0.08), 0 0 0 200px rgba(8, 10, 9, 0.12);
   content: "";
   transform: rotate(-15deg);
+}
+
+.auth-header {
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: min(100%, 1600px);
+  min-width: 0;
+  margin-inline: auto;
 }
 
 .auth-layout {
@@ -2250,13 +2255,13 @@ tr:last-child td {
   min-width: 0;
 }
 
-.auth-intro .brand {
+.auth-header .brand {
   align-self: start;
   gap: 12px;
   color: #f4f7f5;
 }
 
-.auth-intro .brand-mark {
+.auth-header .brand-mark {
   width: 50px;
   height: 50px;
   border: 1px solid rgba(114, 230, 158, 0.42);
@@ -2700,10 +2705,8 @@ tr:last-child td {
 }
 
 .auth-theme-toggle {
-  position: absolute;
-  z-index: 2;
-  top: clamp(20px, 3vw, 38px);
-  right: clamp(20px, 4vw, 72px);
+  position: static;
+  flex: 0 0 auto;
   border-color: rgba(166, 182, 172, 0.26);
   background: rgba(10, 14, 12, 0.56);
   color: #e7efe9;
@@ -2731,7 +2734,7 @@ tr:last-child td {
   box-shadow: 0 0 0 100px rgba(238, 247, 240, 0.2), 0 0 0 200px rgba(238, 247, 240, 0.25);
 }
 
-:root[data-theme="light"] .auth-intro .brand,
+:root[data-theme="light"] .auth-header .brand,
 :root[data-theme="light"] .auth-brand-name {
   color: #17201d;
 }
@@ -2835,13 +2838,8 @@ tr:last-child td {
 }
 
 @media (max-width: 620px) {
-  .auth-theme-toggle {
-    top: 16px;
-    right: 16px;
-  }
-
-  .auth-theme-toggle [data-theme-label] {
-    display: none;
+  .auth-header {
+    flex-wrap: wrap;
   }
 }
 
@@ -3904,16 +3902,11 @@ tr:last-child td {
   .auth-intro {
     gap: 18px;
     width: 100%;
-    padding-right: 52px;
     text-align: left;
   }
 
   .auth-intro-main {
     gap: 18px;
-  }
-
-  .auth-intro .brand {
-    justify-content: flex-start;
   }
 
   .auth-copy {

@@ -20,10 +20,14 @@ test("viewport permite zoom nativo e a interface nao aplica escala global", () =
 });
 
 test("login usa um container único centralizado para relacionar apresentação e formulário", () => {
+  assert.match(html, /<header class="auth-header">[\s\S]*?<div class="brand">[\s\S]*?auth-theme-toggle[\s\S]*?<div class="auth-layout">/);
   assert.match(html, /<div class="auth-layout">[\s\S]*?<div class="auth-intro">[\s\S]*?<div class="auth-card">/);
   assert.match(html, /<div class="auth-intro-main">[\s\S]*?<div class="auth-copy">[\s\S]*?<div class="auth-benefits"/);
   assert.match(styles, /\.auth-layout\s*{[\s\S]*?grid-template-columns:\s*minmax\(0, 680px\) minmax\(440px, 680px\)[\s\S]*?width:\s*min\(100%, 1600px\)[\s\S]*?margin-inline:\s*auto/);
   assert.match(styles, /\.auth-view\s*{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)[\s\S]*?align-items:\s*stretch/);
+  assert.match(styles, /\.auth-header\s*{[\s\S]*?display:\s*flex[\s\S]*?justify-content:\s*space-between[\s\S]*?width:\s*min\(100%, 1600px\)/);
+  assert.match(styles, /\.auth-theme-toggle\s*{[\s\S]*?position:\s*static[\s\S]*?flex:\s*0 0 auto/);
+  assert.doesNotMatch(styles, /\.auth-intro\s*{[\s\S]*?padding-right:\s*52px/);
   assert.match(styles, /@media \(max-width: 980px\)[\s\S]*?\.auth-layout\s*{[\s\S]*?grid-template-columns:\s*1fr/);
   const layoutRule = styles.match(/\.auth-layout\s*{[\s\S]*?\n}/)?.[0] || "";
   assert.doesNotMatch(layoutRule, /position:\s*absolute|transform:\s*scale|margin-(?:left|right):/);
