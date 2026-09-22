@@ -6,7 +6,7 @@ Este README é o documento central de contexto do projeto. Ele foi ampliado para
 
 ## Comece por aqui em uma nova sessão
 
-O repositório se chama **Fecart-2026**. A aplicação aparece na interface e na documentação como **Assistente de Precificação**, **Precificação por Custos** e, em alguns elementos compactos, **Precificar**. Esses nomes se referem ao mesmo projeto.
+O repositório se chama **Fecart-2026**. A aplicação aparece na interface e na documentação como **Assistente de Precificação** e, em alguns elementos compactos, **Precificar**. Esses nomes se referem ao mesmo projeto.
 
 Antes de propor uma implementação, tenha em mente:
 

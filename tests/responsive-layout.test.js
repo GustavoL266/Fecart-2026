@@ -19,6 +19,13 @@ test("viewport permite zoom nativo e a interface nao aplica escala global", () =
   assert.doesNotMatch(scripts, /devicePixelRatio|visualViewport\.scale/);
 });
 
+test("identidade visual usa Assistente de Precificação nos títulos da interface", () => {
+  assert.match(html, /<title>Assistente de Precificação<\/title>/);
+  assert.match(html, /<p class="eyebrow">Simulador financeiro<\/p>\s*<h1>Assistente de Precificação<\/h1>/);
+  assert.match(html, /id="aiAssistantTitle">Assistente de Precificação<\/h2>/);
+  assert.doesNotMatch(html, /Precificação por Custos/);
+});
+
 test("login usa um container único centralizado para relacionar apresentação e formulário", () => {
   assert.match(html, /<header class="auth-header">[\s\S]*?<div class="brand">[\s\S]*?auth-theme-toggle[\s\S]*?<div class="auth-layout">/);
   assert.match(html, /<div class="auth-layout">[\s\S]*?<div class="auth-intro">[\s\S]*?<div class="auth-card">/);
