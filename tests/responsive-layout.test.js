@@ -30,6 +30,7 @@ test("identidade visual usa Assistente de Precificação nos títulos da interfa
 test("monograma visual usa AP em todas as telas e no favicon", () => {
   assert.equal([...html.matchAll(/<span class="brand-mark">AP<\/span>/g)].length, 6);
   assert.doesNotMatch(html, /<span class="brand-mark">PC<\/span>/);
+  assert.match(html, /<link rel="icon" href="favicon\.svg\?v=ap" type="image\/svg\+xml" \/>/);
   assert.match(favicon, />AP<\/text>/);
   assert.doesNotMatch(favicon, />PC<\/text>/);
 });
