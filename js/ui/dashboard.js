@@ -85,13 +85,13 @@ function taxMoneyMetric(label, value, total = false) {
 }
 
 function selectedTaxSummary(marketState, calculation) {
-  return `<p class="market-tax-selected-title"><span>Produto selecionado</span><strong>${escapeHtml(marketState.selectedItem?.title || "Produto atual")}</strong></p><div class="market-tax-summary-grid">${taxMoneyMetric("Preço de venda", calculation.marketPrice)}<div class="market-tax-summary-metric"><span>Carga tributária estimada</span><strong>${taxPercent(calculation.rates.total)}</strong></div>${taxMoneyMetric("Tributos aproximados contidos no preço", calculation.estimatedTaxes)}</div>`;
+  return `<p class="market-tax-selected-title"><span>Produto selecionado</span><strong>${escapeHtml(marketState.selectedItem?.title || "Produto atual")}</strong></p><div class="market-tax-summary-grid">${taxMoneyMetric("Preço de venda", calculation.marketPrice)}<div class="market-tax-summary-metric"><span>Carga tributária estimada</span><strong>${taxPercent(calculation.rates.total)}</strong></div>${taxMoneyMetric("Tributos aproximados contidos no preço", calculation.estimatedTaxes)}${taxMoneyMetric("Valor final (tributos já incluídos)", calculation.marketPrice, true)}</div>`;
 }
 
 function extremeTaxScenario(label, item, calculation) {
   const base = dashboardMoney(calculation.marketPrice);
   const taxes = dashboardMoney(calculation.estimatedTaxes);
-  return `<article class="market-tax-scenario-card"><div><span>${label}</span><strong>${escapeHtml(item?.title || "Referência da pesquisa")}</strong></div><dl><div><dt>Preço de venda</dt><dd class="financial-value" data-financial-size="${financialValueSize(base)}">${base}</dd></div><div><dt>Tributos aproximados contidos no preço</dt><dd class="financial-value" data-financial-size="${financialValueSize(taxes)}">${taxes}</dd></div></dl></article>`;
+  return `<article class="market-tax-scenario-card"><div><span>${label}</span><strong>${escapeHtml(item?.title || "Referência da pesquisa")}</strong></div><dl><div><dt>Preço de venda</dt><dd class="financial-value" data-financial-size="${financialValueSize(base)}">${base}</dd></div><div><dt>Tributos aproximados contidos no preço</dt><dd class="financial-value" data-financial-size="${financialValueSize(taxes)}">${taxes}</dd></div><div class="is-total"><dt>Valor final (tributos já incluídos)</dt><dd class="financial-value" data-financial-size="${financialValueSize(base)}">${base}</dd></div></dl></article>`;
 }
 
 function taxAction(label, attribute, secondary = false) {
@@ -169,7 +169,7 @@ function renderTaxDetails(marketState) {
   if (mode === "selected" && calculations.selected) {
     const result = calculations.selected;
     const selectedTitle = escapeHtml(marketState.selectedItem?.title || "Produto atual");
-    return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">Baseado no produto selecionado</p><h3 id="market-tax-breakdown-title">${selectedTitle}</h3></div><div class="market-tax-detail-selected">${taxMoneyMetric("Preço de venda", result.marketPrice)}${taxMoneyMetric("Tributos aproximados contidos no preço", result.estimatedTaxes)}</div>${taxRateDetails(result)}${origin.markup}<p>${origin.summary}</p></section>`;
+    return `<section class="market-tax-breakdown" aria-labelledby="market-tax-breakdown-title"><div><p class="eyebrow">Baseado no produto selecionado</p><h3 id="market-tax-breakdown-title">${selectedTitle}</h3></div><div class="market-tax-detail-selected">${taxMoneyMetric("Preço de venda", result.marketPrice)}${taxMoneyMetric("Tributos aproximados contidos no preço", result.estimatedTaxes)}${taxMoneyMetric("Valor final (tributos já incluídos)", result.marketPrice, true)}</div>${taxRateDetails(result)}${origin.markup}<p>${origin.summary}</p></section>`;
   }
   const minimum = calculations.minimum;
   const maximum = calculations.maximum;

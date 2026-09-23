@@ -106,6 +106,10 @@ test("sem seleção, dashboard compara menor e maior preço com os componentes I
   assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s200,00/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s31,45/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s62,90/);
+  for (const markup of [document.nodes.get("#marketStats").innerHTML, document.nodes.get("#marketTaxDetails").innerHTML]) {
+    assert.match(markup, /<div class="is-total"><dt>Valor final \(tributos já incluídos\)<\/dt><dd[^>]*>R\$\s100,00<\/dd>/);
+    assert.match(markup, /<div class="is-total"><dt>Valor final \(tributos já incluídos\)<\/dt><dd[^>]*>R\$\s200,00<\/dd>/);
+  }
   assert.doesNotMatch(document.nodes.get("#marketStats").innerHTML, /Total com tributos|R\$\s131,45|R\$\s262,90/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /IBPT \/ Empresômetro/);
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Comparação tributária/);
@@ -155,6 +159,9 @@ test("detalhamento importado mostra país sem alterar a origem tributária do IB
   assert.match(document.nodes.get("#marketStats").innerHTML, /Baseado no produto selecionado/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /Preço de venda/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /Tributos aproximados contidos no preço/);
+  for (const markup of [document.nodes.get("#marketStats").innerHTML, document.nodes.get("#marketTaxDetails").innerHTML]) {
+    assert.match(markup, /Valor final \(tributos já incluídos\)<\/span><strong[^>]*>R\$\s100,00<\/strong>/);
+  }
   assert.doesNotMatch(document.nodes.get("#marketStats").innerHTML, /Total com tributos|R\$\s142,57/);
   const details = document.nodes.get("#marketTaxDetails").innerHTML;
   assert.match(details, /Origem do produto<\/dt><dd>Importado \(Fora do País\)/);

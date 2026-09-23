@@ -4228,6 +4228,11 @@ tr:last-child td {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.market-tax-summary-grid > .is-total,
+.market-tax-detail-selected > .is-total {
+  grid-column: 1 / -1;
+}
+
 .market-tax-summary-metric {
   display: grid;
   align-content: space-between;
@@ -4309,6 +4314,7 @@ tr:last-child td {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   padding-bottom: 0;
   border-bottom: 0;
@@ -5454,6 +5460,8 @@ tr:last-child td {
   .summary-card,
   .market-stats > div,
   .market-tax-stat,
+  .market-tax-summary-metric,
+  .market-tax-scenario-card dl > div,
   .market-result-content,
   .selected-market-product,
   .metric-card,
