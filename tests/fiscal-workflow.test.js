@@ -163,7 +163,8 @@ test("fluxo completo preserva a pesquisa, confirma NCM e estima os extremos sem 
   assert.equal(w.context.marketState.tax.result.marketPrice, 8_899);
   assert.equal(w.context.marketState.items.find((item) => item.id === "max").price, 8_899);
   assert.equal(JSON.stringify(w.context.marketState.stats), originalStats);
-  assert.doesNotMatch(w.$("#marketStats").innerHTML, /11\.558,02|Total com tributos/);
+  assert.match(w.$("#marketStats").innerHTML, /Valor final com tributos<\/dt><dd[^>]*>R\$\s129,88/);
+  assert.match(w.$("#marketStats").innerHTML, /Valor final com tributos<\/dt><dd[^>]*>R\$\s11\.558,02/);
   assert.match(w.$("#marketStats").innerHTML, /29,88%/);
   assert.match(w.$("#marketStats").innerHTML, /2\.659,02/);
   assert.match(w.$("#marketStats").innerHTML, /IBPT \/ Empresômetro/);

@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const [html, main, dashboard, server, envExample, renderConfig] = await Promise.all([
-  "../index.html", "../js/main.js", "../js/ui/dashboard.js", "../server.js", "../.env.example", "../render.yaml",
+const [html, main, dashboard, styles, server, envExample, renderConfig] = await Promise.all([
+  "../index.html", "../js/main.js", "../js/ui/dashboard.js", "../styles.css", "../server.js", "../.env.example", "../render.yaml",
 ].map((path) => readFile(new URL(path, import.meta.url), "utf8")));
 
 test("interface identifica a estimativa IBPT e exige escolha explícita da origem", () => {
@@ -31,14 +31,16 @@ test("país de origem possui estado separado e não altera o payload enviado ao 
 });
 
 test("card e detalhamento mostram os modos selecionado e extremos com os dados tributários", () => {
-  for (const label of ["Baseado no produto selecionado", "Baseado nos extremos da pesquisa", "Menor preço (tributos contidos)", "Maior preço (tributos contidos)", "Carga tributária estimada", "Tributos aproximados contidos no preço", "Fonte:", "Versão:", "Vigência:"]) {
+  for (const label of ["Baseado no produto selecionado", "Baseado nos extremos da pesquisa", "Menor preço", "Maior preço", "Carga tributária estimada", "Tributos estimados", "Valor final com tributos", "Fonte:", "Versão:", "Vigência:"]) {
     assert.ok(dashboard.includes(label), label);
   }
   assert.match(dashboard, /calculations\.selected/);
   assert.match(dashboard, /calculations\.minimum/);
   assert.match(dashboard, /calculations\.maximum/);
   assert.match(dashboard, /market-tax-summary-grid/);
-  assert.doesNotMatch(dashboard, /Total com tributos/);
+  assert.doesNotMatch(dashboard, /tributos contidos|tributos já incluídos/i);
+  assert.match(styles, /\.market-tax-summary-metric\.is-total strong\s*{\s*color:\s*var\(--green\)/);
+  assert.match(styles, /\.market-tax-scenario-card \.is-total dd\s*{\s*color:\s*var\(--green\)/);
 });
 
 test("selecionar, remover ou iniciar outra pesquisa invalida a base tributária anterior", () => {

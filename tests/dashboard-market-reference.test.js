@@ -118,23 +118,28 @@ test("sem seleção, dashboard compara menor e maior preço com os componentes I
   }, new ConfiguredTaxRuleEngine().assess(inputs));
 
   assert.match(document.nodes.get("#marketStats").innerHTML, /Baseado nos extremos da pesquisa/);
-  assert.match(document.nodes.get("#marketStats").innerHTML, /Menor preço \(tributos contidos\)/);
-  assert.match(document.nodes.get("#marketStats").innerHTML, /Maior preço \(tributos contidos\)/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Menor preço/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Maior preço/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s100,00/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s200,00/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s31,45/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s62,90/);
   for (const markup of [document.nodes.get("#marketStats").innerHTML, document.nodes.get("#marketTaxDetails").innerHTML]) {
-    assert.match(markup, /<div class="is-total"><dt>Valor final \(tributos já incluídos\)<\/dt><dd[^>]*>R\$\s100,00<\/dd>/);
-    assert.match(markup, /<div class="is-total"><dt>Valor final \(tributos já incluídos\)<\/dt><dd[^>]*>R\$\s200,00<\/dd>/);
+    assert.match(markup, /<div class="is-total"><dt>Valor final com tributos<\/dt><dd[^>]*>R\$\s131,45<\/dd>/);
+    assert.match(markup, /<div class="is-total"><dt>Valor final com tributos<\/dt><dd[^>]*>R\$\s262,90<\/dd>/);
   }
-  assert.doesNotMatch(document.nodes.get("#marketStats").innerHTML, /Total com tributos|R\$\s131,45|R\$\s262,90/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Tributos estimados/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Valor final com tributos<\/dt><dd[^>]*>R\$\s131,45/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Valor final com tributos<\/dt><dd[^>]*>R\$\s262,90/);
+  assert.doesNotMatch(document.nodes.get("#marketStats").innerHTML, /tributos contidos/i);
   assert.match(document.nodes.get("#marketStats").innerHTML, /IBPT \/ Empresômetro/);
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Comparação tributária/);
-  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Menor preço \(tributos contidos\)/);
-  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Maior preço \(tributos contidos\)/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Menor preço/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Maior preço/);
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Carga tributária estimada/);
-  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Tributos aproximados contidos no preço/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Tributos estimados/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Valor final com tributos<\/dt><dd[^>]*>R\$\s131,45/);
+  assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Valor final com tributos<\/dt><dd[^>]*>R\$\s262,90/);
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Versão: 26\.2\.A/);
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Vigência: 20\/08\/2026 a 30\/09\/2026/);
   assert.match(document.nodes.get("#marketTaxDetails").innerHTML, /Origem do produto<\/dt><dd>Nacional/);
@@ -176,15 +181,41 @@ test("detalhamento importado mostra país sem alterar a origem tributária do IB
 
   assert.match(document.nodes.get("#marketStats").innerHTML, /Baseado no produto selecionado/);
   assert.match(document.nodes.get("#marketStats").innerHTML, /Preço de venda/);
-  assert.match(document.nodes.get("#marketStats").innerHTML, /Tributos aproximados contidos no preço/);
-  for (const markup of [document.nodes.get("#marketStats").innerHTML, document.nodes.get("#marketTaxDetails").innerHTML]) {
-    assert.match(markup, /Valor final \(tributos já incluídos\)<\/span><strong[^>]*>R\$\s100,00<\/strong>/);
-  }
-  assert.doesNotMatch(document.nodes.get("#marketStats").innerHTML, /Total com tributos|R\$\s142,57/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Tributos estimados/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /Valor final com tributos/);
+  assert.match(document.nodes.get("#marketStats").innerHTML, /R\$\s142,57/);
+  assert.doesNotMatch(document.nodes.get("#marketStats").innerHTML, /R\$\s185,14/);
   const details = document.nodes.get("#marketTaxDetails").innerHTML;
+  assert.match(details, /Valor final com tributos/);
+  assert.match(details, /R\$\s142,57/);
   assert.match(details, /Origem do produto<\/dt><dd>Importado \(Fora do País\)/);
   assert.match(details, /País de origem<\/dt><dd>China/);
   assert.match(details, /UF de destino<\/dt><dd>RJ/);
   assert.match(details, /Fonte<\/dt><dd>IBPT \/ Empresômetro/);
   assert.match(details, /NCM 09012100 · Origem: Importado \(Fora do País\) · País: China · UF destino: RJ/);
+});
+
+test("total destacado soma centavos uma vez e mantém o preço quando os tributos são zero", () => {
+  const item = { id: "produto", title: "Produto", price: 11_699.1, source: "Loja", seller: "Loja", currency: "BRL", url: "https://example.com/produto" };
+  for (const [estimatedTaxes, formattedTaxes, finalPrice] of [[4_763.87, "4.763,87", "16.462,97"], [0, "0,00", "11.699,10"]]) {
+    const document = documentStub();
+    renderDashboard(document, calculatePricing(inputs, null), {
+      status: "success", query: "Produto", items: [item],
+      stats: { count: 1, average: item.price, median: item.price, min: item.price, max: item.price },
+      selectedItem: item, marketplace: "Google Shopping",
+      taxContext: { ncm: "09012100", ncmConfirmed: true, productOrigin: "nacional", originState: "SP", destinationState: "RJ" },
+      taxAvailability: { provider: "IBPT", configured: true, version: "26.2.A" },
+      tax: { status: "success", mode: "selected", expanded: false, calculations: { selected: {
+        marketPrice: item.price, estimatedTaxes, ncm: "09012100", productOrigin: "nacional",
+        source: "IBPT / Empresômetro", version: "26.2.A",
+        rates: { federal: 0, state: 0, municipal: 0, total: 0 },
+      } } },
+    }, new ConfiguredTaxRuleEngine().assess(inputs));
+    const summary = document.nodes.get("#marketStats").innerHTML;
+    assert.match(summary, /Preço de venda<\/span><strong[^>]*>R\$\s11\.699,10/);
+    assert.match(summary, new RegExp(`Tributos estimados<\\/span><strong[^>]*>R\\$\\s${formattedTaxes.replaceAll(".", "\\.")}`));
+    assert.match(summary, new RegExp(`Valor final com tributos<\\/span><strong[^>]*>R\\$\\s${finalPrice.replaceAll(".", "\\.")}`));
+    assert.match(summary, /market-tax-summary-metric is-total/);
+    assert.equal((summary.match(/Valor final com tributos/g) || []).length, 1);
+  }
 });

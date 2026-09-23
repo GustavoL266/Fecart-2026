@@ -93,7 +93,7 @@ O usuário pode pesquisar um produto usando nome, marca e modelo. Os resultados 
 
 Após uma pesquisa de mercado bem-sucedida, o fluxo prepara uma descrição fiscal normalizada e procura sugestões de NCM. O usuário pode ajustar a categoria e precisa confirmar uma sugestão relevante. A origem nacional/importada é uma escolha explícita. Para importados, a interface também exige o país no fluxo da estimativa.
 
-A área de mercado apresenta média, mediana, menor e maior preço. O card **Maior + tributos estimados** utiliza o maior preço e a tabela IBPT, depois dos pré-requisitos fiscais. Ele não altera os anúncios recebidos nem o preço sustentável.
+A área de mercado apresenta média, mediana, menor e maior preço. A estimativa tributária utiliza a tabela IBPT, depois dos pré-requisitos fiscais, para mostrar separadamente preço de venda, tributos estimados e valor final com tributos (`preço + tributos`) no menor preço, no maior preço ou no produto selecionado. Ela não altera os anúncios recebidos nem o preço sustentável.
 
 ### Preenchimento por IA
 

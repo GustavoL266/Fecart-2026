@@ -1,6 +1,6 @@
 # Estimativa tributária IBPT
 
-O card **Maior + tributos estimados** usa a tabela local [`data/ibpt/TabelaIBPTaxSP26.2.A.csv`](../data/ibpt/TabelaIBPTaxSP26.2.A.csv). O arquivo original foi preservado com delimitador `;`, codificação Windows-1252 e SHA-256 `898F70A73FADD0D8D36F7FB1BA844BD6FE7746A820D65DB5EBCB1BA059382983`.
+A estimativa tributária usa a tabela local [`data/ibpt/TabelaIBPTaxSP26.2.A.csv`](../data/ibpt/TabelaIBPTaxSP26.2.A.csv). O arquivo original foi preservado com delimitador `;`, codificação Windows-1252 e SHA-256 `898F70A73FADD0D8D36F7FB1BA844BD6FE7746A820D65DB5EBCB1BA059382983`.
 
 A versão é `26.2.A`, com vigência de `20/08/2026` a `30/09/2026` e fonte `IBPT / Empresômetro`. O portal [De Olho no Imposto](https://deolhonoimposto.ibpt.org.br/) confirma essa versão e vigência. O download oficial exige uma conta; os bytes preservados no repositório vieram do arquivo público de mesmo nome disponível no [espelho SAT Sistemas](https://www.satsistemas.com/ftp/).
 
@@ -17,11 +17,11 @@ Os campos `estadual` e `municipal` são somados à alíquota federal escolhida:
 
 ```text
 aliquotaTotal = aliquotaFederal + estadual + municipal
-valorTributosEstimados = maiorPreco × aliquotaTotal ÷ 100
-maiorComTributosEstimados = maiorPreco + valorTributosEstimados
+tributosEstimados = precoVenda × aliquotaTotal ÷ 100
+valorFinalComTributos = precoVenda + tributosEstimados
 ```
 
-Os valores monetários são arredondados ao centavo depois da multiplicação. Média, mediana, menor, maior e as fórmulas da precificação sustentável não são alterados.
+O provedor retorna `marketPrice` (preço de venda) e `estimatedTaxes` (somente o valor dos tributos) separadamente. A interface soma ambos uma única vez, para o produto selecionado ou para cada extremo da pesquisa, após arredondar os tributos ao centavo. Média, mediana, menor, maior e as fórmulas da precificação sustentável não são alterados.
 
 Para `85171300` e maior preço de `R$ 8.899,00`, a tabela fornece `17,88%` federal nacional, `24,57%` federal importado, `12,00%` estadual e `0,00%` municipal. O resultado nacional usa `29,88%`, estima `R$ 2.659,02` em tributos e produz `R$ 11.558,02`. O resultado importado usa `36,57%`, estima `R$ 3.254,36` e produz `R$ 12.153,36`.
 

@@ -4246,10 +4246,6 @@ tr:last-child td {
   gap: 8px;
 }
 
-.market-tax-detail-selected {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .market-tax-summary-grid > .is-total,
 .market-tax-detail-selected > .is-total {
   grid-column: 1 / -1;
