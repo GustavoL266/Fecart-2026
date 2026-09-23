@@ -1,33 +1,5 @@
 import { api } from "./api-client.js";
-
-const ACCESSORY_TERMS = new Set([
-  "acessorio", "accessory", "cabo", "cable", "capa", "case", "carregador", "charger",
-  "pelicula", "protector", "suporte", "holder",
-]);
-
-function normalizeText(value) {
-  return String(value)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
-function extractTokens(value) {
-  return normalizeText(value)
-    .match(/[a-z0-9]+/g)
-    ?.filter((token) => token.length >= 3 || /^\d+$/.test(token)) || [];
-}
-
-function isComparable(item, query) {
-  const queryTokens = extractTokens(query);
-  const titleTokens = extractTokens(item.title);
-  const categoryTokens = extractTokens(item.category);
-  const compactTitle = normalizeText(item.title).replace(/\s+/g, "");
-  const introducesAccessory = [...ACCESSORY_TERMS].some((term) =>
-    (titleTokens.includes(term) || categoryTokens.includes(term)) && !queryTokens.includes(term));
-  return !introducesAccessory
-    && queryTokens.every((token) => titleTokens.includes(token) || compactTitle.includes(token));
-}
+import { normalizeMarketQuery, rankMarketResults } from "../domain/market-relevance.js";
 
 function calculateMedian(values) {
   const sorted = [...values].sort((left, right) => left - right);
@@ -85,24 +57,27 @@ export class MarketService {
     this.#api = apiClient;
   }
 
-  async search(query) {
-    const normalizedQuery = String(query || "").trim().replace(/\s+/g, " ");
-    const response = await this.#api.get(`/market/search?q=${encodeURIComponent(normalizedQuery)}`, { handleUnauthorized: false });
+  async search(query, { refresh = false } = {}) {
+    const normalizedQuery = normalizeMarketQuery(query);
+    const path = `/market/search?q=${encodeURIComponent(normalizedQuery)}${refresh ? "&refresh=1" : ""}`;
+    const response = await this.#api.get(path, { handleUnauthorized: false });
     const seenIds = new Set();
-    const items = (Array.isArray(response?.results) ? response.results : [])
+    const candidates = (Array.isArray(response?.results) ? response.results : [])
       .map(normalizeItem)
       .filter((item) => {
-        if (!item || seenIds.has(item.id) || !isComparable(item, normalizedQuery)) return false;
+        if (!item || seenIds.has(item.id)) return false;
         seenIds.add(item.id);
         return true;
-      })
-      .slice(0, 5);
+      });
+    const items = rankMarketResults(candidates, normalizedQuery).results.slice(0, 5);
+    const consultedAt = String(response?.consultedAt || items[0]?.consultedAt || "");
     return {
       query: normalizedQuery,
       marketplace: response?.marketplace || "Marketplace",
       provider: response?.provider || "SearchAPI / Google Shopping",
       items,
       stats: calculateMarketStats(items),
+      consultedAt: Number.isFinite(Date.parse(consultedAt)) ? consultedAt : "",
     };
   }
 }

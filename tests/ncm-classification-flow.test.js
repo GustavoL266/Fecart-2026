@@ -48,10 +48,10 @@ test("a busca por descrição é explícita, preserva ambiguidade e confirma som
 });
 
 test("pesquisa de mercado preserva o termo comercial e inicia o fluxo fiscal normalizado", () => {
-  const market = sourceBetween("async function searchMarket()", "function selectMarketProduct");
+  const market = sourceBetween("async function searchMarket(", "function selectMarketProduct");
 
   assert.match(market, /prepareFiscalClassification\(query\)/);
-  assert.match(market, /market\.search\(query\)/);
+  assert.match(market, /market\.search\(query, \{ refresh \}\)/);
   assert.match(market, /fiscalRevision === ncmSearchRevision/);
   assert.doesNotMatch(market, /lookupNcm/);
 });

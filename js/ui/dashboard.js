@@ -182,12 +182,21 @@ function renderMarketPanel(document, marketState) {
   const results = document.querySelector("#marketResults");
   const sidebarStatus = document.querySelector("#marketSearchStatus");
   const dashboardStatus = document.querySelector("#marketDashboardStatus");
+  const consultedAt = document.querySelector("#marketConsultedAt");
+  const refreshButton = document.querySelector("#marketRefreshButton");
+  const refreshStatus = document.querySelector("#marketRefreshStatus");
   const taxDetails = document.querySelector("#marketTaxDetails");
   const selected = document.querySelector("#selectedMarketProduct");
   const searchButton = document.querySelector("#marketSearchButton");
   panel.hidden = marketState.status === "idle";
   searchButton.disabled = marketState.status === "loading";
   searchButton.textContent = marketState.status === "loading" ? "Buscando produtos..." : "Pesquisar produto";
+  refreshButton.hidden = !["success", "empty"].includes(marketState.status);
+  refreshButton.disabled = marketState.status === "loading";
+  consultedAt.textContent = marketState.consultedAt && ["success", "empty"].includes(marketState.status)
+    ? `Consulta realizada em: ${new Date(marketState.consultedAt).toLocaleString("pt-BR")}` : "";
+  refreshStatus.hidden = !marketState.refreshError;
+  refreshStatus.textContent = marketState.refreshError || "";
   selected.hidden = !marketState.selectedItem;
   const selectedItem = marketState.selectedItem;
   const selectedRating = Number.isFinite(selectedItem?.rating)
@@ -210,10 +219,10 @@ function renderMarketPanel(document, marketState) {
     return;
   }
   if (marketState.status === "empty") {
-    sidebarStatus.textContent = "Nenhum produto compatível foi encontrado.";
+    sidebarStatus.textContent = "Não encontramos referências suficientes para esta pesquisa.";
     dashboardStatus.textContent = "";
     stats.innerHTML = "";
-    results.innerHTML = '<div class="market-empty-state market-state-wide"><strong>Nenhum produto compatível foi encontrado.</strong><p>Experimente pesquisar usando nome, marca e modelo.</p></div>';
+    results.innerHTML = '<div class="market-empty-state market-state-wide"><strong>Não encontramos referências suficientes para esta pesquisa.</strong><p>Experimente pesquisar usando nome, marca e modelo.</p></div>';
     return;
   }
   if (!marketState.stats) {

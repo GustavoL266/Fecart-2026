@@ -513,7 +513,14 @@
               </div>
               <span class="market-provider-label">Dados via Google Shopping</span>
             </header>
-            <p id="marketDashboardStatus" class="market-dashboard-status" role="status"></p>
+            <div class="market-dashboard-meta">
+              <div>
+                <p id="marketDashboardStatus" class="market-dashboard-status" role="status"></p>
+                <small id="marketConsultedAt" class="market-consulted-at"></small>
+              </div>
+              <button id="marketRefreshButton" class="secondary-button" type="button" hidden>Atualizar resultados</button>
+            </div>
+            <p id="marketRefreshStatus" class="market-refresh-status" role="alert" hidden></p>
             <div id="marketStats" class="market-stats"></div>
             <div id="marketTaxDetails" class="market-tax-details" aria-live="polite"></div>
             <article id="selectedMarketProduct" class="selected-market-product" hidden></article>

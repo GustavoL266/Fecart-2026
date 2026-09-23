@@ -4126,6 +4126,28 @@ tr:last-child td {
   font-weight: 650;
 }
 
+.market-dashboard-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  min-width: 0;
+}
+
+.market-consulted-at {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.market-refresh-status {
+  margin: 0;
+  color: var(--amber);
+  font-size: 0.82rem;
+}
+
 .market-dashboard-section .market-stats {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   margin: 0;

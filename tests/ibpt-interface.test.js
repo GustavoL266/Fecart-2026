@@ -52,7 +52,7 @@ test("selecionar, remover ou iniciar outra pesquisa invalida a base tributária 
     assert.match(flow, /tax:\s*emptyMarketTaxState\(\)/);
     assert.match(flow, /maybeCalculateMarketTaxes\(\)/);
   }
-  assert.match(main.slice(searchStart, searchEnd), /selectedItem:\s*null/);
+  assert.match(main.slice(searchStart, searchEnd), /selectedItem:\s*refresh \? marketState\.selectedItem : null/);
 });
 
 test("confirmação de NCM mostra somente status, código, categoria e alteração", () => {

@@ -60,7 +60,7 @@ test("payload de produto inclui mercado somente quando existe referência ativa"
 
 test("respostas pendentes de NCM ou mercado não restauram dados após o reset", () => {
   const ncm = sourceBetween("async function lookupNcm(code)", "function resetNcmClassification");
-  const market = sourceBetween("async function searchMarket()", "function selectMarketProduct");
+  const market = sourceBetween("async function searchMarket(", "function selectMarketProduct");
 
   assert.match(ncm, /lookupRevision !== ncmLookupRevision/);
   assert.match(market, /searchRevision !== marketSearchRevision/);

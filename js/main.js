@@ -291,6 +291,8 @@ function emptyMarketState() {
     stats: null,
     selectedItem: null,
     error: "",
+    consultedAt: "",
+    refreshError: "",
     tax: emptyMarketTaxState(),
   };
 }
@@ -748,7 +750,9 @@ function endSession(message = "Sua sessão expirou. Entre novamente.") {
 
 function setMarketError(query, caughtError) {
   let error = "Não foi possível consultar o mercado agora.";
-  if (caughtError instanceof ApiError && caughtError.status === 429) {
+  if (caughtError instanceof ApiError && caughtError.code === "MARKET_RATE_LIMITED") {
+    error = "Muitas atualizações foram solicitadas. Aguarde um minuto e tente novamente.";
+  } else if (caughtError instanceof ApiError && caughtError.code === "SEARCHAPI_RATE_LIMITED") {
     error = "O provedor limitou temporariamente as consultas. Aguarde um pouco e tente novamente.";
   } else if (caughtError instanceof ApiError && caughtError.code === "SEARCHAPI_NOT_CONFIGURED") {
     error = "Consulta de mercado temporariamente indisponível.";
@@ -860,41 +864,57 @@ async function calculateMarketTaxes() {
   render();
 }
 
-async function searchMarket() {
+async function searchMarket({ refresh = false } = {}) {
   if (marketState.status === "loading") return;
   const searchRevision = ++marketSearchRevision;
-  const query = $("#marketQuery").value.trim();
+  const query = refresh ? marketState.query : $("#marketQuery").value.trim();
   if (query.length < 3) {
     marketState = { ...marketState, status: "error", error: "Informe pelo menos 3 caracteres para pesquisar." };
     render();
     return;
   }
 
-  if (elements.marketReferenceRule.value === "selected-product") {
+  const previousMarketState = marketState;
+  if (!refresh && elements.marketReferenceRule.value === "selected-product") {
     elements.marketPrice.value = manualMarketValue === null ? "" : String(manualMarketValue);
     elements.marketReferenceRule.value = "manual";
   }
-  clearMarketReference(window.sessionStorage);
-  const fiscalRevision = prepareFiscalClassification(query);
-  marketState = { ...marketState, status: "loading", query, items: [], stats: null, selectedItem: null, error: "", tax: emptyMarketTaxState() };
+  if (!refresh) clearMarketReference(window.sessionStorage);
+  const fiscalRevision = refresh ? null : prepareFiscalClassification(query);
+  marketState = { ...marketState, status: "loading", query, items: refresh ? marketState.items : [], stats: refresh ? marketState.stats : null, selectedItem: refresh ? marketState.selectedItem : null, error: "", refreshError: "", tax: emptyMarketTaxState() };
   render();
 
   try {
-    const data = await market.search(query);
+    const data = await market.search(query, { refresh });
     if (searchRevision !== marketSearchRevision) return;
+    const selectedItem = refresh && previousMarketState.selectedItem
+      ? data.items.find((item) => item.id === previousMarketState.selectedItem.id) || null
+      : null;
+    if (refresh && previousMarketState.selectedItem && !selectedItem) {
+      elements.marketPrice.value = manualMarketValue === null ? "" : String(manualMarketValue);
+      elements.marketReferenceRule.value = "manual";
+      clearMarketReference(window.sessionStorage);
+    }
+    if (selectedItem) saveMarketReference(window.sessionStorage, { manualValue: manualMarketValue || null, query: data.query, selectedItem });
     marketState = {
       ...marketState,
       status: data.stats ? "success" : "empty",
       ...data,
+      selectedItem,
       error: "",
     };
   } catch (error) {
     if (searchRevision !== marketSearchRevision) return;
     setMarketError(query, error);
+    if (refresh) {
+      const refreshError = marketState.error.replace(" Você ainda pode informar o preço médio dos concorrentes manualmente.", "");
+      marketState = { ...previousMarketState, refreshError: `${refreshError} A consulta anterior foi mantida.` };
+    }
   }
 
   render();
   if (marketState.status === "success" && fiscalRevision === ncmSearchRevision) void searchNcmSuggestions();
+  if (refresh && !marketState.refreshError) void maybeCalculateMarketTaxes();
 }
 
 function selectMarketProduct(id) {
@@ -1369,6 +1389,7 @@ elements.marketPrice.addEventListener("input", () => {
 elements.marketReferenceRule.addEventListener("change", render);
 
 $("#marketSearchButton").addEventListener("click", searchMarket);
+$("#marketRefreshButton").addEventListener("click", () => { void searchMarket({ refresh: true }); });
 $("#marketQuery").addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
   event.preventDefault();

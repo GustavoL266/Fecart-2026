@@ -99,6 +99,19 @@ const marketSearchLimiter = rateLimit({
   message: { error: "Muitas consultas de mercado. Aguarde um minuto e tente novamente.", code: "MARKET_RATE_LIMITED" },
 });
 
+const marketRefreshLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 6,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Muitas atualizações de mercado. Aguarde um minuto e tente novamente.", code: "MARKET_RATE_LIMITED" },
+});
+
+function limitMarketRefresh(req, res, next) {
+  if (req.query.refresh !== "1") return next();
+  return marketRefreshLimiter(req, res, next);
+}
+
 const taxCalculationLimiter = rateLimit({
   windowMs: 60 * 1_000,
   limit: 15,
@@ -265,10 +278,10 @@ app.get("/health", async (req, res, next) => {
   }
 });
 
-app.get("/market/search", requireAuth, marketSearchLimiter, async (req, res, next) => {
+app.get("/market/search", requireAuth, marketSearchLimiter, limitMarketRefresh, async (req, res, next) => {
   try {
-    const { q } = validate(marketSearchSchema, req.query, { code: "INVALID_MARKET_QUERY" });
-    const result = await runMarketSearch({ provider: marketProvider, config: searchApiConfig, query: q });
+    const { q, refresh } = validate(marketSearchSchema, req.query, { code: "INVALID_MARKET_QUERY" });
+    const result = await runMarketSearch({ provider: marketProvider, config: searchApiConfig, query: q, refresh: refresh === "1" });
     return res.json(result);
   } catch (error) {
     return next(error);

@@ -597,6 +597,92 @@ function marketBadgeForGap(gap) {
 }
 
 
+const ACCESSORY_TERMS = new Set([
+  "acessorio", "accessory", "adaptador", "bateria", "cabo", "capa", "capinha",
+  "carregador", "case", "charger", "controle", "cover", "display", "headset",
+  "lcd", "modulo", "peca", "pecas", "pelicula", "placa", "protetor",
+  "protector", "reparo", "replacement", "screen", "suporte", "tela",
+]);
+const IDENTITY_TERMS = new Set(["max", "mini", "plus", "pro", "ultra"]);
+const CONNECTORS = new Set(["a", "as", "com", "da", "de", "do", "e", "em", "o", "os", "para"]);
+
+function words(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .match(/[a-z0-9]+/g)
+    ?.filter((word) => !CONNECTORS.has(word)) || [];
+}
+
+function normalizeMarketQuery(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\biphone\b/gi, "iPhone")
+    .replace(/\bmacbook\b/gi, "MacBook")
+    .replace(/\bplaystation\b/gi, "PlayStation");
+}
+
+function simplifyMarketQuery(value) {
+  const original = normalizeMarketQuery(value);
+  let simplified = original
+    .replace(/^Apple\s+(?=iPhone\b|iPad\b|MacBook\b)/i, "")
+    .replace(/^Samsung\s+(?=Galaxy\b)/i, "")
+    .replace(/^Sony\s+(?=PlayStation\b)/i, "");
+  if (words(simplified).length >= 4) {
+    simplified = simplified.replace(/\s+\d+\s*(?:GB|TB)\b$/i, "");
+  }
+  return simplified;
+}
+
+function titleWords(value) {
+  const tokens = words(value);
+  const combinations = tokens.flatMap((token, index) => {
+    const next = tokens[index + 1] || "";
+    const joined = /^\d+$/.test(token) && /^[a-z]{1,2}$/.test(next)
+      || /^[a-z]{3,}$/.test(token) && /^\d+$/.test(next);
+    const compound = token.match(/^([a-z]{3,})(\d+)$/);
+    return [...(joined ? [`${token}${next}`] : []), ...(compound ? compound.slice(1) : [])];
+  });
+  return new Set([...tokens, ...combinations]);
+}
+
+function scoreItem(item, coreTokens, fullTokens) {
+  const titleTokens = words(item.title);
+  const titleSet = titleWords(item.title);
+  const matchedCore = coreTokens.filter((token) => titleSet.has(token));
+  if (!coreTokens.length || matchedCore.length / coreTokens.length < 0.75) return null;
+  if (coreTokens.some((token) => (/\d/.test(token) || IDENTITY_TERMS.has(token)) && !titleSet.has(token))) return null;
+
+  const unrequestedAccessories = titleTokens.filter((token) => ACCESSORY_TERMS.has(token) && !fullTokens.includes(token));
+  const accessory = unrequestedAccessories.length > 0;
+  const leadingAccessory = titleTokens.slice(0, 3).some((token) => unrequestedAccessories.includes(token));
+  const corePhrase = coreTokens.join(" ");
+  const titlePhrase = titleTokens.join(" ");
+  const optionalMatches = fullTokens.filter((token) => !coreTokens.includes(token) && titleSet.has(token)).length;
+  const score = (matchedCore.length / coreTokens.length) * 10
+    + (titlePhrase.includes(corePhrase) ? 2 : 0)
+    + optionalMatches * 0.5
+    - (leadingAccessory ? 10 : accessory ? 4 : 0);
+  return score >= 5 ? { item, score, accessory } : null;
+}
+
+function rankMarketResults(items, query) {
+  const fullTokens = words(normalizeMarketQuery(query));
+  const coreTokens = words(simplifyMarketQuery(query));
+  const ranked = items
+    .map((item, index) => ({ assessment: scoreItem(item, coreTokens, fullTokens), index }))
+    .filter(({ assessment }) => assessment)
+    .sort((left, right) => right.assessment.score - left.assessment.score || left.index - right.index);
+  return {
+    results: ranked.map(({ assessment }) => assessment.item),
+    primaryCount: ranked.filter(({ assessment }) => !assessment.accessory).length,
+    accessoryCount: ranked.filter(({ assessment }) => assessment.accessory).length,
+  };
+}
+
+
 const HTML_ENTITIES = Object.freeze({ amp: "&", apos: "'", gt: ">", lt: "<", nbsp: " ", quot: '"' });
 
 function decodeHtmlEntities(value) {
@@ -715,35 +801,6 @@ function isValidFiscalState(value) {
 
 
 
-const ACCESSORY_TERMS = new Set([
-  "acessorio", "accessory", "cabo", "cable", "capa", "case", "carregador", "charger",
-  "pelicula", "protector", "suporte", "holder",
-]);
-
-function normalizeText(value) {
-  return String(value)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
-function extractTokens(value) {
-  return normalizeText(value)
-    .match(/[a-z0-9]+/g)
-    ?.filter((token) => token.length >= 3 || /^\d+$/.test(token)) || [];
-}
-
-function isComparable(item, query) {
-  const queryTokens = extractTokens(query);
-  const titleTokens = extractTokens(item.title);
-  const categoryTokens = extractTokens(item.category);
-  const compactTitle = normalizeText(item.title).replace(/\s+/g, "");
-  const introducesAccessory = [...ACCESSORY_TERMS].some((term) =>
-    (titleTokens.includes(term) || categoryTokens.includes(term)) && !queryTokens.includes(term));
-  return !introducesAccessory
-    && queryTokens.every((token) => titleTokens.includes(token) || compactTitle.includes(token));
-}
-
 function calculateMedian(values) {
   const sorted = [...values].sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
@@ -800,24 +857,27 @@ class MarketService {
     this.#api = apiClient;
   }
 
-  async search(query) {
-    const normalizedQuery = String(query || "").trim().replace(/\s+/g, " ");
-    const response = await this.#api.get(`/market/search?q=${encodeURIComponent(normalizedQuery)}`, { handleUnauthorized: false });
+  async search(query, { refresh = false } = {}) {
+    const normalizedQuery = normalizeMarketQuery(query);
+    const path = `/market/search?q=${encodeURIComponent(normalizedQuery)}${refresh ? "&refresh=1" : ""}`;
+    const response = await this.#api.get(path, { handleUnauthorized: false });
     const seenIds = new Set();
-    const items = (Array.isArray(response?.results) ? response.results : [])
+    const candidates = (Array.isArray(response?.results) ? response.results : [])
       .map(normalizeItem)
       .filter((item) => {
-        if (!item || seenIds.has(item.id) || !isComparable(item, normalizedQuery)) return false;
+        if (!item || seenIds.has(item.id)) return false;
         seenIds.add(item.id);
         return true;
-      })
-      .slice(0, 5);
+      });
+    const items = rankMarketResults(candidates, normalizedQuery).results.slice(0, 5);
+    const consultedAt = String(response?.consultedAt || items[0]?.consultedAt || "");
     return {
       query: normalizedQuery,
       marketplace: response?.marketplace || "Marketplace",
       provider: response?.provider || "SearchAPI / Google Shopping",
       items,
       stats: calculateMarketStats(items),
+      consultedAt: Number.isFinite(Date.parse(consultedAt)) ? consultedAt : "",
     };
   }
 }
@@ -2105,12 +2165,21 @@ function renderMarketPanel(document, marketState) {
   const results = document.querySelector("#marketResults");
   const sidebarStatus = document.querySelector("#marketSearchStatus");
   const dashboardStatus = document.querySelector("#marketDashboardStatus");
+  const consultedAt = document.querySelector("#marketConsultedAt");
+  const refreshButton = document.querySelector("#marketRefreshButton");
+  const refreshStatus = document.querySelector("#marketRefreshStatus");
   const taxDetails = document.querySelector("#marketTaxDetails");
   const selected = document.querySelector("#selectedMarketProduct");
   const searchButton = document.querySelector("#marketSearchButton");
   panel.hidden = marketState.status === "idle";
   searchButton.disabled = marketState.status === "loading";
   searchButton.textContent = marketState.status === "loading" ? "Buscando produtos..." : "Pesquisar produto";
+  refreshButton.hidden = !["success", "empty"].includes(marketState.status);
+  refreshButton.disabled = marketState.status === "loading";
+  consultedAt.textContent = marketState.consultedAt && ["success", "empty"].includes(marketState.status)
+    ? `Consulta realizada em: ${new Date(marketState.consultedAt).toLocaleString("pt-BR")}` : "";
+  refreshStatus.hidden = !marketState.refreshError;
+  refreshStatus.textContent = marketState.refreshError || "";
   selected.hidden = !marketState.selectedItem;
   const selectedItem = marketState.selectedItem;
   const selectedRating = Number.isFinite(selectedItem?.rating)
@@ -2133,10 +2202,10 @@ function renderMarketPanel(document, marketState) {
     return;
   }
   if (marketState.status === "empty") {
-    sidebarStatus.textContent = "Nenhum produto compatível foi encontrado.";
+    sidebarStatus.textContent = "Não encontramos referências suficientes para esta pesquisa.";
     dashboardStatus.textContent = "";
     stats.innerHTML = "";
-    results.innerHTML = '<div class="market-empty-state market-state-wide"><strong>Nenhum produto compatível foi encontrado.</strong><p>Experimente pesquisar usando nome, marca e modelo.</p></div>';
+    results.innerHTML = '<div class="market-empty-state market-state-wide"><strong>Não encontramos referências suficientes para esta pesquisa.</strong><p>Experimente pesquisar usando nome, marca e modelo.</p></div>';
     return;
   }
   if (!marketState.stats) {
@@ -3216,6 +3285,8 @@ function emptyMarketState() {
     stats: null,
     selectedItem: null,
     error: "",
+    consultedAt: "",
+    refreshError: "",
     tax: emptyMarketTaxState(),
   };
 }
@@ -3673,7 +3744,9 @@ function endSession(message = "Sua sessão expirou. Entre novamente.") {
 
 function setMarketError(query, caughtError) {
   let error = "Não foi possível consultar o mercado agora.";
-  if (caughtError instanceof ApiError && caughtError.status === 429) {
+  if (caughtError instanceof ApiError && caughtError.code === "MARKET_RATE_LIMITED") {
+    error = "Muitas atualizações foram solicitadas. Aguarde um minuto e tente novamente.";
+  } else if (caughtError instanceof ApiError && caughtError.code === "SEARCHAPI_RATE_LIMITED") {
     error = "O provedor limitou temporariamente as consultas. Aguarde um pouco e tente novamente.";
   } else if (caughtError instanceof ApiError && caughtError.code === "SEARCHAPI_NOT_CONFIGURED") {
     error = "Consulta de mercado temporariamente indisponível.";
@@ -3785,41 +3858,57 @@ async function calculateMarketTaxes() {
   render();
 }
 
-async function searchMarket() {
+async function searchMarket({ refresh = false } = {}) {
   if (marketState.status === "loading") return;
   const searchRevision = ++marketSearchRevision;
-  const query = $("#marketQuery").value.trim();
+  const query = refresh ? marketState.query : $("#marketQuery").value.trim();
   if (query.length < 3) {
     marketState = { ...marketState, status: "error", error: "Informe pelo menos 3 caracteres para pesquisar." };
     render();
     return;
   }
 
-  if (elements.marketReferenceRule.value === "selected-product") {
+  const previousMarketState = marketState;
+  if (!refresh && elements.marketReferenceRule.value === "selected-product") {
     elements.marketPrice.value = manualMarketValue === null ? "" : String(manualMarketValue);
     elements.marketReferenceRule.value = "manual";
   }
-  clearMarketReference(window.sessionStorage);
-  const fiscalRevision = prepareFiscalClassification(query);
-  marketState = { ...marketState, status: "loading", query, items: [], stats: null, selectedItem: null, error: "", tax: emptyMarketTaxState() };
+  if (!refresh) clearMarketReference(window.sessionStorage);
+  const fiscalRevision = refresh ? null : prepareFiscalClassification(query);
+  marketState = { ...marketState, status: "loading", query, items: refresh ? marketState.items : [], stats: refresh ? marketState.stats : null, selectedItem: refresh ? marketState.selectedItem : null, error: "", refreshError: "", tax: emptyMarketTaxState() };
   render();
 
   try {
-    const data = await market.search(query);
+    const data = await market.search(query, { refresh });
     if (searchRevision !== marketSearchRevision) return;
+    const selectedItem = refresh && previousMarketState.selectedItem
+      ? data.items.find((item) => item.id === previousMarketState.selectedItem.id) || null
+      : null;
+    if (refresh && previousMarketState.selectedItem && !selectedItem) {
+      elements.marketPrice.value = manualMarketValue === null ? "" : String(manualMarketValue);
+      elements.marketReferenceRule.value = "manual";
+      clearMarketReference(window.sessionStorage);
+    }
+    if (selectedItem) saveMarketReference(window.sessionStorage, { manualValue: manualMarketValue || null, query: data.query, selectedItem });
     marketState = {
       ...marketState,
       status: data.stats ? "success" : "empty",
       ...data,
+      selectedItem,
       error: "",
     };
   } catch (error) {
     if (searchRevision !== marketSearchRevision) return;
     setMarketError(query, error);
+    if (refresh) {
+      const refreshError = marketState.error.replace(" Você ainda pode informar o preço médio dos concorrentes manualmente.", "");
+      marketState = { ...previousMarketState, refreshError: `${refreshError} A consulta anterior foi mantida.` };
+    }
   }
 
   render();
   if (marketState.status === "success" && fiscalRevision === ncmSearchRevision) void searchNcmSuggestions();
+  if (refresh && !marketState.refreshError) void maybeCalculateMarketTaxes();
 }
 
 function selectMarketProduct(id) {
@@ -4294,6 +4383,7 @@ elements.marketPrice.addEventListener("input", () => {
 elements.marketReferenceRule.addEventListener("change", render);
 
 $("#marketSearchButton").addEventListener("click", searchMarket);
+$("#marketRefreshButton").addEventListener("click", () => { void searchMarket({ refresh: true }); });
 $("#marketQuery").addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
   event.preventDefault();

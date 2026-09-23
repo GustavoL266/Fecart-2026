@@ -65,13 +65,14 @@ test("faz GET autenticado ao Google Shopping e normaliza somente produtos BRL re
   );
 
   const result = await provider.search(" iPhone   15 Pro Max ");
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
   const requestUrl = new URL(calls[0].url);
   assert.equal(requestUrl.origin + requestUrl.pathname, SEARCHAPI_GOOGLE_SHOPPING_URL);
   assert.equal(requestUrl.searchParams.get("engine"), "google_shopping");
   assert.equal(requestUrl.searchParams.get("q"), "iPhone 15 Pro Max");
   assert.equal(requestUrl.searchParams.get("gl"), "br");
   assert.equal(requestUrl.searchParams.get("hl"), "pt-br");
+  assert.equal(new URL(calls[1].url).searchParams.get("page"), "2");
   assert.equal(requestUrl.searchParams.has("api_key"), false);
   assert.equal(calls[0].options.method, "GET");
   assert.equal(calls[0].options.headers.Authorization, "Bearer sk-test-secret");
@@ -148,13 +149,103 @@ test("usa cache de cinco minutos e deduplica chamadas simultâneas", async () =>
     },
   );
   const [first, simultaneous] = await Promise.all([provider.search("iPhone"), provider.search("iPhone")]);
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
   assert.equal(first.results.length, 1);
   assert.equal(simultaneous.results.length, 1);
   assert.equal((await provider.search("iphone")).cached, true);
   now += 300_001;
   await provider.search("iPhone");
+  assert.equal(calls, 4);
+});
+
+test("busca uma segunda página quando a primeira não contém referências suficientes", async () => {
+  const calls = [];
+  const provider = createSearchApiMarketProvider({ apiKey: "secret" }, {
+    fetchImpl: async (url) => {
+      calls.push(new URL(url));
+      return response(200, { shopping_results: calls.length === 1 ? [] : [{ ...validProduct, product_id: "new", title: "Apple iPhone 18 Pro Max 256GB" }] });
+    },
+    logger: { info() {} },
+  });
+  const result = await provider.search("Iphone 18 Pro Max");
+  assert.equal(calls[0].searchParams.get("q"), "iPhone 18 Pro Max");
+  assert.equal(calls[1].searchParams.get("page"), "2");
+  assert.deepEqual(result.results.map((item) => item.id), ["new"]);
+  assert.equal(result.receivedCount, 1);
+  assert.equal(result.retainedCount, 1);
+});
+
+test("consulta simplificada preserva o modelo e recupera produto sem capacidade no título", async () => {
+  const queries = [];
+  const provider = createSearchApiMarketProvider({ apiKey: "secret" }, {
+    fetchImpl: async (url) => {
+      const query = new URL(url).searchParams.get("q");
+      queries.push(query);
+      return response(200, { shopping_results: query.includes("256GB") ? [] : [{ ...validProduct, product_id: "model", title: "iPhone 18 Pro Max 512GB" }] });
+    },
+    logger: { info() {} },
+  });
+  const result = await provider.search("Apple Iphone 18 Pro Max 256GB");
+  assert.deepEqual(queries, ["Apple iPhone 18 Pro Max 256GB", "iPhone 18 Pro Max"]);
+  assert.deepEqual(result.results.map((item) => item.id), ["model"]);
+});
+
+test("não corta o produto principal quando acessórios ocupam as primeiras posições", async () => {
+  const accessories = Array.from({ length: 12 }, (_, index) => ({ ...validProduct, product_id: `case-${index}`, title: `Capa para iPhone 18 Pro Max ${index}` }));
+  const provider = createSearchApiMarketProvider({ apiKey: "secret" }, {
+    fetchImpl: async (url) => response(200, { shopping_results: new URL(url).searchParams.has("page") ? [] : [...accessories, { ...validProduct, product_id: "phone", title: "iPhone 18 Pro Max 256GB" }] }),
+    logger: { info() {} },
+  });
+  const result = await provider.search("iPhone 18 Pro Max");
+  assert.equal(result.receivedCount, 13);
+  assert.deepEqual(result.results.map((item) => item.id), ["phone"]);
+});
+
+test("aproveita produtos populares válidos retornados pela SearchAPI", async () => {
+  const provider = createSearchApiMarketProvider({ apiKey: "secret" }, {
+    fetchImpl: async () => response(200, { shopping_results: [], popular_products: [{ ...validProduct, product_id: "popular", title: "MacBook Pro 14" }] }),
+    logger: { info() {} },
+  });
+  const result = await provider.search("MacBook Pro");
+  assert.deepEqual(result.results.map((item) => item.id), ["popular"]);
+});
+
+test("atualização manual ignora o cache e registra o novo horário da consulta", async () => {
+  let calls = 0;
+  let now = Date.UTC(2026, 8, 23, 12);
+  const provider = createSearchApiMarketProvider({ apiKey: "secret" }, {
+    fetchImpl: async () => {
+      calls += 1;
+      return response(200, { shopping_results: Array.from({ length: 5 }, (_, index) => ({ ...validProduct, product_id: `phone-${index}`, extracted_price: 1000 + calls, title: `iPhone 18 Pro Max ${index}` })) });
+    },
+    logger: { info() {} },
+    now: () => now,
+  });
+  const first = await provider.search("iPhone 18 Pro Max");
+  assert.equal((await provider.search("iphone 18 pro max")).cached, true);
+  now += 30_000;
+  const refreshed = await provider.search("iPhone 18 Pro Max", { refresh: true });
   assert.equal(calls, 2);
+  assert.equal(refreshed.results[0].price, first.results[0].price + 1);
+  assert.notEqual(refreshed.consultedAt, first.consultedAt);
+  assert.equal((await provider.search("iPhone 18 Pro Max")).results[0].price, refreshed.results[0].price);
+});
+
+test("resposta vazia expira em um minuto para permitir produtos recém-publicados", async () => {
+  let calls = 0;
+  let now = 0;
+  const provider = createSearchApiMarketProvider({ apiKey: "secret" }, {
+    fetchImpl: async () => { calls += 1; return response(200, { shopping_results: [] }); },
+    logger: { info() {} },
+    now: () => now,
+  });
+  assert.deepEqual((await provider.search("produto inexistente xyz123abc")).results, []);
+  assert.equal(calls, 2);
+  now += 59_000;
+  assert.equal((await provider.search("produto inexistente xyz123abc")).cached, true);
+  now += 1_001;
+  await provider.search("produto inexistente xyz123abc");
+  assert.equal(calls, 4);
 });
 
 test("rejeita configuração ausente, resposta inválida e consulta vazia", async () => {
@@ -168,7 +259,7 @@ test("rejeita configuração ausente, resposta inválida e consulta vazia", asyn
 
 test("rejeita corpo excessivo do provedor antes de carregá-lo em memória", async () => {
   let bodyRead = false;
-  const oversizedResponse = response(200, { shopping_results: [validProduct] }, new Map([["content-length", "100001"]]));
+  const oversizedResponse = response(200, { shopping_results: [validProduct] }, new Map([["content-length", "500001"]]));
   oversizedResponse.text = async () => { bodyRead = true; return "{}"; };
   const provider = createSearchApiMarketProvider(
     { apiKey: "secret" },

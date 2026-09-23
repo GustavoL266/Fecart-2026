@@ -40,7 +40,7 @@ test("rota executa as duas consultas pedidas e registra somente metadados seguro
   const results = [{ id: "B001", title: "Telefone", price: 100, currency: "BRL", source: "Loja" }];
   for (const query of ["Iphone", "iPhone 15 Pro Max"]) {
     const result = await runMarketSearch({
-      provider: { async search(receivedQuery) { assert.equal(receivedQuery, query); return { results, cached: false }; } },
+      provider: { async search(receivedQuery) { assert.equal(receivedQuery, query.replace(/^Iphone$/, "iPhone")); return { results, cached: false }; } },
       config: baseConfig,
       logger: { info: (...values) => logs.push(values), warn: (...values) => logs.push(values) },
       query,
@@ -52,4 +52,16 @@ test("rota executa as duas consultas pedidas e registra somente metadados seguro
   assert.match(logs[1][0], /Provider: SearchAPI Google Shopping/);
   assert.doesNotMatch(JSON.stringify(logs), /Iphone|iPhone 15 Pro Max/);
   assert.doesNotMatch(JSON.stringify(logs), /authorization|bearer|nk-/i);
+});
+
+test("atualização manual encaminha o bypass de cache ao provider", async () => {
+  let options;
+  await runMarketSearch({
+    provider: { async search(_query, receivedOptions) { options = receivedOptions; return { results: [] }; } },
+    config: baseConfig,
+    logger: { info() {} },
+    query: "Iphone 18 Pro Max",
+    refresh: true,
+  });
+  assert.deepEqual(options, { refresh: true });
 });

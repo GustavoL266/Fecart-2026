@@ -23,6 +23,24 @@ test("dashboard lista as pendências reais em vez de mensagem genérica", () => 
   assert.match(document.nodes.get("#marketStatus").textContent, /opcional/);
 });
 
+test("consulta mostra horário real e permite atualizar sem perder resultados após uma falha", () => {
+  const document = documentStub();
+  renderIncompleteDashboard(document, {
+    status: "success",
+    query: "iPhone 18 Pro Max",
+    items: [{ id: "phone", title: "iPhone 18 Pro Max", price: 5000, currency: "BRL", source: "Loja", seller: "Loja", url: "https://example.com/phone" }],
+    stats: { count: 1, average: 5000, median: 5000, min: 5000, max: 5000 },
+    consultedAt: "2026-09-23T12:00:00.000Z",
+    refreshError: "Não foi possível atualizar os preços agora. Tente novamente.",
+    tax: { status: "idle" },
+  }, {});
+  assert.equal(document.nodes.get("#marketRefreshButton").hidden, false);
+  assert.match(document.nodes.get("#marketConsultedAt").textContent, /Consulta realizada em:/);
+  assert.equal(document.nodes.get("#marketRefreshStatus").hidden, false);
+  assert.match(document.nodes.get("#marketRefreshStatus").textContent, /Não foi possível atualizar/);
+  assert.match(document.nodes.get("#marketResults").innerHTML, /iPhone 18 Pro Max/);
+});
+
 test("dashboard lê o resultado canônico e distingue produto individual", () => {
   const selectedProduct = { id: "produto-1", title: "Produto principal", price: 30, source: "Loja Exemplo", seller: "Loja Exemplo", currency: "BRL", image: "https://example.com/image.jpg", url: "https://example.com/product", rating: 4.7, reviews: 120, consultedAt: "2026-09-02T12:00:00.000Z" };
   const otherProduct = { ...selectedProduct, id: "produto-2", title: "Produto alternativo", price: 32, source: "Outra Loja", seller: "Outra Loja" };

@@ -33,7 +33,7 @@ test("resultados de mercado pertencem ao dashboard e não à sidebar", () => {
   assert.equal((html.match(/id="marketPanel"/g) || []).length, 1);
   assert.match(html, /Escolha o produto que mais se aproxima/);
   assert.match(dashboard, /Buscando produtos no mercado/);
-  assert.match(dashboard, /Nenhum produto compatível foi encontrado/);
+  assert.match(dashboard, /Não encontramos referências suficientes para esta pesquisa/);
   assert.match(dashboard, /Usar como referência/);
   assert.match(styles, /market-dashboard-section \.market-stats[\s\S]*grid-template-columns:\s*repeat\(5,/);
   assert.match(styles, /grid-template-columns:\s*repeat\(3,/);
@@ -41,6 +41,8 @@ test("resultados de mercado pertencem ao dashboard e não à sidebar", () => {
 
 test("renderização do dashboard reutiliza o state sem disparar nova consulta", () => {
   assert.doesNotMatch(dashboard, /market\.search|\/market\/search/);
-  assert.match(main, /await market\.search\(query\)/);
+  assert.match(main, /await market\.search\(query, \{ refresh \}\)/);
   assert.match(main, /marketSearchButton.*addEventListener\("click", searchMarket\)/s);
+  assert.match(html, /id="marketRefreshButton"[^>]*>Atualizar resultados/);
+  assert.match(html, /id="marketConsultedAt"/);
 });
