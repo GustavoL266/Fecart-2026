@@ -25,7 +25,7 @@ O provedor retorna `marketPrice` (preço de venda) e `estimatedTaxes` (somente o
 
 Para `85171300` e maior preço de `R$ 8.899,00`, a tabela fornece `17,88%` federal nacional, `24,57%` federal importado, `12,00%` estadual e `0,00%` municipal. O resultado nacional usa `29,88%`, estima `R$ 2.659,02` em tributos e produz `R$ 11.558,02`. O resultado importado usa `36,57%`, estima `R$ 3.254,36` e produz `R$ 12.153,36`.
 
-O endpoint interno é `POST /tax/estimate`. Ele recebe NCM, origem, maior preço e a prova da classificação atual. Não recebe UFs, chave de API ou ID de empresa e não faz requisição de rede. O resultado anterior é invalidado quando muda o NCM, a categoria, a pesquisa, o maior preço ou a origem.
+O endpoint interno é `POST /tax/estimate`. Ele recebe NCM, origem, país de origem, UF de origem, UF de destino, preço do cenário e a prova da classificação atual. Não recebe chave de API ou ID de empresa e não faz requisição de rede. O resultado anterior é invalidado quando muda o NCM, a categoria, a pesquisa, o maior preço ou a origem.
 
 Os erros públicos são específicos:
 
@@ -36,3 +36,15 @@ Os erros públicos são específicos:
 - `IBPT_INVALID_FILE`: não foi possível carregar a tabela tributária.
 
 `GET /health` expõe somente provedor, estado de configuração e versão em `taxEstimate`. Se o arquivo não puder ser carregado, inclui apenas o código seguro da falha, sem retornar linhas ou conteúdo do CSV.
+
+## País de origem e limites da fonte
+
+O país era armazenado em `state.countryOfOrigin`, incluído na assinatura da estimativa e exibido no frontend, mas era omitido por `TaxService` e pelo schema do endpoint. O motor recebia apenas NCM, nacional/importado e preço. A escolha entre `nacionalfederal` e `importadosfederal` era a única distinção de origem.
+
+Agora o país normalizado e as UFs seguem do contexto do frontend ao endpoint e ao `IbptTaxProvider.calculate`. País, UF de origem e UF de destino são dimensões independentes; a alteração de qualquer uma invalida a assinatura. A edição do país recalcula automaticamente tanto menor/maior preço quanto produto selecionado. Respostas de um contexto anterior são descartadas. País vazio impede a estimativa importada no frontend e no motor. Produto nacional ignora o país.
+
+A tabela local SP não contém país, acordos, preferências, Imposto de Importação separado ou regras de origem. Não há outra fonte dessas regras configurada no projeto. Logo China, Japão e EUA usam os mesmos componentes IBPT para um mesmo NCM/preço. Para NCM `85171300` e R$ 8.899,00, China e Japão têm 36,57%, R$ 3.254,36 de tributos e R$ 12.153,36 como valor final. A interface informa discretamente que não foi identificada diferença nas fontes disponíveis; isso não afirma inexistência de diferenças na legislação. A tabela continua sendo SP: transmitir UF de destino não cria alíquotas de outros estados.
+
+O ponto opcional `originRuleProvider.resolve(fiscalContext, record)` é uma dependência exclusivamente do servidor e não é configurado em produção. Uma futura integração deve verificar NCM, país, destino e condições de elegibilidade/vigência, e retornar `null` quando não houver tratamento suportado. O contrato exige `source`, `reference` e `federalRate` (estimativa federal efetiva comparável à base IBPT, entre 0 e 100). A taxa federal original permanece em `baseFederalRate`; a proveniência da regra é exibida no detalhamento. Não se pode subtrair uma preferência de II diretamente de `importadosfederal`, pois este é um percentual agregado. Uma integração que exija outras bases/componentes precisará de um provedor apropriado, não de uma adaptação arbitrária deste contrato.
+
+Nenhuma alíquota por país foi adicionada. As diferenças exercitadas nos testes são fixtures explícitas do contrato, sem validade fiscal e sem configuração na aplicação. A existência de preferências depende da regra e de sua elegibilidade, conforme as [orientações oficiais do Siscomex](https://www.gov.br/siscomex/pt-br/informacoes/perguntas-frequentes/acordos-comerciais/7-aspectos-tarifarios).

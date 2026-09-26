@@ -23,11 +23,11 @@ test("interface identifica a estimativa IBPT e exige escolha explícita da orige
   assert.doesNotMatch(section, /id="productOrigin"[^]*?<option[^>]+selected/);
 });
 
-test("país de origem possui estado separado e não altera o payload enviado ao IBPT", () => {
+test("país de origem possui estado separado e participa do payload tributário", () => {
   assert.match(main, /countryOfOrigin:\s*""/);
   assert.match(main, /countryOfOrigin:\s*elements\.productOrigin\.value === "importado" \? state\.countryOfOrigin : ""/);
   assert.match(main, /elements\.countryOfOrigin\.addEventListener\("change"/);
-  assert.doesNotMatch(main.match(/taxService\.calculateForPrice\(\{[\s\S]*?\}\);/)?.[0] || "", /countryOfOrigin/);
+  assert.match(main.match(/taxService\.calculateForPrice\(\{[\s\S]*?\}\);/)?.[0] || "", /countryOfOrigin: context.countryOfOrigin/);
 });
 
 test("card e detalhamento mostram os modos selecionado e extremos com os dados tributários", () => {

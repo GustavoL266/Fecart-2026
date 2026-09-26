@@ -38,7 +38,7 @@ test("usa os componentes IBPT separados para produto nacional", () => {
 
 test("usa importadosfederal somente quando a origem é importada", () => {
   const provider = new IbptTaxProvider({ filePath: tablePath, logger: silentLogger });
-  const result = provider.calculate({ ncm: "85171300", productOrigin: "importado", unitValue: 8_899 });
+  const result = provider.calculate({ ncm: "85171300", productOrigin: "importado", countryOfOrigin: "China", unitValue: 8_899 });
 
   assert.deepEqual(result.rates, { federal: 24.57, state: 12, municipal: 0, total: 36.57 });
   assert.equal(result.estimatedTaxes, 3_254.36);
@@ -77,7 +77,7 @@ test("serviço do navegador envia somente os dados da estimativa local", async (
   let request;
   const service = new TaxService({ apiClient: { async post(path, body) { request = { path, body }; return {}; } } });
   await service.calculateForPrice({ ncm: "85171300", productOrigin: "nacional", unitValue: 100, classificationId: "proof", originalQuery: "iPhone", normalizedQuery: "telefone celular smartphone" });
-  assert.deepEqual(request, { path: "/tax/estimate", body: { ncm: "85171300", productOrigin: "nacional", unitValue: 100, classificationId: "proof", originalQuery: "iPhone", normalizedQuery: "telefone celular smartphone" } });
+  assert.deepEqual(request, { path: "/tax/estimate", body: { ncm: "85171300", productOrigin: "nacional", countryOfOrigin: "", originState: "", destinationState: "", unitValue: 100, classificationId: "proof", originalQuery: "iPhone", normalizedQuery: "telefone celular smartphone" } });
 });
 
 test("pré-requisitos e mensagens cobrem NCM, origem, país, tabela e NCM ausente", () => {
@@ -87,4 +87,26 @@ test("pré-requisitos e mensagens cobrem NCM, origem, país, tabela e NCM ausent
   assert.equal(marketTaxPrerequisiteError({ ncm: "85171300", ncmConfirmed: true, productOrigin: "importado", countryOfOrigin: "China" }, 100, { configured: true }), null);
   assert.equal(marketTaxPrerequisiteError({ ncm: "85171300", ncmConfirmed: true, productOrigin: "nacional" }, 100, { configured: false, errorCode: "IBPT_INVALID_FILE" }).code, "IBPT_INVALID_FILE");
   assert.equal(marketTaxError({ code: "IBPT_NCM_NOT_FOUND" }).shortMessage, "NCM não encontrado na tabela IBPT");
+});
+
+test("país vazio é rejeitado no motor e país é ignorado para produto nacional", () => {
+  let calls = 0;
+  const provider = new IbptTaxProvider({ filePath: tablePath, logger: silentLogger, originRuleProvider: { resolve() { calls += 1; return null; } } });
+  for (const countryOfOrigin of [undefined, "", "  "]) {
+    assert.throws(() => provider.calculate({ ncm: "85171300", productOrigin: "importado", countryOfOrigin, unitValue: 100 }), { code: "COUNTRY_OF_ORIGIN_REQUIRED" });
+  }
+  const national = provider.calculate({ ncm: "85171300", productOrigin: "nacional", countryOfOrigin: "China", originState: "SP", destinationState: "RJ", unitValue: 100 });
+  assert.equal(national.rates.total, 29.88);
+  assert.equal(national.fiscalContext.countryOfOrigin, "");
+  assert.equal(national.fiscalContext.originState, "SP");
+  assert.equal(national.fiscalContext.destinationState, "RJ");
+  assert.equal(national.originTreatment.status, "not_applicable");
+  assert.equal(calls, 0);
+});
+
+test("adaptador sem fonte, referência ou percentual válido não produz estimativa", () => {
+  for (const treatment of [{ federalRate: 20 }, { federalRate: 20, source: "fixture" }, { federalRate: NaN, source: "fixture", reference: "test" }, { federalRate: -1, source: "fixture", reference: "test" }]) {
+    const provider = new IbptTaxProvider({ filePath: tablePath, logger: silentLogger, originRuleProvider: { resolve: () => treatment } });
+    assert.throws(() => provider.calculate({ ncm: "85171300", productOrigin: "importado", countryOfOrigin: "China", unitValue: 100 }), { code: "INVALID_ORIGIN_TAX_RULE" });
+  }
 });

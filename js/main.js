@@ -375,6 +375,8 @@ function marketTaxSignature() {
     context.ncmConfirmed,
     context.productOrigin,
     context.countryOfOrigin,
+    context.originState,
+    context.destinationState,
     context.classificationId,
     context.originalQuery,
     context.normalizedQuery,
@@ -837,6 +839,9 @@ async function calculateMarketTaxes() {
       const response = await taxService.calculateForPrice({
         ncm: context.ncm,
         productOrigin: context.productOrigin,
+        countryOfOrigin: context.countryOfOrigin,
+        originState: context.originState,
+        destinationState: context.destinationState,
         unitValue: item.price,
         classificationId: context.classificationId,
         originalQuery: context.originalQuery,
@@ -1337,6 +1342,7 @@ FORM_OPTION_FIELD_IDS.forEach((fieldId) => {
     if (field === elements.originState || field === elements.destinationState) {
       field.value = normalizeFiscalState(field.value);
       marketStateForRender();
+      void maybeCalculateMarketTaxes();
     }
     render();
   };
@@ -1351,13 +1357,17 @@ elements.productOrigin.addEventListener("change", () => {
   void maybeCalculateMarketTaxes();
 });
 
+let countryTaxRecalculationTimer;
 elements.countryOfOrigin.addEventListener("input", () => {
-  state.countryOfOrigin = String(elements.countryOfOrigin.value || "").slice(0, 80);
+  state.countryOfOrigin = normalizeCountryOfOrigin(elements.countryOfOrigin.value);
   marketStateForRender();
   render();
+  clearTimeout(countryTaxRecalculationTimer);
+  countryTaxRecalculationTimer = setTimeout(() => void maybeCalculateMarketTaxes(), 350);
 });
 
 elements.countryOfOrigin.addEventListener("change", () => {
+  clearTimeout(countryTaxRecalculationTimer);
   state.countryOfOrigin = normalizeCountryOfOrigin(elements.countryOfOrigin.value);
   elements.countryOfOrigin.value = state.countryOfOrigin;
   marketStateForRender();

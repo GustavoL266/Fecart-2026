@@ -19,7 +19,7 @@ const tablePath = fileURLToPath(new URL("../data/ibpt/TabelaIBPTaxSP26.2.A.csv",
 const phone = { codigo: "85171300", descricao_completa: "Smartphones" };
 const food = { codigo: "19059090", descricao_completa: "Produtos de padaria, pastelaria e confeitaria" };
 
-function workflow() {
+function workflow({ originRuleProvider = null, beforeTax = async () => {} } = {}) {
   const routes = new Map();
   const logs = [];
   const external = [];
@@ -31,7 +31,7 @@ function workflow() {
     external.push({ provider: "FocusNFe", url });
     return { ok: true, status: 200, json: async () => url.includes("?") ? [food, phone] : phone };
   } });
-  const taxProvider = new IbptTaxProvider({ filePath: tablePath, logger });
+  const taxProvider = new IbptTaxProvider({ filePath: tablePath, logger, originRuleProvider });
   vm.runInNewContext(serverSource.slice(serverSource.indexOf('app.get("/fiscal/ncms/search"'), serverSource.indexOf('app.get("/products"')), {
     app: Object.fromEntries(["get", "post"].map((method) => [method, (path, _auth, _limit, callback) => routes.set(`${method} ${path}`, callback)])),
     requireAuth() {}, fiscalLookupLimiter() {}, taxCalculationLimiter() {}, sessionSave: async () => {},
@@ -43,6 +43,7 @@ function workflow() {
 
   async function request(method, path, body) {
     requests.push({ method, path, body });
+    if (path === "/tax/estimate") await beforeTax(body);
     const url = new URL(path, "https://local.test");
     const route = url.pathname.startsWith("/fiscal/ncms/") && url.pathname !== "/fiscal/ncms/search" ? "/fiscal/ncms/:codigo" : url.pathname;
     let result;
@@ -60,6 +61,7 @@ function workflow() {
   const $ = (selector) => document.querySelector(selector);
   const elements = Object.fromEntries(["ncmCode", "productOrigin", "countryOfOrigin", "originState", "destinationState", "taxRegime", "cfop", "taxSituation", "customerType", "operationPurpose", "marketReferenceRule", "marketPrice"].map((id) => [id, $(`#${id}`)]));
   const context = vm.createContext({
+    setTimeout: (callback) => setImmediate(callback), clearTimeout: clearImmediate,
     $, document, elements, state: { taxAvailability: taxProvider.health(), countryOfOrigin: "" },
     ncmSearchRevision: 0, ncmLookupRevision: 0, marketSearchRevision: 0, manualMarketValue: null,
     normalizeProductForFiscalSearch, isRelevantFiscalNcm, normalizeNcmDescription, normalizeFiscalState, marketTaxError, marketTaxPrerequisiteError, ApiError,
@@ -108,6 +110,134 @@ async function settle(done) {
   assert.ok(done(), "O fluxo não concluiu");
 }
 
+for (const selected of [false, true]) {
+  test(`trocar China, Japão e EUA recalcula ${selected ? "produto selecionado" : "menor e maior preço"} sem alterar o mercado`, async () => {
+    const w = workflow();
+    await w.begin();
+    await w.context.lookupNcm(phone.codigo);
+    if (selected) w.context.marketState.selectedItem = w.context.marketState.items.find((item) => item.id === "mid");
+    w.context.elements.destinationState.value = "RJ";
+    w.selectOrigin("importado");
+    const marketSnapshot = JSON.stringify({ items: w.context.marketState.items, stats: w.context.marketState.stats, selectedItem: w.context.marketState.selectedItem });
+    let first;
+    for (const country of ["China", "Japão", "Estados Unidos"]) {
+      const requestCount = w.requests.length;
+      // Exercise input alone: no blur, search, NCM selection or page reload.
+      w.context.elements.countryOfOrigin.value = country;
+      for (const callback of w.context.elements.countryOfOrigin.listeners.input) callback();
+      await settle(() => w.context.marketState.tax.status === "success");
+      const recent = w.requests.slice(requestCount);
+      assert.equal(recent.length, selected ? 1 : 2);
+      assert.ok(recent.every(({ path, body }) => path === "/tax/estimate" && body.countryOfOrigin === country && body.destinationState === "RJ" && body.originState === ""));
+      const calculations = w.context.marketState.tax.calculations;
+      assert.deepEqual(Object.keys(calculations), selected ? ["selected"] : ["minimum", "maximum"]);
+      const financial = Object.values(calculations).map(({ marketPrice, estimatedTaxes, rates }) => ({ marketPrice, estimatedTaxes, rates, finalPrice: marketPrice + estimatedTaxes }));
+      if (!first) first = financial;
+      else assert.deepEqual(financial, first);
+      assert.ok(Object.values(calculations).every((result) => result.fiscalContext.countryOfOrigin === country && result.originTreatment.status === "unavailable"));
+      assert.match(w.$("#marketStats").innerHTML, /Não foi identificada diferença tributária por país de origem/);
+      w.context.marketState.tax.expanded = true;
+      w.context.render();
+      assert.ok(w.$("#marketTaxDetails").innerHTML.includes(country));
+      assert.equal(JSON.stringify({ items: w.context.marketState.items, stats: w.context.marketState.stats, selectedItem: w.context.marketState.selectedItem }), marketSnapshot);
+    }
+    assert.equal(w.marketQueries.length, 1);
+    const count = w.requests.length;
+    w.selectCountry(" ");
+    assert.equal(w.requests.length, count);
+    assert.equal(w.context.marketState.tax.result, null);
+    assert.match(w.$("#marketStats").innerHTML, /País de origem necessário/);
+  });
+}
+
+test("UF de destino segue separada do país e invalida a estimativa", async () => {
+  const w = workflow();
+  await w.begin();
+  await w.context.lookupNcm(phone.codigo);
+  w.selectOrigin("importado");
+  w.selectCountry("China");
+  await settle(() => w.context.marketState.tax.status === "success");
+  const original = w.context.marketState.tax.result;
+  w.context.elements.destinationState.value = "SP";
+  for (const callback of w.context.elements.destinationState.listeners.change) callback();
+  await settle(() => w.context.marketState.tax.status === "success");
+  const result = w.context.marketState.tax.result;
+  assert.equal(result.fiscalContext.destinationState, "SP");
+  assert.equal(result.fiscalContext.countryOfOrigin, "China");
+  assert.notEqual(result, original);
+  assert.deepEqual(result.rates, original.rates); // Current CSV remains the SP table.
+});
+
+test("resposta atrasada da China não substitui a estimativa atual do Japão", async () => {
+  let release;
+  const delayed = new Promise((resolve) => { release = resolve; });
+  const w = workflow({ beforeTax: ({ countryOfOrigin }) => countryOfOrigin === "China" ? delayed : undefined });
+  await w.begin();
+  await w.context.lookupNcm(phone.codigo);
+  w.selectOrigin("importado");
+  w.selectCountry("China");
+  assert.equal(w.context.marketState.tax.status, "loading");
+  w.selectCountry("Japão");
+  await settle(() => w.context.marketState.tax.status === "success");
+  const current = w.context.marketState.tax;
+  release();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(w.context.marketState.tax, current);
+  assert.equal(current.result.fiscalContext.countryOfOrigin, "Japão");
+});
+
+test("digitação do país agrupa alterações e o endpoint rejeita país vazio", async () => {
+  const w = workflow();
+  await w.begin();
+  await w.context.lookupNcm(phone.codigo);
+  w.selectOrigin("importado");
+  const count = w.requests.length;
+  for (const value of ["J", "Ja", "Jap", "Japão"]) {
+    w.context.elements.countryOfOrigin.value = value;
+    for (const callback of w.context.elements.countryOfOrigin.listeners.input) callback();
+  }
+  assert.equal(w.requests.length, count);
+  await settle(() => w.context.marketState.tax.status === "success");
+  assert.equal(w.requests.length - count, 2);
+  const body = w.requests.at(-1).body;
+  assert.equal(body.countryOfOrigin, "Japão");
+  await assert.rejects(() => w.context.taxService.calculateForPrice({ ...body, countryOfOrigin: " " }), { code: "COUNTRY_OF_ORIGIN_REQUIRED" });
+  await assert.rejects(() => w.context.taxService.calculateForPrice({ ...body, destinationState: "China" }), { code: "INVALID_TAX_CONTEXT" });
+  assert.equal(w.context.marketState.tax.result.fiscalContext.countryOfOrigin, "Japão");
+});
+
+test("adaptador de fonte por origem pode diferenciar os cenários com proveniência (fixture, não regra fiscal real)", async () => {
+  const seen = [];
+  const w = workflow({ originRuleProvider: { resolve(context) {
+    seen.push(context);
+    // Synthetic contract fixture only; not shipped as a configured tax source.
+    if (context.countryOfOrigin === "País de teste" && context.ncm === phone.codigo && context.destinationState === "RJ") return { federalRate: 20, source: "Fonte de teste", reference: "fixture-only" };
+    return null;
+  } } });
+  await w.begin();
+  await w.context.lookupNcm(phone.codigo);
+  w.context.elements.destinationState.value = "RJ";
+  w.selectOrigin("importado");
+  w.selectCountry("China");
+  await settle(() => w.context.marketState.tax.status === "success");
+  const before = w.context.marketState.tax.calculations;
+  w.selectCountry("País de teste");
+  await settle(() => w.context.marketState.tax.status === "success");
+  for (const key of ["minimum", "maximum"]) {
+    const result = w.context.marketState.tax.calculations[key];
+    assert.equal(result.rates.total, 32);
+    assert.notEqual(result.estimatedTaxes, before[key].estimatedTaxes);
+    assert.equal(result.marketPrice, before[key].marketPrice);
+    assert.equal(result.baseFederalRate, 24.57);
+    assert.equal(result.originTreatment.reference, "fixture-only");
+    assert.equal(result.originTreatment.status, "applied");
+  }
+  w.context.marketState.selectedItem = w.context.marketState.items[2];
+  await w.context.maybeCalculateMarketTaxes();
+  assert.equal(w.context.marketState.tax.calculations.selected.estimatedTaxes, 224);
+  assert.ok(seen.every((context) => context.ncm === phone.codigo && context.productOrigin === "importado" && context.destinationState === "RJ"));
+});
+
 test("iPhone, bolo, notebook e televisão têm NCM relevante e estimativa IBPT", () => {
   const provider = new IbptTaxProvider({ filePath: tablePath, logger: { info() {}, error() {} } });
   const scenarios = [
@@ -152,6 +282,9 @@ test("fluxo completo preserva a pesquisa, confirma NCM e estima os extremos sem 
   for (const request of requests) assert.deepEqual(request.body, {
       ncm: phone.codigo,
       productOrigin: "nacional",
+      countryOfOrigin: "",
+      originState: "",
+      destinationState: "",
       unitValue: request.body.unitValue,
       classificationId: w.session.fiscalNcmConfirmation.classificationId,
       originalQuery: "iPhone 15 Pro Max",
@@ -176,12 +309,12 @@ test("alternar a origem troca UF por país, limpa o estado anterior e preserva i
   const w = workflow();
   await w.begin();
   await w.context.lookupNcm(phone.codigo);
+  w.context.elements.destinationState.value = "RJ";
   w.selectOrigin("nacional");
   assert.equal(w.$("#originStateField").hidden, false);
   assert.equal(w.$("#countryOfOriginField").hidden, true);
-  w.context.elements.originState.value = "SP";
-  w.context.elements.destinationState.value = "RJ";
   await settle(() => w.context.marketState.tax.status === "success");
+  w.context.elements.originState.value = "SP";
   const nationalSignature = w.context.marketState.tax.signature;
   w.selectOrigin("importado");
   assert.equal(w.$("#originStateField").hidden, true);
@@ -200,7 +333,8 @@ test("alternar a origem troca UF por país, limpa o estado anterior e preserva i
   assert.equal(w.context.marketState.tax.result.marketPrice, 8_899);
   assert.equal(Object.hasOwn(w.context.marketState.tax.result, "total"), false);
   assert.equal(w.requests.filter((request) => request.path === "/tax/estimate").length, 4);
-  assert.equal("countryOfOrigin" in w.requests.at(-1).body, false);
+  assert.equal(w.requests.at(-1).body.countryOfOrigin, "China");
+  assert.equal(w.requests.at(-1).body.destinationState, "RJ");
 
   w.selectOrigin("nacional");
   assert.equal(w.$("#originStateField").hidden, false);

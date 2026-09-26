@@ -37,10 +37,13 @@ export class TaxService {
     this.#api = apiClient;
   }
 
-  calculateForPrice({ ncm, productOrigin, unitValue, classificationId, originalQuery, normalizedQuery }) {
+  calculateForPrice({ ncm, productOrigin, countryOfOrigin = "", originState = "", destinationState = "", unitValue, classificationId, originalQuery, normalizedQuery }) {
     return this.#api.post("/tax/estimate", {
       ncm,
       productOrigin,
+      countryOfOrigin,
+      originState,
+      destinationState,
       unitValue,
       classificationId,
       originalQuery,

@@ -132,7 +132,8 @@ function renderMarketTaxStat(marketState) {
       : calculations.minimum && calculations.maximum
         ? `<div class="market-tax-extremes-summary"><div class="market-tax-shared-rate"><span>Carga tributária estimada nos dois cenários</span><strong>${taxPercent(calculations.maximum.rates.total)}</strong></div><div class="market-tax-scenarios">${extremeTaxScenario("Menor preço", minimumItem, calculations.minimum)}${extremeTaxScenario("Maior preço", maximumItem, calculations.maximum)}</div></div>`
         : primary ? selectedTaxSummary(marketState, primary) : "";
-    return `<div class="market-tax-stat is-success">${heading}${content}<small class="market-tax-source">Fonte: ${escapeHtml(primary.source)} · Versão: ${escapeHtml(primary.version)}</small>${taxAction(tax.expanded ? "Ocultar detalhes" : "Ver detalhes", "data-toggle-market-taxes")}</div>`;
+    const originNotice = primary.originTreatment?.message ? `<small class="market-tax-source">${escapeHtml(primary.originTreatment.message)}</small>` : "";
+    return `<div class="market-tax-stat is-success">${heading}${content}<small class="market-tax-source">Fonte: ${escapeHtml(primary.source)} · Versão: ${escapeHtml(primary.version)}</small>${originNotice}${taxAction(tax.expanded ? "Ocultar detalhes" : "Ver detalhes", "data-toggle-market-taxes")}</div>`;
   }
   if (tax.status === "error") {
     const tableUnavailable = ["IBPT_NOT_CONFIGURED", "IBPT_INVALID_FILE"].includes(tax.code);
@@ -150,7 +151,7 @@ function taxOriginDetails(context, result) {
   const originSummary = isNational ? `UF origem: ${context.originState || "Não informada"}` : `País: ${context.countryOfOrigin || "Não informado"}`;
   return {
     markup: `<div class="market-tax-origin-section"><h4>Origem da mercadoria</h4><dl class="market-tax-origin-details"><div><dt>Origem do produto</dt><dd>${escapeHtml(origin)}</dd></div><div><dt>${originLabel}</dt><dd>${escapeHtml(originValue || "Não informada")}</dd></div><div><dt>UF de destino</dt><dd>${escapeHtml(destinationState)}</dd></div><div><dt>Fonte</dt><dd>${escapeHtml(result.source)}</dd></div></dl></div>`,
-    summary: `NCM ${escapeHtml(result.ncm)} · Origem: ${escapeHtml(origin)} · ${escapeHtml(originSummary)} · UF destino: ${escapeHtml(destinationState)} · Versão: ${escapeHtml(result.version)} · Vigência: ${escapeHtml(result.validFrom)} a ${escapeHtml(result.validTo)}`,
+    summary: `NCM ${escapeHtml(result.ncm)} · Origem: ${escapeHtml(origin)} · ${escapeHtml(originSummary)} · UF destino: ${escapeHtml(destinationState)} · Versão: ${escapeHtml(result.version)} · Vigência: ${escapeHtml(result.validFrom)} a ${escapeHtml(result.validTo)}${result.originTreatment?.reference ? ` · Regra: ${escapeHtml(result.originTreatment.reference)}` : ""}${result.originTreatment?.message ? ` · ${escapeHtml(result.originTreatment.message)}` : ""}`,
   };
 }
 
